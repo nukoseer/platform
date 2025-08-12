@@ -19,6 +19,28 @@
 #pragma comment(lib, "dxgi")
 #pragma comment(lib, "dxguid")
 
+#define PLATFORM_WINDOW_CLASS       "platform_window"
+#define SERVICE_WINDOW_CLASS        "service_window"
+
+#define SERVICE_WINDOW_CREATE_MSG   (WM_USER + 1)
+#define SERVICE_WINDOW_CLOSE_MSG    (SERVICE_WINDOW_CREATE_MSG + 1)
+
+typedef struct window_param_t
+{
+    DWORD     ex_style;
+    LPCSTR   class_name;
+    LPCSTR   window_name;
+    DWORD     style;
+    int       x;
+    int       y;
+    int       width;
+    int       height;
+    HWND      hwnd_parent;
+    HMENU     menu;
+    HINSTANCE instance;
+    LPVOID    param;
+} window_param_t;
+
 typedef struct window_t
 {
     HWND hwnd;
@@ -32,6 +54,82 @@ typedef struct window_t
 } window_t;
 
 static window_t global_window = { 0 };
+static HWND global_service_hwnd = 0;
+static DWORD global_main_thread_id = 0;
+
+// NOTE: This window procedure handles only 2 special messages to create and destroy windows.
+// The thread (entry_point) which calls this window procedure owns the windows.
+// entry_point's thread message queue will get all the messages for all of the created windows.
+static LRESULT CALLBACK service_window_proc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam)
+{
+    LRESULT result = 0;
+    
+    switch (message)
+    {
+        case SERVICE_WINDOW_CREATE_MSG:
+        {
+            window_param_t* window_param = (window_param_t*)wparam;
+            result = (LRESULT)CreateWindowEx(window_param->ex_style, window_param->class_name,
+                                             window_param->window_name, window_param->style,
+                                             window_param->x, window_param->y,
+                                             window_param->width, window_param->height,
+                                             window_param->hwnd_parent, window_param->menu,
+                                             window_param->instance, window_param->param);
+        } break;
+
+        case SERVICE_WINDOW_CLOSE_MSG:
+        {
+            DestroyWindow((HWND)wparam);
+        } break;
+
+        default:
+        {
+            result = DefWindowProc(hwnd, message, wparam, lparam);
+        } break;
+    }
+
+    return result;
+}
+
+// NOTE: This is the window procedure for our visible window.
+// entry_point thread calls this routine (DispatchMessage)
+// if hwnd matches. We still do not want to handle messages here
+// because that could possibly cause race conditions. We
+// pass them to our main_thread for processing. 
+static LRESULT CALLBACK window_proc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam)
+{
+    LRESULT result = 0;
+    
+    switch (message)
+    {
+        case WM_CLOSE:
+        {
+            PostThreadMessage(global_main_thread_id, message, (WPARAM)hwnd, lparam);
+        } break;
+        
+        case WM_SYSKEYDOWN:
+        case WM_SYSKEYUP:
+        case WM_KEYDOWN:
+        case WM_KEYUP:
+        case WM_DESTROY:
+        {
+            PostThreadMessage(global_main_thread_id, message, wparam, lparam);
+        } break;
+
+        case WM_MENUCHAR:
+        {
+            // NOTE: Prevent bing sound.
+            result = MAKELRESULT(0, MNC_CLOSE);
+        } break;
+        
+        default:
+        {
+            result = DefWindowProc(hwnd, message, wparam, lparam);
+        } break;
+    }
+
+    return result;
+}
 
 static void toggle_fullscreen(window_t* window)
 {
@@ -65,52 +163,6 @@ static void toggle_fullscreen(window_t* window)
     }
 }
 
-static LRESULT CALLBACK window_proc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam)
-{
-    switch (message)
-    {
-        case WM_DESTROY:
-        {
-            PostQuitMessage(0);
-            return 0;
-        }
-
-        case WM_SYSKEYDOWN:
-        case WM_SYSKEYUP:
-        case WM_KEYDOWN:
-        case WM_KEYUP:
-        {
-            int key_code = (int)wparam;
-            // int was_down = (lparam & (1 << 30));
-            int is_down = !(lparam & (1 << 31));
-            int alt_is_down = (lparam & (1 << 29));
-
-            if (key_code == VK_RETURN && is_down && alt_is_down)
-            {
-                window_t* window = (window_t*)GetWindowLongPtrW(hwnd, GWLP_USERDATA);
-
-                toggle_fullscreen(window);
-                return 0;
-            }
-            else if (key_code == VK_ESCAPE && is_down)
-            {
-                PostQuitMessage(0);
-                return 0;
-            }
-
-            break;
-        }
-
-        case WM_MENUCHAR:
-        {
-            // NOTE: Prevent bing sound.
-            return MAKELRESULT(0, MNC_CLOSE); 
-        }
-    }
-
-    return DefWindowProc(hwnd, message, wparam, lparam);
-}
-
 static bool set_process_dpi_aware(void)
 {
     bool result = 0;
@@ -127,38 +179,56 @@ static bool set_process_dpi_aware(void)
     return result;
 }
 
-static void create_window(window_t* window, int width, int height)
+// NOTE: We are able to create multiple windows but we do not support it.
+// There should be only one window.
+static void create_window(window_t* window, i32 width, i32 height)
 {
-    WNDCLASSEX window_class =
+    static WNDCLASSEX window_class = { 0 };
+    
+    if (!window_class.lpszClassName)
     {
-        .cbSize = sizeof(window_class),
-        .lpfnWndProc = window_proc,
-        .hInstance = GetModuleHandle(0),
-        .hIcon = LoadIcon(0, IDI_APPLICATION),
-        .hCursor = LoadCursor(0, IDC_ARROW),
-        .lpszClassName = "platform_window",
+        window_class = (WNDCLASSEX)
+        {
+            .cbSize = sizeof(window_class),
+            .lpfnWndProc = window_proc,
+            .hInstance = GetModuleHandle(0),
+            .hIcon = LoadIcon(0, IDI_APPLICATION),
+            .hCursor = LoadCursor(0, IDC_ARROW),
+            .lpszClassName = PLATFORM_WINDOW_CLASS,
+        };
+
+        ATOM window_class_atom = RegisterClassEx(&window_class);
+        assert(window_class_atom && "Failed to register window class.");   
+    }
+    
+    window_param_t window_param =
+    {
+        .ex_style = WS_EX_APPWINDOW | WS_EX_NOREDIRECTIONBITMAP,
+        .class_name = window_class.lpszClassName,
+        .window_name = "Platform Window",
+        .style = WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+        .x = CW_USEDEFAULT,
+        .y = CW_USEDEFAULT,
+        .width = width,
+        .height = height,
+        .hwnd_parent = 0,
+        .menu = 0,
+        .instance = window_class.hInstance,
+        .param = 0,
     };
 
-    ATOM window_class_atom = RegisterClassEx(&window_class);
-    assert(window_class_atom && "Failed to register window class.");
-
-    HWND hwnd = CreateWindowEx(WS_EX_APPWINDOW | WS_EX_NOREDIRECTIONBITMAP,
-                               window_class.lpszClassName,
-                               "Platform Window", WS_OVERLAPPEDWINDOW,
-                               CW_USEDEFAULT, CW_USEDEFAULT, width, height,
-                               0, 0, window_class.hInstance, 0);
-    assert(window && "Failed to create window.");
+    HWND hwnd = (HWND)SendMessage(global_service_hwnd, SERVICE_WINDOW_CREATE_MSG, (WPARAM)&window_param, 0);
+    assert(hwnd && "Failed to create window.");
 
     window->hwnd = hwnd;
     window->width = width;
     window->height = height;
-
-    SetWindowLongPtr(window->hwnd, GWLP_USERDATA, (LONG_PTR)window);
 }
 
 static void resize_back_buffer(window_t* window)
 {
     HRESULT result = 0;
+
     // NOTE: Get current size for window client area.
     RECT rect = { 0 };
     GetClientRect(window->hwnd, &rect);
@@ -190,10 +260,58 @@ static void resize_back_buffer(window_t* window)
     }
 }
 
-static int entry_point(void)
+static bool process_thread_message(MSG* message, window_t* window)
 {
-    HRESULT result = S_OK;
+    bool quit = false;
+    
+    switch (message->message)
+    {
+        case WM_QUIT:
+        {
+            quit = true;
+        } break;
 
+        case WM_DESTROY:
+        {
+            PostQuitMessage(0);
+        } break;
+
+        case WM_CLOSE:
+        {
+            SendMessage(global_service_hwnd, SERVICE_WINDOW_CLOSE_MSG, message->wParam, 0);
+        } break;
+
+        case WM_SYSKEYDOWN:
+        case WM_SYSKEYUP:
+        case WM_KEYDOWN:
+        case WM_KEYUP:
+        {
+            i32 key_code = (i32)message->wParam;
+            // int was_down = (message->lParam & (1 << 30));
+            bool is_down = !(message->lParam & (1 << 31));
+            bool alt_is_down = (message->lParam & (1 << 29));
+
+            if (key_code == VK_RETURN && is_down && alt_is_down)
+            {
+                toggle_fullscreen(window);
+            }
+            else if (key_code == VK_ESCAPE && is_down)
+            {
+                PostQuitMessage(0);
+            }
+        } break;
+    }
+
+    return quit;
+}
+
+// NOTE: This is our real main thread we do everything here.
+// Processing thread messages, rendering etc.
+static DWORD WINAPI main_thread(void* param)
+{
+    (void)param;
+
+    HRESULT result = S_OK;
     window_t* window = &global_window;
 
     set_process_dpi_aware();
@@ -201,8 +319,6 @@ static int entry_point(void)
 
     window->d3d11 = d3d11_init();
     window->swap_chain = d3d11_create_swap_chain(window->hwnd, window->d3d11);
-
-    ShowWindow(window->hwnd, SW_SHOWDEFAULT);
 
     typedef struct Vertex
     {
@@ -298,20 +414,16 @@ static int entry_point(void)
         ID3D11Device_CreateRasterizerState(window->d3d11->device, &desc, &rasterizer_state);
     }
 
-    for (;;)
+    bool quit = false;
+    
+    while (!quit)
     {
-        // NOTE: Process all incoming Windows messages.
+        // NOTE: These messages come from PostThreadMessage in window_proc.
         MSG message = { 0 };
 
         if (PeekMessage(&message, NULL, 0, 0, PM_REMOVE))
         {
-            if (message.message == WM_QUIT)
-            {
-                break;
-            }
-
-            TranslateMessage(&message);
-            DispatchMessageW(&message);
+            quit = process_thread_message(&message, window);
 
             continue;
         }
@@ -369,6 +481,40 @@ static int entry_point(void)
     }
 
     ExitProcess(0);
+}
+
+static int entry_point(void)
+{
+    WNDCLASSEX service_window_class =
+    {
+        .cbSize = sizeof(service_window_class),
+        .lpfnWndProc = service_window_proc,
+        .hInstance = GetModuleHandle(0),
+        .lpszClassName = SERVICE_WINDOW_CLASS,
+    };
+
+    ATOM service_window_class_atom = RegisterClassEx(&service_window_class);
+    assert(service_window_class_atom && "Failed to register service window class.");
+
+    global_service_hwnd = CreateWindowEx(0, service_window_class.lpszClassName, "Service Window", 0,
+                                         CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
+                                         0, 0, service_window_class.hInstance, 0);
+    assert(global_service_hwnd && "Failed to create service window.");
+
+    CloseHandle(CreateThread(0, 0, main_thread, 0, 0, &global_main_thread_id));
+
+    for (;;)
+    {
+        MSG message = { 0 };
+
+        GetMessage(&message, 0, 0, 0);
+        TranslateMessage(&message);
+        // NOTE: This thread owns the service window and the visible window,
+        // so this message queue gets every message for both of the windows.
+        // DispatchMessage checks message.hwnd and calls the correct window
+        // procedure (service_window_proc or window_proc).
+        DispatchMessage(&message);
+    }
     
     return 0;
 }
