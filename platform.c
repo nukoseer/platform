@@ -15,6 +15,8 @@
 
 #include "d3d11_gfx.c"
 
+#include "platform.h"
+
 #pragma comment(lib, "user32")
 #pragma comment(lib, "kernel32")
 #pragma comment(lib, "d3d11")
@@ -28,6 +30,14 @@
 
 #define SERVICE_WINDOW_CREATE_MSG   (WM_USER + 1)
 #define SERVICE_WINDOW_CLOSE_MSG    (SERVICE_WINDOW_CREATE_MSG + 1)
+
+typedef struct module_t
+{
+    HMODULE module;
+    init_f* init;
+    update_f* update;
+    render_f* render;
+} module_t;
 
 typedef struct window_param_t
 {
@@ -217,6 +227,25 @@ static inline f32 get_secs_elapsed(u64 begin_ticks, u64 end_ticks)
     return result;
 }
 
+static module_t load_module(void)
+{
+    module_t result = { 0 };
+
+    result.module = LoadLibrary("game");
+    assert(result.module && "Failed to load module.");
+
+    result.init = (init_f*)GetProcAddress(result.module, "init");
+    assert(result.init && "Failed to get init function.");
+    
+    result.update = (update_f*)GetProcAddress(result.module, "update");
+    assert(result.update && "Failed to get update function.");
+    
+    result.render = (render_f*)GetProcAddress(result.module, "render");
+    assert(result.render && "Failed to get render function.");
+
+    return result;
+}
+
 // NOTE: We are able to create multiple windows but we do not support it.
 // There should be only one window.
 static void create_window(window_t* window, i32 width, i32 height)
@@ -388,7 +417,6 @@ static DWORD WINAPI main_thread(void* param)
     d3d11_input_layout_t input_layout = d3d11_create_input_layout(window->d3d11->device, descs, array_count(descs),
                                                                   d3d11_vshader, sizeof(d3d11_vshader));
 #else
-
     const char hlsl[] =
     "#line " stringfy(__LINE__) "                               \n\n" // actual line number in this file for nicer error messages
     "                                                           \n"
@@ -451,6 +479,30 @@ static DWORD WINAPI main_thread(void* param)
         ID3D11Device_CreateRasterizerState(window->d3d11->device, &desc, &rasterizer_state);
     }
 
+    platform_t platform = { 0 };
+
+    memory_t* memory = &platform.memory;
+    memory->permanent_size = MIBIBYTES(256);
+    memory->transient_size = GIBIBYTES(1);
+
+#ifdef _DEBUG
+    void* base_address = (void*)TIBIBYTES(2);
+#else
+    void* base_address = 0;
+#endif
+    
+    size_t total_memory_size = memory->permanent_size + memory->transient_size;
+    void* total_memory = VirtualAlloc(base_address, total_memory_size,
+				      MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    assert(total_memory && "Failed to allocate enough memory.");
+    
+    memory->permanent = total_memory;
+    memory->transient = (u8*)total_memory + memory->permanent_size;
+
+    module_t module = load_module();
+
+    module.init(&platform);
+    
     u32 target_frame = 60;
     f32 target_secs_per_frame = 1.0f / target_frame;
 
@@ -468,6 +520,10 @@ static DWORD WINAPI main_thread(void* param)
 
             continue;
         }
+
+        module.update(&platform);
+
+        module.render(&platform);
 
         resize_back_buffer(window);
 
@@ -539,12 +595,12 @@ static DWORD WINAPI main_thread(void* param)
         }
 
         u64 time_end = get_ticks();
-        f32 delta_time = get_secs_elapsed(time_last, time_end);
+        platform.delta_time = get_secs_elapsed(time_last, time_end);
         time_last = time_end;
 
         char delta_time_str[32] = { 0 };
 
-        if (snprintf(delta_time_str, sizeof(delta_time_str), "Frame time: %.1f ms", delta_time * 1000) > 0)
+        if (snprintf(delta_time_str, sizeof(delta_time_str), "Frame time: %.1f ms", platform.delta_time * 1000) > 0)
         {
             SetWindowText(window->hwnd, delta_time_str);
         }

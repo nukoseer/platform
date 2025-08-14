@@ -10,3 +10,8 @@
 #define stringfy_(x) #x
 #define stringfy(x) stringfy_(x)
 
+#define KIBIBYTES(x) ((x) * (1024ULL))
+#define MIBIBYTES(x) ((KIBIBYTES(x)) * (1024ULL))
+#define GIBIBYTES(x) ((MIBIBYTES(x)) * (1024ULL))
+#define TIBIBYTES(x) ((GIBIBYTES(x)) * (1024ULL))
+

@@ -68,12 +68,19 @@ if /I "%compiler%"=="cl" (
     set release_compiler_flags=/O2
     set common_compiler_flags=/Oi /TC /FC /GS- /nologo /W3 /WX
     rem /wd5045 /wd4710 /wd4711 /wd4820 /wd4702 /wd4201 /wd4774 /wd4062 /wd4201
-    
+
     set debug_linker_flags=/debug
     set release_linker_flags=/subsystem:windows /fixed /opt:icf /opt:ref libvcruntime.lib libucrt.lib
     set common_linker_flags=/incremental:no /LIBPATH:../lib/
+
+    set debug_linker_flags_dll=%debug_linker_flags%
+    set release_linker_flags_dll=%release_linker_flags% /fixed:no
+    set common_linker_flags_dll=%common_linker_flags%
+
     rem user32.lib shell32.lib gdi32.lib winmm.lib
     set link_section=/link
+    set link_section_dll=/LD /link
+    set export_symbol=/EXPORT
     set output=/out:
 )
 
@@ -92,17 +99,23 @@ if /I "%compiler%"=="clang" (
   rem options for lld-link
   set debug_linker_flags=-Wl,/debug
   set release_linker_flags=-Wl,/subsystem:windows -Wl,/fixed -Wl,/opt:icf -Wl,/opt:ref -llibvcruntime -llibucrt
-  
   set common_linker_flags=-Wl,/incremental:no -L../lib/
-  rem luser32 -lshell32 -lgdi32 -lwinmm
 
+  set debug_linker_flags_dll=%debug_linker_flags%
+  set release_linker_flags_dll=%release_linker_flags% -Wl,/fixed:no
+  set common_linker_flags_dll=%common_linker_flags%
+
+  rem luser32 -lshell32 -lgdi32 -lwinmm
   set link_section=
+  set link_section_dll=-shared
+  set export_symbol=-Wl,/export
   set output=-o
   )
 
 if /I "%debug%"=="yes" (
    set common_compiler_flags=%common_compiler_flags% %debug_compiler_flags%
    set common_linker_flags=%common_linker_flags% %debug_linker_flags%
+   set common_linker_flags_dll=%common_linker_flags_dll% %debug_linker_flags_dll%
 
    if "%asan%"=="yes" (
        set common_compiler_flags=!common_compiler_flags! %asan_flags%
@@ -114,10 +127,12 @@ if /I "%debug%"=="yes" (
 ) else (
    set common_compiler_flags=%common_compiler_flags% %release_compiler_flags%
    set common_linker_flags=%common_linker_flags% %release_linker_flags%
+   set common_linker_flags_dll=%common_linker_flags_dll% %release_linker_flags_dll%
 )
 
 %compiler% %common_compiler_flags% ..\platform.c %link_section% %common_linker_flags% %OUTPUT%platform.exe
 rem -MJ ../compile_commands.json
+%compiler% %common_compiler_flags% ..\game.c %link_section_dll% %common_linker_flags_dll% %export_symbol%:init %export_symbol%:update %export_symbol%:render %OUTPUT%game.dll
 
 popd
 
