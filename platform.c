@@ -2,10 +2,13 @@
 #define WIN32_LEAN_AND_MEAN
 
 #include <windows.h>
+#include <stdio.h> // snprintf
+
 #include <d3d11.h>
 #include <d3dcompiler.h>
 #include <dxgi1_3.h>
 #include <dxgidebug.h>
+#include <timeapi.h>
 
 #include "utils.h"
 #include "d3d11_gfx.h"
@@ -18,6 +21,7 @@
 #pragma comment(lib, "d3dcompiler")
 #pragma comment(lib, "dxgi")
 #pragma comment(lib, "dxguid")
+#pragma comment(lib, "winmm")
 
 #define PLATFORM_WINDOW_CLASS       "platform_window"
 #define SERVICE_WINDOW_CLASS        "service_window"
@@ -53,9 +57,8 @@ typedef struct window_t
     d3d11_t* d3d11;
 } window_t;
 
-static window_t global_window = { 0 };
-static HWND global_service_hwnd = 0;
-static DWORD global_main_thread_id = 0;
+static HWND global_service_hwnd;
+static DWORD global_main_thread_id;
 
 // NOTE: This window procedure handles only 2 special messages to create and destroy windows.
 // The thread (entry_point) which calls this window procedure owns the windows.
@@ -63,7 +66,7 @@ static DWORD global_main_thread_id = 0;
 static LRESULT CALLBACK service_window_proc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam)
 {
     LRESULT result = 0;
-    
+
     switch (message)
     {
         case SERVICE_WINDOW_CREATE_MSG:
@@ -95,18 +98,18 @@ static LRESULT CALLBACK service_window_proc(HWND hwnd, UINT message, WPARAM wpar
 // entry_point thread calls this routine (DispatchMessage)
 // if hwnd matches. We still do not want to handle messages here
 // because that could possibly cause race conditions. We
-// pass them to our main_thread for processing. 
+// pass them to our main_thread for processing.
 static LRESULT CALLBACK window_proc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam)
 {
     LRESULT result = 0;
-    
+
     switch (message)
     {
         case WM_CLOSE:
         {
             PostThreadMessage(global_main_thread_id, message, (WPARAM)hwnd, lparam);
         } break;
-        
+
         case WM_SYSKEYDOWN:
         case WM_SYSKEYUP:
         case WM_KEYDOWN:
@@ -121,7 +124,7 @@ static LRESULT CALLBACK window_proc(HWND hwnd, UINT message, WPARAM wparam, LPAR
             // NOTE: Prevent bing sound.
             result = MAKELRESULT(0, MNC_CLOSE);
         } break;
-        
+
         default:
         {
             result = DefWindowProc(hwnd, message, wparam, lparam);
@@ -179,12 +182,47 @@ static bool set_process_dpi_aware(void)
     return result;
 }
 
+static bool set_min_timer_resolution(void)
+{
+    bool result = (timeBeginPeriod(1) == TIMERR_NOERROR);
+
+    assert(result && "Failed to set minimum timer resolution.");
+
+    return result;
+}
+
+static inline u64 get_ticks(void)
+{
+    bool result = false;
+    LARGE_INTEGER ticks = { 0 };
+
+    result = QueryPerformanceCounter(&ticks);
+
+    assert(result && "Failed to get query performance counter value.");
+
+    return ticks.QuadPart;
+}
+
+static inline f32 get_secs_elapsed(u64 begin_ticks, u64 end_ticks)
+{
+    static LARGE_INTEGER qp_frequency;
+
+    if (qp_frequency.QuadPart == 0)
+    {
+        QueryPerformanceFrequency(&qp_frequency);
+    }
+
+    f32 result = (f32)((f64)(end_ticks - begin_ticks) / qp_frequency.QuadPart);
+
+    return result;
+}
+
 // NOTE: We are able to create multiple windows but we do not support it.
 // There should be only one window.
 static void create_window(window_t* window, i32 width, i32 height)
 {
     static WNDCLASSEX window_class = { 0 };
-    
+
     if (!window_class.lpszClassName)
     {
         window_class = (WNDCLASSEX)
@@ -198,9 +236,9 @@ static void create_window(window_t* window, i32 width, i32 height)
         };
 
         ATOM window_class_atom = RegisterClassEx(&window_class);
-        assert(window_class_atom && "Failed to register window class.");   
+        assert(window_class_atom && "Failed to register window class.");
     }
-    
+
     window_param_t window_param =
     {
         .ex_style = WS_EX_APPWINDOW | WS_EX_NOREDIRECTIONBITMAP,
@@ -263,7 +301,7 @@ static void resize_back_buffer(window_t* window)
 static bool process_thread_message(MSG* message, window_t* window)
 {
     bool quit = false;
-    
+
     switch (message->message)
     {
         case WM_QUIT:
@@ -309,11 +347,10 @@ static bool process_thread_message(MSG* message, window_t* window)
 // Processing thread messages, rendering etc.
 static DWORD WINAPI main_thread(void* param)
 {
-    (void)param;
-
     HRESULT result = S_OK;
-    window_t* window = &global_window;
+    window_t* window = (window_t*)param;
 
+    set_min_timer_resolution();
     set_process_dpi_aware();
     create_window(window, CW_USEDEFAULT, CW_USEDEFAULT);
 
@@ -414,8 +451,12 @@ static DWORD WINAPI main_thread(void* param)
         ID3D11Device_CreateRasterizerState(window->d3d11->device, &desc, &rasterizer_state);
     }
 
+    u32 target_frame = 60;
+    f32 target_secs_per_frame = 1.0f / target_frame;
+
+    u64 time_last = get_ticks();
     bool quit = false;
-    
+
     while (!quit)
     {
         // NOTE: These messages come from PostThreadMessage in window_proc.
@@ -478,6 +519,35 @@ static DWORD WINAPI main_thread(void* param)
         {
             assert(!"Failed to present swap chain.");
         }
+
+        u64 time_passed = get_ticks();
+        f32 time_passed_in_secs = get_secs_elapsed(time_last, time_passed);
+
+        if (time_passed_in_secs < target_secs_per_frame)
+        {
+            DWORD sleep_time = (DWORD)((target_secs_per_frame - time_passed_in_secs) * 1000);
+
+            if (sleep_time > 0)
+            {
+                Sleep(sleep_time);
+            }
+
+            do
+            {
+                time_passed_in_secs = get_secs_elapsed(time_passed, get_ticks());
+            } while (time_passed_in_secs < target_secs_per_frame);
+        }
+
+        u64 time_end = get_ticks();
+        f32 delta_time = get_secs_elapsed(time_last, time_end);
+        time_last = time_end;
+
+        char delta_time_str[32] = { 0 };
+
+        if (snprintf(delta_time_str, sizeof(delta_time_str), "Frame time: %.1f ms", delta_time * 1000) > 0)
+        {
+            SetWindowText(window->hwnd, delta_time_str);
+        }
     }
 
     ExitProcess(0);
@@ -501,7 +571,8 @@ static int entry_point(void)
                                          0, 0, service_window_class.hInstance, 0);
     assert(global_service_hwnd && "Failed to create service window.");
 
-    CloseHandle(CreateThread(0, 0, main_thread, 0, 0, &global_main_thread_id));
+    window_t window = { 0 };
+    CloseHandle(CreateThread(0, 0, main_thread, &window, 0, &global_main_thread_id));
 
     for (;;)
     {
@@ -515,7 +586,7 @@ static int entry_point(void)
         // procedure (service_window_proc or window_proc).
         DispatchMessage(&message);
     }
-    
+
     return 0;
 }
 

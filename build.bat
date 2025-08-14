@@ -124,10 +124,11 @@ popd
 goto :eof
 
 :usage
-echo Usage: %script_name% [--debug] [--compiler ^<cl/clang^>]
+echo Usage: %script_name% [--compiler ^<cl/clang^>] [--debug] [--asan]
 echo.
-echo   --debug     Debug build. Default is release build.
 echo   --compiler  Choose compiler cl or clang. Default cl.
+echo   --debug     Debug build. Default is release build.
+echo   --asan      Enable address sanitizer. Default is off.
 goto :eof
 
 :bad_usage
