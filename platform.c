@@ -25,11 +25,9 @@
 #pragma comment(lib, "dxguid")
 #pragma comment(lib, "winmm")
 
-#define PLATFORM_WINDOW_CLASS       "platform_window"
-#define SERVICE_WINDOW_CLASS        "service_window"
+#define PLATFORM_WINDOW_CLASS "platform_window"
 
-#define SERVICE_WINDOW_CREATE_MSG   (WM_USER + 1)
-#define SERVICE_WINDOW_CLOSE_MSG    (SERVICE_WINDOW_CREATE_MSG + 1)
+#define fatal(x, message) do { if (!(x)) { fatal_error(message); } } while (0)
 
 typedef struct module_t
 {
@@ -38,22 +36,6 @@ typedef struct module_t
     update_f* update;
     render_f* render;
 } module_t;
-
-typedef struct window_param_t
-{
-    DWORD     ex_style;
-    LPCSTR   class_name;
-    LPCSTR   window_name;
-    DWORD     style;
-    int       x;
-    int       y;
-    int       width;
-    int       height;
-    HWND      hwnd_parent;
-    HMENU     menu;
-    HINSTANCE instance;
-    LPVOID    param;
-} window_param_t;
 
 typedef struct window_t
 {
@@ -67,64 +49,43 @@ typedef struct window_t
     d3d11_t* d3d11;
 } window_t;
 
-static HWND global_service_hwnd;
 static DWORD global_main_thread_id;
 
-// NOTE: This window procedure handles only 2 special messages to create and destroy windows.
-// The thread (entry_point) which calls this window procedure owns the windows.
-// entry_point's thread message queue will get all the messages for all of the created windows.
-static LRESULT CALLBACK service_window_proc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam)
-{
-    LRESULT result = 0;
+static void fatal_error(const char* message) 
+{ 
+    char message_buffer[256] = { 0 };
+    DWORD error = GetLastError(); 
 
-    switch (message)
+    if (FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+        0, error, 0,
+        (LPTSTR)message_buffer, sizeof(message_buffer), 0))
     {
-        case SERVICE_WINDOW_CREATE_MSG:
-        {
-            window_param_t* window_param = (window_param_t*)wparam;
-            result = (LRESULT)CreateWindowEx(window_param->ex_style, window_param->class_name,
-                                             window_param->window_name, window_param->style,
-                                             window_param->x, window_param->y,
-                                             window_param->width, window_param->height,
-                                             window_param->hwnd_parent, window_param->menu,
-                                             window_param->instance, window_param->param);
-        } break;
-
-        case SERVICE_WINDOW_CLOSE_MSG:
-        {
-            DestroyWindow((HWND)wparam);
-        } break;
-
-        default:
-        {
-            result = DefWindowProc(hwnd, message, wparam, lparam);
-        } break;
+        MessageBox(0, message_buffer, message, MB_ICONEXCLAMATION);
+    }
+    else
+    {
+        MessageBox(0, message, "Error", MB_ICONEXCLAMATION);
     }
 
-    return result;
+    ExitProcess(error); 
 }
 
-// NOTE: This is the window procedure for our visible window.
-// entry_point thread calls this routine (DispatchMessage)
-// if hwnd matches. We still do not want to handle messages here
-// because that could possibly cause race conditions. We
-// pass them to our main_thread for processing.
+// NOTE: This is the window procedure for our window.  entry_point
+// thread calls this routine via DispatchMessage. We do not want to
+// handle messages here because that could possibly cause race
+// conditions. We pass them to our main_thread for processing.
 static LRESULT CALLBACK window_proc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam)
 {
     LRESULT result = 0;
 
     switch (message)
     {
-        case WM_CLOSE:
-        {
-            PostThreadMessage(global_main_thread_id, message, (WPARAM)hwnd, lparam);
-        } break;
-
         case WM_SYSKEYDOWN:
         case WM_SYSKEYUP:
         case WM_KEYDOWN:
         case WM_KEYUP:
         case WM_DESTROY:
+        case WM_CLOSE:
         {
             PostThreadMessage(global_main_thread_id, message, wparam, lparam);
         } break;
@@ -178,13 +139,11 @@ static void toggle_fullscreen(window_t* window)
 
 static bool set_process_dpi_aware(void)
 {
-    bool result = 0;
-
-    result = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE);
+    bool result = (SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE) == S_OK);
 
     if (!result)
     {
-        result = !!SetProcessDPIAware();
+        result = SetProcessDPIAware();
     }
 
     assert(result && "Failed to set dpi awareness.");
@@ -232,29 +191,27 @@ static module_t load_module(void)
     module_t result = { 0 };
 
     result.module = LoadLibrary("game");
-    assert(result.module && "Failed to load module.");
+    fatal(result.module, "Failed to load module.");
 
     result.init = (init_f*)GetProcAddress(result.module, "init");
-    assert(result.init && "Failed to get init function.");
+    fatal(result.init, "Failed to get init function.");
     
     result.update = (update_f*)GetProcAddress(result.module, "update");
-    assert(result.update && "Failed to get update function.");
+    fatal(result.update, "Failed to get update function.");
     
     result.render = (render_f*)GetProcAddress(result.module, "render");
-    assert(result.render && "Failed to get render function.");
+    fatal(result.render, "Failed to get render function.");
 
     return result;
 }
 
-// NOTE: We are able to create multiple windows but we do not support it.
-// There should be only one window.
-static void create_window(window_t* window, i32 width, i32 height)
+static window_t* create_window(i32 width, i32 height)
 {
-    static WNDCLASSEX window_class = { 0 };
+    static window_t window = { 0 };
 
-    if (!window_class.lpszClassName)
+    if (!window.hwnd)
     {
-        window_class = (WNDCLASSEX)
+        WNDCLASSEX window_class =
         {
             .cbSize = sizeof(window_class),
             .lpfnWndProc = window_proc,
@@ -265,31 +222,21 @@ static void create_window(window_t* window, i32 width, i32 height)
         };
 
         ATOM window_class_atom = RegisterClassEx(&window_class);
-        assert(window_class_atom && "Failed to register window class.");
+        fatal(window_class_atom, "Failed to register window class.");
+
+        HWND hwnd = CreateWindowEx(WS_EX_APPWINDOW | WS_EX_NOREDIRECTIONBITMAP,
+                                   window_class.lpszClassName, "Platform Window",
+                                   WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+                                   CW_USEDEFAULT, CW_USEDEFAULT, width, height,
+                                   0, 0, window_class.hInstance, 0);
+        fatal(hwnd, "Failed to create window.");
+
+        window.hwnd = hwnd;
+        window.width = width;
+        window.height = height;
     }
 
-    window_param_t window_param =
-    {
-        .ex_style = WS_EX_APPWINDOW | WS_EX_NOREDIRECTIONBITMAP,
-        .class_name = window_class.lpszClassName,
-        .window_name = "Platform Window",
-        .style = WS_OVERLAPPEDWINDOW | WS_VISIBLE,
-        .x = CW_USEDEFAULT,
-        .y = CW_USEDEFAULT,
-        .width = width,
-        .height = height,
-        .hwnd_parent = 0,
-        .menu = 0,
-        .instance = window_class.hInstance,
-        .param = 0,
-    };
-
-    HWND hwnd = (HWND)SendMessage(global_service_hwnd, SERVICE_WINDOW_CREATE_MSG, (WPARAM)&window_param, 0);
-    assert(hwnd && "Failed to create window.");
-
-    window->hwnd = hwnd;
-    window->width = width;
-    window->height = height;
+    return &window;
 }
 
 static void resize_back_buffer(window_t* window)
@@ -327,49 +274,116 @@ static void resize_back_buffer(window_t* window)
     }
 }
 
-static bool process_thread_message(MSG* message, window_t* window)
+static bool process_thread_messages(window_t* window, input_t* input)
 {
     bool quit = false;
+    MSG message = { 0 };
 
-    switch (message->message)
+    // NOTE: These messages come from PostThreadMessage in window_proc.
+    while (PeekMessage(&message, NULL, 0, 0, PM_REMOVE))
     {
-        case WM_QUIT:
+        switch (message.message)
         {
-            quit = true;
-        } break;
-
-        case WM_DESTROY:
-        {
-            PostQuitMessage(0);
-        } break;
-
-        case WM_CLOSE:
-        {
-            SendMessage(global_service_hwnd, SERVICE_WINDOW_CLOSE_MSG, message->wParam, 0);
-        } break;
-
-        case WM_SYSKEYDOWN:
-        case WM_SYSKEYUP:
-        case WM_KEYDOWN:
-        case WM_KEYUP:
-        {
-            i32 key_code = (i32)message->wParam;
-            // int was_down = (message->lParam & (1 << 30));
-            bool is_down = !(message->lParam & (1 << 31));
-            bool alt_is_down = (message->lParam & (1 << 29));
-
-            if (key_code == VK_RETURN && is_down && alt_is_down)
+            case WM_QUIT:
             {
-                toggle_fullscreen(window);
-            }
-            else if (key_code == VK_ESCAPE && is_down)
+                quit = true;
+            } break;
+
+            case WM_DESTROY:
+            case WM_CLOSE:
             {
                 PostQuitMessage(0);
-            }
-        } break;
+            } break;
+
+            case WM_SYSKEYDOWN:
+            case WM_SYSKEYUP:
+            case WM_KEYDOWN:
+            case WM_KEYUP:
+            {
+                static key_t key_map[256];
+                i32 key_code = (i32)message.wParam;
+                // int was_down = (message->lParam & (1 << 30));
+                bool is_down = !(message.lParam & (1 << 31));
+                bool alt_is_down = (message.lParam & (1 << 29));
+                key_t key = KEY_NULL;
+
+                if (!key_map['A'])
+                {
+                    for (i32 number = '0', key = KEY_0; number <= '9'; ++number, ++key)
+                    {
+                        key_map[number] = (key_t)key;
+                    }
+            
+                    for (i32 character = 'A', key = KEY_A; character <= 'Z'; ++character, ++key)
+                    {
+                        key_map[character] = (key_t)key;
+                    }
+
+                    for (i32 vk_f = VK_F1, key = KEY_F1; vk_f <= VK_F24; ++vk_f, ++key)
+                    {
+                        key_map[vk_f] = (key_t)key;
+                    }
+
+                    key_map[VK_TAB] = KEY_TAB;
+                    key_map[VK_SPACE] = KEY_SPACE;
+                    key_map[VK_RETURN] = KEY_ENTER;
+                    key_map[VK_CONTROL] = KEY_CTRL;
+                    key_map[VK_SHIFT] = KEY_SHIFT;
+                    key_map[VK_MENU] = KEY_ALT;
+                    key_map[VK_UP] = KEY_UP;
+                    key_map[VK_LEFT] = KEY_LEFT;
+                    key_map[VK_DOWN] = KEY_DOWN;
+                    key_map[VK_RIGHT] = KEY_RIGHT;
+                }
+
+                if (key_code < array_count(key_map))
+                {
+                    key = key_map[key_code];
+                }
+
+                input->keys[key].action = is_down ? KEY_ACTION_PRESS : KEY_ACTION_RELEASE;
+            
+                if (key_code == VK_RETURN && is_down && alt_is_down)
+                {
+                    toggle_fullscreen(window);
+                }
+                else if (key_code == VK_ESCAPE && is_down)
+                {
+                    PostQuitMessage(0);
+                }
+            } break;
+        }
     }
 
+    bool alt_is_down = (input->keys[KEY_ALT].action == KEY_ACTION_PRESS);
+    bool shift_is_down = (input->keys[KEY_SHIFT].action == KEY_ACTION_PRESS);
+    bool ctrl_is_down = (input->keys[KEY_CTRL].action == KEY_ACTION_PRESS);
+    
+    input->modifiers = ((alt_is_down * KEY_MODIFIER_ALT) |
+                        (shift_is_down * KEY_MODIFIER_SHIFT) |
+                        (ctrl_is_down * KEY_MODIFIER_CTRL));
+        
     return quit;
+}
+
+static void memory_init(memory_t* memory)
+{
+    memory->permanent_size = MIBIBYTES(256);
+    memory->transient_size = GIBIBYTES(1);
+
+#ifdef _DEBUG
+    void* base_address = (void*)TIBIBYTES(64);
+#else
+    void* base_address = 0;
+#endif
+    
+    size_t total_memory_size = memory->permanent_size + memory->transient_size;
+    void* total_memory = VirtualAlloc(base_address, total_memory_size,
+				      MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    fatal(total_memory, "Failed to allocate enough memory.");
+    
+    memory->permanent = total_memory;
+    memory->transient = (u8*)total_memory + memory->permanent_size;
 }
 
 // NOTE: This is our real main thread we do everything here.
@@ -378,10 +392,6 @@ static DWORD WINAPI main_thread(void* param)
 {
     HRESULT result = S_OK;
     window_t* window = (window_t*)param;
-
-    set_min_timer_resolution();
-    set_process_dpi_aware();
-    create_window(window, CW_USEDEFAULT, CW_USEDEFAULT);
 
     window->d3d11 = d3d11_init();
     window->swap_chain = d3d11_create_swap_chain(window->hwnd, window->d3d11);
@@ -479,28 +489,20 @@ static DWORD WINAPI main_thread(void* param)
         ID3D11Device_CreateRasterizerState(window->d3d11->device, &desc, &rasterizer_state);
     }
 
-    platform_t platform = { 0 };
+    memory_t memory = { 0 };
+    memory_init(&memory);
 
-    memory_t* memory = &platform.memory;
-    memory->permanent_size = MIBIBYTES(256);
-    memory->transient_size = GIBIBYTES(1);
+    input_t inputs[2] = { 0 };
+    input_t* new_input = inputs + 0;
+    input_t* old_input = inputs + 1;
 
-#ifdef _DEBUG
-    void* base_address = (void*)TIBIBYTES(2);
-#else
-    void* base_address = 0;
-#endif
-    
-    size_t total_memory_size = memory->permanent_size + memory->transient_size;
-    void* total_memory = VirtualAlloc(base_address, total_memory_size,
-				      MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
-    assert(total_memory && "Failed to allocate enough memory.");
-    
-    memory->permanent = total_memory;
-    memory->transient = (u8*)total_memory + memory->permanent_size;
+    platform_t platform =
+    {
+        .memory = &memory,
+        .input = new_input,
+    };
 
     module_t module = load_module();
-
     module.init(&platform);
     
     u32 target_frame = 60;
@@ -511,21 +513,15 @@ static DWORD WINAPI main_thread(void* param)
 
     while (!quit)
     {
-        // NOTE: These messages come from PostThreadMessage in window_proc.
-        MSG message = { 0 };
+        quit = process_thread_messages(window, new_input);
 
-        if (PeekMessage(&message, NULL, 0, 0, PM_REMOVE))
-        {
-            quit = process_thread_message(&message, window);
+        resize_back_buffer(window);
 
-            continue;
-        }
-
+        platform.input = new_input;
+        
         module.update(&platform);
 
         module.render(&platform);
-
-        resize_back_buffer(window);
 
         if (window->d3d11->rt_view)
         {
@@ -576,6 +572,15 @@ static DWORD WINAPI main_thread(void* param)
             assert(!"Failed to present swap chain.");
         }
 
+        input_t* temp_input = new_input;
+        new_input = old_input;
+        old_input = temp_input;
+
+        for (u32 key = KEY_NULL; key < KEY_COUNT; ++key)
+        {
+            new_input->keys[key] = (old_input->keys[key].action == KEY_ACTION_PRESS) ? old_input->keys[key] : (key_input_t){ 0 };
+        }
+
         u64 time_passed = get_ticks();
         f32 time_passed_in_secs = get_secs_elapsed(time_last, time_passed);
 
@@ -609,26 +614,13 @@ static DWORD WINAPI main_thread(void* param)
     ExitProcess(0);
 }
 
-static int entry_point(void)
+static i32 entry_point(void)
 {
-    WNDCLASSEX service_window_class =
-    {
-        .cbSize = sizeof(service_window_class),
-        .lpfnWndProc = service_window_proc,
-        .hInstance = GetModuleHandle(0),
-        .lpszClassName = SERVICE_WINDOW_CLASS,
-    };
-
-    ATOM service_window_class_atom = RegisterClassEx(&service_window_class);
-    assert(service_window_class_atom && "Failed to register service window class.");
-
-    global_service_hwnd = CreateWindowEx(0, service_window_class.lpszClassName, "Service Window", 0,
-                                         CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
-                                         0, 0, service_window_class.hInstance, 0);
-    assert(global_service_hwnd && "Failed to create service window.");
-
-    window_t window = { 0 };
-    CloseHandle(CreateThread(0, 0, main_thread, &window, 0, &global_main_thread_id));
+    set_min_timer_resolution();
+    set_process_dpi_aware();
+    window_t* window = create_window(CW_USEDEFAULT, CW_USEDEFAULT);
+    
+    CloseHandle(CreateThread(0, 0, main_thread, window, 0, &global_main_thread_id));
 
     for (;;)
     {
@@ -636,10 +628,6 @@ static int entry_point(void)
 
         GetMessage(&message, 0, 0, 0);
         TranslateMessage(&message);
-        // NOTE: This thread owns the service window and the visible window,
-        // so this message queue gets every message for both of the windows.
-        // DispatchMessage checks message.hwnd and calls the correct window
-        // procedure (service_window_proc or window_proc).
         DispatchMessage(&message);
     }
 

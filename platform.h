@@ -7,17 +7,16 @@ typedef enum key_modifier_t
     KEY_MODIFIER_ALT = (1 << 2),
 } key_modifier_t;
 
-typedef enum key_type_t
+typedef enum key_action_t
 {
-    KEY_TYPE_NULL,
+    KEY_ACTION_NULL,
 
-    KEY_TYPE_PRESS,
-    KEY_TYPE_HOLD,
-    KEY_TYPE_RELEASE,
-    KEY_TYPE_MOUSE_SCROLL,
+    KEY_ACTION_PRESS,
+    KEY_ACTION_RELEASE,
+    KEY_ACTION_MOUSE_SCROLL,
 
-    KEY_TYPE_COUNT,
-} key_type_t;
+    KEY_ACTION_COUNT,
+} key_action_t;
 
 typedef enum key_t
 {
@@ -102,16 +101,15 @@ typedef enum key_t
     KEY_COUNT
 } key_t;
 
-typedef struct key_action_t
+typedef struct key_input_t
 {
-    key_t key;
-    key_type_t type;
-    key_modifier_t modifier;
-} key_action_t;
+    key_action_t action;
+} key_input_t;
 
 typedef struct input_t
 {
-    key_action_t key_actions[KEY_COUNT];
+    key_input_t keys[KEY_COUNT];
+    key_modifier_t modifiers;
 } input_t;
 
 typedef struct memory_t
@@ -125,8 +123,8 @@ typedef struct memory_t
 
 typedef struct platform_t
 {
-    memory_t memory;
-    input_t input;
+    memory_t* memory;
+    input_t* input;
 
     f32 delta_time;
 } platform_t;
