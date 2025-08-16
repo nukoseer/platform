@@ -557,7 +557,7 @@ static DWORD WINAPI main_thread(void* param)
             ID3D11DeviceContext_Draw(window->d3d11->context, array_count(vertex_data), 0);
         }
 
-        BOOL vsync = 1;
+        BOOL vsync = 0;
         result = IDXGISwapChain1_Present(window->swap_chain, vsync ? 1 : 0, 0);
 
         if (result == DXGI_STATUS_OCCLUDED)
@@ -581,31 +581,36 @@ static DWORD WINAPI main_thread(void* param)
             new_input->keys[key] = (old_input->keys[key].action == KEY_ACTION_PRESS) ? old_input->keys[key] : (key_input_t){ 0 };
         }
 
-        u64 time_passed = get_ticks();
-        f32 time_passed_in_secs = get_secs_elapsed(time_last, time_passed);
+        u64 time_end = get_ticks();
+        f32 elapsed_secs = get_secs_elapsed(time_last, time_end);
+        f32 remaining = target_secs_per_frame - elapsed_secs;
 
-        if (time_passed_in_secs < target_secs_per_frame)
+        if (remaining > 0)
         {
-            DWORD sleep_time = (DWORD)((target_secs_per_frame - time_passed_in_secs) * 1000);
-
-            if (sleep_time > 0)
+            // NOTE: Leave a small margin for jitter.
+            if (remaining > 0.002f)
             {
-                Sleep(sleep_time);
+                DWORD sleep_ms = (DWORD)((remaining - 0.001f) * 1000.0f);
+
+                if (sleep_ms)
+                {
+                    Sleep(sleep_ms);
+                }
             }
 
             do
             {
-                time_passed_in_secs = get_secs_elapsed(time_passed, get_ticks());
-            } while (time_passed_in_secs < target_secs_per_frame);
+                time_end = get_ticks();
+                elapsed_secs = get_secs_elapsed(time_last, time_end);
+            } while (elapsed_secs < target_secs_per_frame);
         }
 
-        u64 time_end = get_ticks();
         platform.delta_time = get_secs_elapsed(time_last, time_end);
         time_last = time_end;
 
         char delta_time_str[32] = { 0 };
 
-        if (snprintf(delta_time_str, sizeof(delta_time_str), "Frame time: %.1f ms", platform.delta_time * 1000) > 0)
+        if (snprintf(delta_time_str, sizeof(delta_time_str), "%.1f ms", platform.delta_time * 1000) > 0)
         {
             SetWindowText(window->hwnd, delta_time_str);
         }
