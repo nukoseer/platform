@@ -10,6 +10,8 @@
 #include <dxgidebug.h>
 #include <timeapi.h>
 
+#include "dwrite_c.h"
+
 #include "utils.h"
 #include "d3d11_gfx.h"
 
