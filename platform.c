@@ -1,8 +1,8 @@
 #define COBJMACROS
 #define WIN32_LEAN_AND_MEAN
 
+#include <initguid.h>
 #include <windows.h>
-#include <stdio.h> // snprintf
 
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -10,9 +10,13 @@
 #include <dxgidebug.h>
 #include <timeapi.h>
 
-#include "dwrite_c.h"
+#include <stdio.h> // snprintf
 
 #include "utils.h"
+
+#include "dwrite_c.h"
+#include "d2d_c.h"
+
 #include "d3d11_gfx.h"
 
 #include "d3d11_gfx.c"
@@ -25,6 +29,8 @@
 #pragma comment(lib, "d3dcompiler")
 #pragma comment(lib, "dxgi")
 #pragma comment(lib, "dxguid")
+#pragma comment(lib, "dwrite")
+#pragma comment(lib, "d2d1")
 #pragma comment(lib, "winmm")
 
 #define PLATFORM_WINDOW_CLASS "platform_window"
@@ -193,16 +199,16 @@ static module_t load_module(void)
     module_t result = { 0 };
 
     result.module = LoadLibrary("game");
-    fatal(result.module, "Failed to load module.");
+    fatal(result.module, "[MODULE] Failed to load.");
 
     result.init = (init_f*)GetProcAddress(result.module, "init");
-    fatal(result.init, "Failed to get init function.");
+    fatal(result.init, "[MODULE] Failed to get init function.");
     
     result.update = (update_f*)GetProcAddress(result.module, "update");
-    fatal(result.update, "Failed to get update function.");
+    fatal(result.update, "[MODULE] Failed to get update function.");
     
     result.render = (render_f*)GetProcAddress(result.module, "render");
-    fatal(result.render, "Failed to get render function.");
+    fatal(result.render, "[MODULE] Failed to get render function.");
 
     return result;
 }
@@ -224,14 +230,14 @@ static window_t* create_window(i32 width, i32 height)
         };
 
         ATOM window_class_atom = RegisterClassEx(&window_class);
-        fatal(window_class_atom, "Failed to register window class.");
+        fatal(window_class_atom, "[WINDOW] Failed to register window class.");
 
         HWND hwnd = CreateWindowEx(WS_EX_APPWINDOW | WS_EX_NOREDIRECTIONBITMAP,
                                    window_class.lpszClassName, "Platform Window",
                                    WS_OVERLAPPEDWINDOW | WS_VISIBLE,
                                    CW_USEDEFAULT, CW_USEDEFAULT, width, height,
                                    0, 0, window_class.hInstance, 0);
-        fatal(hwnd, "Failed to create window.");
+        fatal(hwnd, "[WINDOW] Failed to create window.");
 
         window.hwnd = hwnd;
         window.width = width;
@@ -382,7 +388,7 @@ static void memory_init(memory_t* memory)
     size_t total_memory_size = memory->permanent_size + memory->transient_size;
     void* total_memory = VirtualAlloc(base_address, total_memory_size,
 				      MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
-    fatal(total_memory, "Failed to allocate enough memory.");
+    fatal(total_memory, "[MEMORY] Failed to allocate enough memory.");
     
     memory->permanent = total_memory;
     memory->transient = (u8*)total_memory + memory->permanent_size;
@@ -398,6 +404,32 @@ static DWORD WINAPI main_thread(void* param)
     window->d3d11 = d3d11_init();
     window->swap_chain = d3d11_create_swap_chain(window->hwnd, window->d3d11);
 
+    IDWriteFactory* dwrite_factory = 0;
+    result = DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, &IID_IDWriteFactory, (IUnknown**)&dwrite_factory);
+    fatal(SUCCEEDED(result), "[DWRITE] Failed to create factory.");
+
+    IDWriteTextFormat* dwrite_text_format = 0;
+    result = IDWriteFactory_CreateTextFormat(dwrite_factory, L"Gabriola", 0,
+                                             DWRITE_FONT_WEIGHT_REGULAR,
+                                             DWRITE_FONT_STYLE_NORMAL,
+                                             DWRITE_FONT_STRETCH_NORMAL,
+                                             72.0f, L"en-us", &dwrite_text_format);
+    fatal(SUCCEEDED(result), "[DWRITE] Failed to create text format.");
+
+    result = IDWriteTextFormat_SetTextAlignment(dwrite_text_format, DWRITE_TEXT_ALIGNMENT_CENTER);
+    fatal(SUCCEEDED(result), "[DWRITE] Failed to set text alignment.");
+
+    result = IDWriteTextFormat_SetParagraphAlignment(dwrite_text_format, DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+    fatal(SUCCEEDED(result), "[DWRITE] Failed to set paragraph alignment.");
+
+    result = IDWriteTextFormat_SetWordWrapping(dwrite_text_format, DWRITE_WORD_WRAPPING_NO_WRAP);
+    fatal(SUCCEEDED(result), "[DWRITE] Failed to set word wrapping.");
+
+    ID2D1Factory* d2d_factory = 0;
+    D2D1_FACTORY_OPTIONS factory_options = { .debugLevel = D2D1_DEBUG_LEVEL_NONE };
+    result = D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, &IID_ID2D1Factory, &factory_options, &d2d_factory);
+    fatal(SUCCEEDED(result), "[D2D1] Failed to create factory.");
+    
     typedef struct Vertex
     {
         f32 position[2];

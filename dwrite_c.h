@@ -50,6 +50,14 @@ typedef enum DWRITE_FONT_STYLE
     DWRITE_FONT_STYLE_ITALIC
 } DWRITE_FONT_STYLE;
 
+typedef enum DWRITE_TEXT_ALIGNMENT
+{
+    DWRITE_TEXT_ALIGNMENT_LEADING,
+    DWRITE_TEXT_ALIGNMENT_TRAILING,
+    DWRITE_TEXT_ALIGNMENT_CENTER,
+    DWRITE_TEXT_ALIGNMENT_JUSTIFIED
+} DWRITE_TEXT_ALIGNMENT;
+
 typedef enum DWRITE_PARAGRAPH_ALIGNMENT
 {
     DWRITE_PARAGRAPH_ALIGNMENT_NEAR,
@@ -142,12 +150,29 @@ static inline HRESULT IDWriteFactory_CreateTextLayout(IDWriteFactory* self,
     return ((HRESULT (WINAPI*)(IDWriteFactory*, WCHAR const*, UINT32, IDWriteTextFormat*, FLOAT,  FLOAT, IDWriteTextLayout**))self->vtbl->table[18])(self, string, stringLength, textFormat, maxWidth, maxHeight, textLayout);
 }
 
+static inline HRESULT IDWriteTextFormat_SetTextAlignment(IDWriteTextFormat* self, DWRITE_TEXT_ALIGNMENT textAlignment)
+{
+    return ((HRESULT (WINAPI*)(IDWriteTextFormat*, DWRITE_TEXT_ALIGNMENT))self->vtbl->table[3])(self, textAlignment);
+}
+
+static inline HRESULT IDWriteTextFormat_SetParagraphAlignment(IDWriteTextFormat* self, DWRITE_PARAGRAPH_ALIGNMENT paragraphAlignment)
+{
+    return ((HRESULT (WINAPI*)(IDWriteTextFormat*, DWRITE_PARAGRAPH_ALIGNMENT))self->vtbl->table[4])(self, paragraphAlignment);
+}
+
+static inline HRESULT IDWriteTextFormat_SetWordWrapping(IDWriteTextFormat* self, DWRITE_WORD_WRAPPING wordWrapping)
+{
+    return ((HRESULT (WINAPI*)(IDWriteTextFormat*, DWRITE_WORD_WRAPPING))self->vtbl->table[5])(self, wordWrapping);
+}
+
 static inline ULONG IDWriteTextFormat_Release(IDWriteTextFormat* self)
 {
     return ((ULONG (WINAPI*)(IDWriteTextFormat*))self->vtbl->table[2])(self);
 }
 
 EXTERN_C HRESULT DECLSPEC_IMPORT DWriteCreateFactory(DWRITE_FACTORY_TYPE factoryType, REFIID iid, IUnknown** factory);
+
+// NOTE: GUIDs.
 
 DEFINE_GUID(IID_IDWriteFactory, 0xb859ee5a, 0xd838, 0x4b5b, 0xa2, 0xe8, 0x1a, 0xdc, 0x7d, 0x93, 0xdb, 0x48);
 
