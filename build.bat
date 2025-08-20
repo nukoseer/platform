@@ -91,8 +91,8 @@ if /I "%compiler%"=="clang" (
   set asan_flags=-D_ASAN -fsanitize=address
   set debug_compiler_flags=-O0 -g -static -fno-omit-frame-pointer -D_DEBUG
   set release_compiler_flags=-O3
-  set common_compiler_flags=-pedantic -fdiagnostics-absolute-paths -fno-math-errno -fstrict-aliasing -x c -fshow-source-location -fno-stack-protector -fuse-ld=lld-link -Wall -Werror
-  rem -Wno-unknown-warning-option -Wno-inline -Wno-padded -Wno-unreachable-code -Wno-gnu-anonymous-struct -Wno-microsoft-anon-tag -Wno-microsoft-enum-forward-reference -Wno-unused-function
+  set common_compiler_flags=-pedantic -fdiagnostics-absolute-paths -fno-math-errno -fstrict-aliasing -x c -fshow-source-location -fno-stack-protector -fuse-ld=lld-link -Wall -Werror -Wno-unused-function
+  rem -Wno-unknown-warning-option -Wno-inline -Wno-padded -Wno-unreachable-code -Wno-gnu-anonymous-struct -Wno-microsoft-anon-tag -Wno-microsoft-enum-forward-reference
 
   rem -E -dD outputs macro expansions do not link when used.
 

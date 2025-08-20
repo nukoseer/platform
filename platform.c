@@ -34,6 +34,7 @@
 
 #define PLATFORM_WINDOW_CLASS "platform_window"
 
+#define fatal_system(x, message) do { if (!(x)) { fatal_error_system(message); } } while (0)
 #define fatal(x, message) do { if (!(x)) { fatal_error(message); } } while (0)
 
 typedef struct module_t
@@ -59,7 +60,7 @@ typedef struct window_t
 
 static DWORD global_main_thread_id;
 
-static void fatal_error(const char* message) 
+static void fatal_error_system(const char* message) 
 { 
     char message_buffer[256] = { 0 };
     DWORD error = GetLastError(); 
@@ -72,10 +73,16 @@ static void fatal_error(const char* message)
     }
     else
     {
-        MessageBox(0, message, "Error", MB_ICONEXCLAMATION);
+        MessageBox(0, "Error", message, MB_ICONEXCLAMATION);
     }
 
     ExitProcess(error); 
+}
+
+static void fatal_error(const char* message) 
+{
+    MessageBox(0, "Error", message, MB_ICONEXCLAMATION);
+    ExitProcess(0);
 }
 
 // NOTE: This is the window procedure for our window.  entry_point
@@ -199,16 +206,16 @@ static module_t load_module(void)
     module_t result = { 0 };
 
     result.module = LoadLibrary("game");
-    fatal(result.module, "[MODULE] Failed to load.");
+    fatal_system(result.module, "[MODULE] Failed to load.");
 
     result.init = (init_f*)GetProcAddress(result.module, "init");
-    fatal(result.init, "[MODULE] Failed to get init function.");
+    fatal_system(result.init, "[MODULE] Failed to get init function.");
     
     result.update = (update_f*)GetProcAddress(result.module, "update");
-    fatal(result.update, "[MODULE] Failed to get update function.");
+    fatal_system(result.update, "[MODULE] Failed to get update function.");
     
     result.render = (render_f*)GetProcAddress(result.module, "render");
-    fatal(result.render, "[MODULE] Failed to get render function.");
+    fatal_system(result.render, "[MODULE] Failed to get render function.");
 
     return result;
 }
@@ -230,14 +237,14 @@ static window_t* create_window(i32 width, i32 height)
         };
 
         ATOM window_class_atom = RegisterClassEx(&window_class);
-        fatal(window_class_atom, "[WINDOW] Failed to register window class.");
+        fatal_system(window_class_atom, "[WINDOW] Failed to register window class.");
 
         HWND hwnd = CreateWindowEx(WS_EX_APPWINDOW | WS_EX_NOREDIRECTIONBITMAP,
                                    window_class.lpszClassName, "Platform Window",
                                    WS_OVERLAPPEDWINDOW | WS_VISIBLE,
                                    CW_USEDEFAULT, CW_USEDEFAULT, width, height,
                                    0, 0, window_class.hInstance, 0);
-        fatal(hwnd, "[WINDOW] Failed to create window.");
+        fatal_system(hwnd, "[WINDOW] Failed to create window.");
 
         window.hwnd = hwnd;
         window.width = width;
@@ -281,15 +288,15 @@ static void resize_back_buffer(window_t* window)
         if (window->width != 0 && window->height != 0)
         {
             result = IDXGISwapChain1_ResizeBuffers(window->swap_chain, 0, window->width, window->height, DXGI_FORMAT_UNKNOWN, 0);
-            fatal(SUCCEEDED(result), "Failed to resize swap chain.");
+            fatal_system(SUCCEEDED(result), "[DXGI] Failed to resize swap chain.");
 
             ID3D11Texture2D* back_buffer = 0;
             IDXGISwapChain1_GetBuffer(window->swap_chain, 0, &IID_ID3D11Texture2D, (void**)&back_buffer);
             ID3D11Device_CreateRenderTargetView(window->d3d11->device, (ID3D11Resource*)back_buffer, 0, &window->d3d11->rt_view);
 
             IDXGISurface* dxgi_surface = 0;
-            result = ID3D11Texture2D_QueryInterface(back_buffer, &IID_IDXGISurface, &dxgi_surface);
-            fatal(SUCCEEDED(result), "[DXGI] Failed to get surface.");
+            result = ID3D11Texture2D_QueryInterface(back_buffer, &IID_IDXGISurface, (void**)&dxgi_surface);
+            fatal_system(SUCCEEDED(result), "[DXGI] Failed to get surface.");
             
             D2D1_RENDER_TARGET_PROPERTIES d2d_render_target_props = 
             {
@@ -308,14 +315,19 @@ static void resize_back_buffer(window_t* window)
                                                                 dxgi_surface,
                                                                 &d2d_render_target_props,
                                                                 &window->d2d1->render_target);
-            fatal(SUCCEEDED(result), "[D2D1] Failed to create render target.");
+            fatal_system(SUCCEEDED(result), "[D2D1] Failed to create render target.");
+
+            ID2D1RenderTarget_SetTextAntialiasMode(window->d2d1->render_target, D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);
+            D2D1_TEXT_ANTIALIAS_MODE text_antialias_mode = ID2D1RenderTarget_GetTextAntialiasMode(window->d2d1->render_target);
+            fatal(text_antialias_mode == D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE, "[D2D1] Failed to set text anti-alias mode.");
+            
 
             D2D1_COLOR_F d2d1_color = { 1.0f, 1.0f, 1.0f, 1.0f };
             result = ID2D1RenderTarget_CreateSolidColorBrush(window->d2d1->render_target,
                                                              &d2d1_color,
                                                              0,
                                                              &window->d2d1->solid_color_brush);
-            fatal(SUCCEEDED(result), "[D2D1] Failed to create solid color brush.");
+            fatal_system(SUCCEEDED(result), "[D2D1] Failed to create solid color brush.");
 
             IDXGISurface_Release(dxgi_surface);
             ID3D11Texture2D_Release(back_buffer);
@@ -610,12 +622,40 @@ static DWORD WINAPI main_thread(void* param)
             ID3D11DeviceContext_Draw(window->d3d11->context, array_count(vertex_data), 0);
 
             ID2D1RenderTarget_BeginDraw(window->d2d1->render_target);
-            
-            D2D1_RECT_F layout = { 200, 300, 200 + 600, 300 + 300 };
+
+            IDWriteTextLayout* text_layout = 0;
             WCHAR text[] = L"Hello";
-	    ID2D1RenderTarget_DrawText(window->d2d1->render_target, text, sizeof(text) / 2 - 1, window->d2d1->dwrite->text_format, &layout, (ID2D1Brush*)window->d2d1->solid_color_brush, D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT, DWRITE_MEASURING_MODE_NATURAL);
+            // TODO: IDWriteFactory_CreateTextLayout should not be here I guess?
+            IDWriteFactory_CreateTextLayout(window->d2d1->dwrite->factory,
+                                            text,                                            
+                                            sizeof(text) / 2 - 1,
+                                            window->d2d1->dwrite->text_format,
+                                            (FLOAT)window->width,
+                                            (FLOAT)window->height,
+                                            &text_layout);
+            DWRITE_TEXT_METRICS text_metrics = { 0 };
+            IDWriteTextLayout_GetMetrics(text_layout, &text_metrics);
+
+            FLOAT left = (window->width) / 2.0f - (text_metrics.width / 2.0f); 
+            FLOAT top = (window->height) / 2.0f - (text_metrics.height / 2.0f);
+            D2D1_RECT_F layout =
+            {
+                .left = left,
+                .top = top,
+                .right = left + text_metrics.width,
+                .bottom = top + text_metrics.height
+            };
+            D2D1_ROUNDED_RECT rounded_rect = {
+                .rect = layout,
+                .radiusX = 2.0f, .radiusY = 2.0f,
+            };
+            ID2D1RenderTarget_DrawRoundedRectangle(window->d2d1->render_target, &rounded_rect, (ID2D1Brush*)window->d2d1->solid_color_brush, 1.0f, 0);
+            ID2D1RenderTarget_DrawText(window->d2d1->render_target, text, sizeof(text) / 2 - 1, window->d2d1->dwrite->text_format, &layout, (ID2D1Brush*)window->d2d1->solid_color_brush, D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT, DWRITE_MEASURING_MODE_NATURAL);
             
             ID2D1RenderTarget_EndDraw(window->d2d1->render_target, 0, 0);
+
+            // TODO: IDWriteTextLayout_Release should not be here I guess?
+            IDWriteTextLayout_Release(text_layout);
         }
 
         BOOL vsync = 0;

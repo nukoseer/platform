@@ -1,5 +1,11 @@
 #pragma once
 
+#ifdef __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wmicrosoft-flexible-array"
+#pragma clang diagnostic ignored "-Wmicrosoft-enum-value"
+#endif
+
 #include <d2dbasetypes.h>
 
 /*******************************************************************************************************************/
@@ -87,6 +93,15 @@ typedef enum D2D1_DRAW_TEXT_OPTIONS
     D2D1_DRAW_TEXT_OPTIONS_FORCE_DWORD = 0xffffffff
 } D2D1_DRAW_TEXT_OPTIONS;
 
+typedef enum D2D1_TEXT_ANTIALIAS_MODE
+{
+    D2D1_TEXT_ANTIALIAS_MODE_DEFAULT = 0,
+    D2D1_TEXT_ANTIALIAS_MODE_CLEARTYPE = 1,
+    D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE = 2,
+    D2D1_TEXT_ANTIALIAS_MODE_ALIASED = 3,
+    D2D1_TEXT_ANTIALIAS_MODE_FORCE_DWORD = 0xffffffff
+} D2D1_TEXT_ANTIALIAS_MODE;
+
 // NOTE: Types.
 
 typedef struct D2D1_FACTORY_OPTIONS
@@ -114,6 +129,13 @@ typedef struct D2D1_RENDER_TARGET_PROPERTIES
     D2D1_RENDER_TARGET_USAGE usage;
     D2D1_FEATURE_LEVEL minLevel;
 } D2D1_RENDER_TARGET_PROPERTIES;
+
+typedef struct D2D1_ROUNDED_RECT
+{
+    D2D1_RECT_F rect;
+    FLOAT radiusX;
+    FLOAT radiusY;
+} D2D1_ROUNDED_RECT;
 
 typedef D2D_COLOR_F D2D1_COLOR_F;
 typedef struct ID2D1Brush ID2D1Brush;
@@ -170,6 +192,15 @@ static inline HRESULT ID2D1RenderTarget_CreateSolidColorBrush(ID2D1RenderTarget*
     return ((HRESULT (WINAPI*)(ID2D1RenderTarget*, CONST D2D1_COLOR_F*, CONST D2D1_BRUSH_PROPERTIES*, ID2D1SolidColorBrush**))self->vtbl->table[8])(self, color, brushProperties, solidColorBrush);
 }
 
+static inline void ID2D1RenderTarget_DrawRoundedRectangle(ID2D1RenderTarget* self,
+                                                          CONST D2D1_ROUNDED_RECT* roundedRect,
+                                                          ID2D1Brush* brush,
+                                                          FLOAT strokeWidth,
+                                                          ID2D1StrokeStyle* strokeStyle)
+{
+    ((void (WINAPI*)(ID2D1RenderTarget*, CONST D2D1_ROUNDED_RECT*, ID2D1Brush*, FLOAT, ID2D1StrokeStyle*))self->vtbl->table[18])(self, roundedRect, brush, strokeWidth, strokeStyle);
+}
+
 static inline void ID2D1RenderTarget_DrawText(ID2D1RenderTarget* self,
                                               CONST WCHAR* string,
                                               UINT32 stringLength,
@@ -189,6 +220,16 @@ static inline void ID2D1RenderTarget_DrawTextLayout(ID2D1RenderTarget* self,
                                                     D2D1_DRAW_TEXT_OPTIONS options)
 {
     ((void (WINAPI*)(ID2D1RenderTarget*, D2D1_POINT_2F, IDWriteTextLayout*, ID2D1Brush*, D2D1_DRAW_TEXT_OPTIONS))self->vtbl->table[28])(self, origin, textLayout, defaultFillBrush, options);
+}
+
+static inline void ID2D1RenderTarget_SetTextAntialiasMode(ID2D1RenderTarget* self, D2D1_TEXT_ANTIALIAS_MODE textAntialiasMode)
+{
+    ((void (WINAPI*)(ID2D1RenderTarget*, D2D1_TEXT_ANTIALIAS_MODE))self->vtbl->table[34])(self, textAntialiasMode);
+}
+
+static inline D2D1_TEXT_ANTIALIAS_MODE ID2D1RenderTarget_GetTextAntialiasMode(ID2D1RenderTarget* self)
+{
+    return ((D2D1_TEXT_ANTIALIAS_MODE (WINAPI*)(ID2D1RenderTarget*))self->vtbl->table[35])(self);
 }
 
 static inline void ID2D1RenderTarget_BeginDraw(ID2D1RenderTarget* self)
@@ -211,3 +252,7 @@ EXTERN_C HRESULT DECLSPEC_IMPORT D2D1CreateFactory(D2D1_FACTORY_TYPE factoryType
 // NOTE: GUIDs.
 
 DEFINE_GUID(IID_ID2D1Factory, 0x06152247, 0x6f50, 0x465a, 0x92, 0x45, 0x11, 0x8b, 0xfd, 0x3b, 0x60, 0x07);
+
+#ifdef __clang__
+#pragma clang diagnostic pop
+#endif

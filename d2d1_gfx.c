@@ -24,11 +24,11 @@ static d2d1_t* d2d1_init(void)
                                              72.0f, L"en-us", &d2d1->dwrite->text_format);
     assert(SUCCEEDED(result) && "[DWRITE] Failed to create text format.");
 
-    result = IDWriteTextFormat_SetTextAlignment(d2d1->dwrite->text_format, DWRITE_TEXT_ALIGNMENT_CENTER);
-    assert(SUCCEEDED(result) && "[DWRITE] Failed to set text alignment.");
+    // result = IDWriteTextFormat_SetTextAlignment(d2d1->dwrite->text_format, DWRITE_TEXT_ALIGNMENT_CENTER);
+    // assert(SUCCEEDED(result) && "[DWRITE] Failed to set text alignment.");
 
-    result = IDWriteTextFormat_SetParagraphAlignment(d2d1->dwrite->text_format, DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
-    assert(SUCCEEDED(result) && "[DWRITE] Failed to set paragraph alignment.");
+    // result = IDWriteTextFormat_SetParagraphAlignment(d2d1->dwrite->text_format, DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+    // assert(SUCCEEDED(result) && "[DWRITE] Failed to set paragraph alignment.");
 
     result = IDWriteTextFormat_SetWordWrapping(d2d1->dwrite->text_format, DWRITE_WORD_WRAPPING_NO_WRAP);
     assert(SUCCEEDED(result) && "[DWRITE] Failed to set word wrapping.");
@@ -38,7 +38,7 @@ static d2d1_t* d2d1_init(void)
 #else
     D2D1_FACTORY_OPTIONS factory_options = { .debugLevel = D2D1_DEBUG_LEVEL_NONE };
 #endif
-    result = D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, &IID_ID2D1Factory, &factory_options, &d2d1->factory);
+    result = D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, &IID_ID2D1Factory, &factory_options, (void**)&d2d1->factory);
     assert(SUCCEEDED(result) && "[D2D1] Failed to create factory.");
    
     return d2d1;

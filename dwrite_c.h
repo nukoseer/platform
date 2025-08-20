@@ -1,5 +1,10 @@
 #pragma once
 
+#ifdef __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wmicrosoft-flexible-array"
+#endif
+
 /*******************************************************************************************************************/
 /* IMPORTANT: This is the C compatible version of dwrite.h. All of the enums, types and functions directly copied. */
 /*******************************************************************************************************************/
@@ -81,36 +86,18 @@ typedef enum DWRITE_FACTORY_TYPE
 
 // NOTE: Types.
 
-typedef struct DWRITE_FONT_METRICS
+typedef struct DWRITE_TEXT_METRICS
 {
-    UINT16 designUnitsPerEm;
-    UINT16 ascent;
-    UINT16 descent;
-    INT16 lineGap;
-    UINT16 capHeight;
-    UINT16 xHeight;
-    INT16 underlinePosition;
-    UINT16 underlineThickness;
-    INT16 strikethroughPosition;
-    UINT16 strikethroughThickness;
-} DWRITE_FONT_METRICS;
-
-typedef struct DWRITE_GLYPH_METRICS
-{
-    INT32 leftSideBearing;
-    UINT32 advanceWidth;
-    INT32 rightSideBearing;
-    INT32 topSideBearing;
-    UINT32 advanceHeight;
-    INT32 bottomSideBearing;
-    INT32 verticalOriginY;
-} DWRITE_GLYPH_METRICS;
-
-typedef struct DWRITE_GLYPH_OFFSET
-{
-    FLOAT advanceOffset;
-    FLOAT ascenderOffset;
-} DWRITE_GLYPH_OFFSET;
+    FLOAT left;
+    FLOAT top;
+    FLOAT width;
+    FLOAT widthIncludingTrailingWhitespace;
+    FLOAT height;
+    FLOAT layoutWidth;
+    FLOAT layoutHeight;
+    UINT32 maxBidiReorderingDepth;
+    UINT32 lineCount;
+} DWRITE_TEXT_METRICS;
 
 typedef struct IDWriteFactoryVtbl { void* table[]; } IDWriteFactoryVtbl;
 typedef struct IDWriteTextFormatVtbl { void* table[]; } IDWriteTextFormatVtbl;
@@ -138,17 +125,6 @@ static inline HRESULT IDWriteFactory_CreateTextFormat(IDWriteFactory* self,
     return ((HRESULT (WINAPI*)(IDWriteFactory*, WCHAR const*, IUnknown*, DWRITE_FONT_WEIGHT, DWRITE_FONT_STYLE, DWRITE_FONT_STRETCH, FLOAT, WCHAR const*, IDWriteTextFormat**))self->vtbl->table[15])(self, fontFamilyName, fontCollection, fontWeight, fontStyle, fontStretch, fontSize, localeName, textFormat);
 }
 
-static inline HRESULT IDWriteFactory_CreateTextLayout(IDWriteFactory* self,
-                                                      WCHAR const* string,
-                                                      UINT32 stringLength,
-                                                      IDWriteTextFormat* textFormat,
-                                                      FLOAT maxWidth,
-                                                      FLOAT maxHeight,
-                                                      IDWriteTextLayout** textLayout)
-{
-    return ((HRESULT (WINAPI*)(IDWriteFactory*, WCHAR const*, UINT32, IDWriteTextFormat*, FLOAT,  FLOAT, IDWriteTextLayout**))self->vtbl->table[18])(self, string, stringLength, textFormat, maxWidth, maxHeight, textLayout);
-}
-
 static inline HRESULT IDWriteTextFormat_SetTextAlignment(IDWriteTextFormat* self, DWRITE_TEXT_ALIGNMENT textAlignment)
 {
     return ((HRESULT (WINAPI*)(IDWriteTextFormat*, DWRITE_TEXT_ALIGNMENT))self->vtbl->table[3])(self, textAlignment);
@@ -169,8 +145,33 @@ static inline ULONG IDWriteTextFormat_Release(IDWriteTextFormat* self)
     return ((ULONG (WINAPI*)(IDWriteTextFormat*))self->vtbl->table[2])(self);
 }
 
+static inline HRESULT IDWriteFactory_CreateTextLayout(IDWriteFactory* self,
+                                                      WCHAR const* string,
+                                                      UINT32 stringLength,
+                                                      IDWriteTextFormat* textFormat,
+                                                      FLOAT maxWidth,
+                                                      FLOAT maxHeight,
+                                                      IDWriteTextLayout** textLayout)
+{
+    return ((HRESULT (WINAPI*)(IDWriteFactory*, WCHAR const*, UINT32, IDWriteTextFormat*, FLOAT,  FLOAT, IDWriteTextLayout**))self->vtbl->table[18])(self, string, stringLength, textFormat, maxWidth, maxHeight, textLayout);
+}
+
+static inline ULONG IDWriteTextLayout_Release(IDWriteTextLayout* self)
+{
+    return ((ULONG (WINAPI*)(IDWriteTextLayout*))self->vtbl->table[2])(self);
+}
+
+static inline HRESULT IDWriteTextLayout_GetMetrics(IDWriteTextLayout* self, DWRITE_TEXT_METRICS* textMetrics)
+{
+    return ((HRESULT (WINAPI*)(IDWriteTextLayout*, DWRITE_TEXT_METRICS*))self->vtbl->table[60])(self, textMetrics);
+}
+
 EXTERN_C HRESULT DECLSPEC_IMPORT DWriteCreateFactory(DWRITE_FACTORY_TYPE factoryType, REFIID iid, IUnknown** factory);
 
 // NOTE: GUIDs.
 
 DEFINE_GUID(IID_IDWriteFactory, 0xb859ee5a, 0xd838, 0x4b5b, 0xa2, 0xe8, 0x1a, 0xdc, 0x7d, 0x93, 0xdb, 0x48);
+
+#ifdef __clang__
+#pragma clang diagnostic pop
+#endif
