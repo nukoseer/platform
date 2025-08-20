@@ -475,8 +475,8 @@ static DWORD WINAPI main_thread(void* param)
     #include "d3d11_vshader.h"
     #include "d3d11_pshader.h"
 
-    d3d11_shader_t vertex_shader = d3d11_create_shader(window->d3d11->device, d3d11_vshader, sizeof(d3d11_vshader), VERTEX_SHADER_TYPE);
-    d3d11_shader_t pixel_shader = d3d11_create_shader(window->d3d11->device, d3d11_pshader, sizeof(d3d11_pshader), PIXEL_SHADER_TYPE);
+    d3d11_shader_t vertex_shader = d3d11_create_shader(window->d3d11->device, d3d11_vshader, sizeof(d3d11_vshader), D3D11_VERTEX_SHADER_TYPE);
+    d3d11_shader_t pixel_shader = d3d11_create_shader(window->d3d11->device, d3d11_pshader, sizeof(d3d11_pshader), D3D11_PIXEL_SHADER_TYPE);
     d3d11_input_layout_t input_layout = d3d11_create_input_layout(window->d3d11->device, descs, array_count(descs),
                                                                   d3d11_vshader, sizeof(d3d11_vshader));
 #else

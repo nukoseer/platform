@@ -62,20 +62,20 @@ static d3d11_input_layout_t d3d11_create_input_layout(ID3D11Device* device, cons
     return input_layout;
 }
 
-static d3d11_shader_t d3d11_create_shader(ID3D11Device* device, const void* buffer, size_t size, shader_type_t shader_type)
+static d3d11_shader_t d3d11_create_shader(ID3D11Device* device, const void* buffer, size_t size, d3d11_shader_type_t shader_type)
 {
     d3d11_shader_t shader = { .type = shader_type };
 
-    if (shader.type == VERTEX_SHADER_TYPE)
+    if (shader.type == D3D11_VERTEX_SHADER_TYPE)
     {
         ID3D11Device_CreateVertexShader(device, buffer, size, NULL, &shader.vertex);
     }
-    else if (shader.type == PIXEL_SHADER_TYPE)
+    else if (shader.type == D3D11_PIXEL_SHADER_TYPE)
     {
         ID3D11Device_CreatePixelShader(device, buffer, size, NULL, &shader.pixel);
     }
 
-    assert(shader.type > NULL_SHADER_TYPE && shader.type < COUNT_SHADER_TYPE);
+    assert(shader.type > D3D11_NULL_SHADER_TYPE && shader.type < D3D11_COUNT_SHADER_TYPE);
 
     return shader;
 }
