@@ -1,5 +1,4 @@
-#ifndef H_D2D_C_H
-#define H_D2D_C_H
+#pragma once
 
 #include <d2dbasetypes.h>
 
@@ -118,6 +117,7 @@ typedef struct D2D1_RENDER_TARGET_PROPERTIES
 
 typedef D2D_COLOR_F D2D1_COLOR_F;
 typedef struct ID2D1Brush ID2D1Brush;
+typedef UINT64 D2D1_TAG;
 
 typedef struct D2D1_BRUSH_PROPERTIES
 {
@@ -191,6 +191,16 @@ static inline void ID2D1RenderTarget_DrawTextLayout(ID2D1RenderTarget* self,
     ((void (WINAPI*)(ID2D1RenderTarget*, D2D1_POINT_2F, IDWriteTextLayout*, ID2D1Brush*, D2D1_DRAW_TEXT_OPTIONS))self->vtbl->table[28])(self, origin, textLayout, defaultFillBrush, options);
 }
 
+static inline void ID2D1RenderTarget_BeginDraw(ID2D1RenderTarget* self)
+{
+    ((void (WINAPI*)(ID2D1RenderTarget*))self->vtbl->table[48])(self);
+}
+
+static inline void ID2D1RenderTarget_EndDraw(ID2D1RenderTarget* self, D2D1_TAG* tag1, D2D1_TAG* tag2)
+{
+    ((void (WINAPI*)(ID2D1RenderTarget*, D2D1_TAG*, D2D1_TAG*))self->vtbl->table[49])(self, tag1, tag2);
+}
+
 static inline ULONG ID2D1SolidColorBrush_Release(ID2D1SolidColorBrush* self)
 {
     return ((ULONG (WINAPI*)(ID2D1SolidColorBrush*))self->vtbl->table[2])(self);
@@ -201,5 +211,3 @@ EXTERN_C HRESULT DECLSPEC_IMPORT D2D1CreateFactory(D2D1_FACTORY_TYPE factoryType
 // NOTE: GUIDs.
 
 DEFINE_GUID(IID_ID2D1Factory, 0x06152247, 0x6f50, 0x465a, 0x92, 0x45, 0x11, 0x8b, 0xfd, 0x3b, 0x60, 0x07);
-
-#endif

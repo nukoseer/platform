@@ -14,12 +14,11 @@
 
 #include "utils.h"
 
-#include "dwrite_c.h"
-#include "d2d_c.h"
-
 #include "d3d11_gfx.h"
+#include "d2d1_gfx.h"
 
 #include "d3d11_gfx.c"
+#include "d2d1_gfx.c"
 
 #include "platform.h"
 
@@ -55,6 +54,7 @@ typedef struct window_t
     int current_height;
     IDXGISwapChain1* swap_chain;
     d3d11_t* d3d11;
+    d2d1_t* d2d1;
 } window_t;
 
 static DWORD global_main_thread_id;
@@ -266,14 +266,58 @@ static void resize_back_buffer(window_t* window)
             window->d3d11->rt_view = 0;
         }
 
+        if (window->d2d1->solid_color_brush)
+        {
+            ID2D1SolidColorBrush_Release(window->d2d1->solid_color_brush);
+            window->d2d1->solid_color_brush = 0;
+        }
+
+        if (window->d2d1->render_target)
+        {
+            ID2D1RenderTarget_Release(window->d2d1->render_target);
+            window->d2d1->render_target = 0;
+        }
+
         if (window->width != 0 && window->height != 0)
         {
             result = IDXGISwapChain1_ResizeBuffers(window->swap_chain, 0, window->width, window->height, DXGI_FORMAT_UNKNOWN, 0);
-            assert(SUCCEEDED(result) && "Failed to resize swap chain.");
+            fatal(SUCCEEDED(result), "Failed to resize swap chain.");
 
             ID3D11Texture2D* back_buffer = 0;
             IDXGISwapChain1_GetBuffer(window->swap_chain, 0, &IID_ID3D11Texture2D, (void**)&back_buffer);
             ID3D11Device_CreateRenderTargetView(window->d3d11->device, (ID3D11Resource*)back_buffer, 0, &window->d3d11->rt_view);
+
+            IDXGISurface* dxgi_surface = 0;
+            result = ID3D11Texture2D_QueryInterface(back_buffer, &IID_IDXGISurface, &dxgi_surface);
+            fatal(SUCCEEDED(result), "[DXGI] Failed to get surface.");
+            
+            D2D1_RENDER_TARGET_PROPERTIES d2d_render_target_props = 
+            {
+                .type = D2D1_RENDER_TARGET_TYPE_DEFAULT,
+                .pixelFormat =
+                {
+                    .format = DXGI_FORMAT_UNKNOWN,
+                    .alphaMode = D2D1_ALPHA_MODE_IGNORE,
+                },
+                .dpiX = 0,
+                .dpiY = 0,
+                .usage = D2D1_RENDER_TARGET_USAGE_NONE,
+                .minLevel = D2D1_FEATURE_LEVEL_DEFAULT,
+            };
+            result = ID2D1Factory_CreateDxgiSurfaceRenderTarget(window->d2d1->factory,
+                                                                dxgi_surface,
+                                                                &d2d_render_target_props,
+                                                                &window->d2d1->render_target);
+            fatal(SUCCEEDED(result), "[D2D1] Failed to create render target.");
+
+            D2D1_COLOR_F d2d1_color = { 1.0f, 1.0f, 1.0f, 1.0f };
+            result = ID2D1RenderTarget_CreateSolidColorBrush(window->d2d1->render_target,
+                                                             &d2d1_color,
+                                                             0,
+                                                             &window->d2d1->solid_color_brush);
+            fatal(SUCCEEDED(result), "[D2D1] Failed to create solid color brush.");
+
+            IDXGISurface_Release(dxgi_surface);
             ID3D11Texture2D_Release(back_buffer);
         }
 
@@ -402,34 +446,9 @@ static DWORD WINAPI main_thread(void* param)
     window_t* window = (window_t*)param;
 
     window->d3d11 = d3d11_init();
+    window->d2d1 = d2d1_init();
     window->swap_chain = d3d11_create_swap_chain(window->hwnd, window->d3d11);
 
-    IDWriteFactory* dwrite_factory = 0;
-    result = DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, &IID_IDWriteFactory, (IUnknown**)&dwrite_factory);
-    fatal(SUCCEEDED(result), "[DWRITE] Failed to create factory.");
-
-    IDWriteTextFormat* dwrite_text_format = 0;
-    result = IDWriteFactory_CreateTextFormat(dwrite_factory, L"Gabriola", 0,
-                                             DWRITE_FONT_WEIGHT_REGULAR,
-                                             DWRITE_FONT_STYLE_NORMAL,
-                                             DWRITE_FONT_STRETCH_NORMAL,
-                                             72.0f, L"en-us", &dwrite_text_format);
-    fatal(SUCCEEDED(result), "[DWRITE] Failed to create text format.");
-
-    result = IDWriteTextFormat_SetTextAlignment(dwrite_text_format, DWRITE_TEXT_ALIGNMENT_CENTER);
-    fatal(SUCCEEDED(result), "[DWRITE] Failed to set text alignment.");
-
-    result = IDWriteTextFormat_SetParagraphAlignment(dwrite_text_format, DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
-    fatal(SUCCEEDED(result), "[DWRITE] Failed to set paragraph alignment.");
-
-    result = IDWriteTextFormat_SetWordWrapping(dwrite_text_format, DWRITE_WORD_WRAPPING_NO_WRAP);
-    fatal(SUCCEEDED(result), "[DWRITE] Failed to set word wrapping.");
-
-    ID2D1Factory* d2d_factory = 0;
-    D2D1_FACTORY_OPTIONS factory_options = { .debugLevel = D2D1_DEBUG_LEVEL_NONE };
-    result = D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, &IID_ID2D1Factory, &factory_options, &d2d_factory);
-    fatal(SUCCEEDED(result), "[D2D1] Failed to create factory.");
-    
     typedef struct Vertex
     {
         f32 position[2];
@@ -589,6 +608,14 @@ static DWORD WINAPI main_thread(void* param)
             ID3D11DeviceContext_OMSetRenderTargets(window->d3d11->context, 1, &window->d3d11->rt_view, 0);
 
             ID3D11DeviceContext_Draw(window->d3d11->context, array_count(vertex_data), 0);
+
+            ID2D1RenderTarget_BeginDraw(window->d2d1->render_target);
+            
+            D2D1_RECT_F layout = { 200, 300, 200 + 600, 300 + 300 };
+            WCHAR text[] = L"Hello";
+	    ID2D1RenderTarget_DrawText(window->d2d1->render_target, text, sizeof(text) / 2 - 1, window->d2d1->dwrite->text_format, &layout, (ID2D1Brush*)window->d2d1->solid_color_brush, D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT, DWRITE_MEASURING_MODE_NATURAL);
+            
+            ID2D1RenderTarget_EndDraw(window->d2d1->render_target, 0, 0);
         }
 
         BOOL vsync = 0;

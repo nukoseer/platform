@@ -2,7 +2,7 @@
 
 static d3d11_t global_d3d11 = { 0 };
 
-d3d11_buffer_t d3d11_create_buffer(ID3D11Device* device, const void* data, size_t size, u32 usage, u32 bind_flags)
+static d3d11_buffer_t d3d11_create_buffer(ID3D11Device* device, const void* data, size_t size, u32 usage, u32 bind_flags)
 {
     HRESULT result = S_OK;
     d3d11_buffer_t buffer = { 0 };
@@ -21,7 +21,7 @@ d3d11_buffer_t d3d11_create_buffer(ID3D11Device* device, const void* data, size_
     return buffer;
 }
 
-d3d11_compile_t d3d11_compile(const char* buffer, size_t size, const char* entry_point, const char* target, u32 flags)
+static d3d11_compile_t d3d11_compile(const char* buffer, size_t size, const char* entry_point, const char* target, u32 flags)
 {
     HRESULT result = S_OK;
     ID3DBlob* error = 0;
@@ -42,7 +42,7 @@ d3d11_compile_t d3d11_compile(const char* buffer, size_t size, const char* entry
     return compile;
 }
 
-void d3d11_compile_release(d3d11_compile_t* compile)
+static void d3d11_compile_release(d3d11_compile_t* compile)
 {
     assert(compile && "Failed to release compile blob.");
     
@@ -50,7 +50,7 @@ void d3d11_compile_release(d3d11_compile_t* compile)
     *compile = (d3d11_compile_t){ 0 };
 }
 
-d3d11_input_layout_t d3d11_create_input_layout(ID3D11Device* device, const D3D11_INPUT_ELEMENT_DESC* descs, size_t desc_count,
+static d3d11_input_layout_t d3d11_create_input_layout(ID3D11Device* device, const D3D11_INPUT_ELEMENT_DESC* descs, size_t desc_count,
                                                const void* data, size_t size)
 {
     HRESULT result = S_OK;
@@ -62,7 +62,7 @@ d3d11_input_layout_t d3d11_create_input_layout(ID3D11Device* device, const D3D11
     return input_layout;
 }
 
-d3d11_shader_t d3d11_create_shader(ID3D11Device* device, const void* buffer, size_t size, shader_type_t shader_type)
+static d3d11_shader_t d3d11_create_shader(ID3D11Device* device, const void* buffer, size_t size, shader_type_t shader_type)
 {
     d3d11_shader_t shader = { .type = shader_type };
 
@@ -85,7 +85,8 @@ static d3d11_t* d3d11_init(void)
     HRESULT result = S_OK;
     d3d11_t* d3d11 = &global_d3d11;
     D3D_FEATURE_LEVEL feature_levels[] = { D3D_FEATURE_LEVEL_11_0 };
-    UINT flags = 0;
+    // NOTE: To work with Direct2D, the Direct3D device that provides the IDXGISurface must be created with the D3D11_CREATE_DEVICE_BGRA_SUPPORT flag.
+    UINT flags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
 
 #ifdef _DEBUG
     flags |= D3D11_CREATE_DEVICE_DEBUG;

@@ -1,5 +1,4 @@
-#ifndef H_DWRITE_C_H
-#define H_DWRITE_C_H
+#pragma once
 
 /*******************************************************************************************************************/
 /* IMPORTANT: This is the C compatible version of dwrite.h. All of the enums, types and functions directly copied. */
@@ -175,5 +174,3 @@ EXTERN_C HRESULT DECLSPEC_IMPORT DWriteCreateFactory(DWRITE_FACTORY_TYPE factory
 // NOTE: GUIDs.
 
 DEFINE_GUID(IID_IDWriteFactory, 0xb859ee5a, 0xd838, 0x4b5b, 0xa2, 0xe8, 0x1a, 0xdc, 0x7d, 0x93, 0xdb, 0x48);
-
-#endif
