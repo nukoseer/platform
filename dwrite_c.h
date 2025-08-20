@@ -102,10 +102,12 @@ typedef struct DWRITE_TEXT_METRICS
 typedef struct IDWriteFactoryVtbl { void* table[]; } IDWriteFactoryVtbl;
 typedef struct IDWriteTextFormatVtbl { void* table[]; } IDWriteTextFormatVtbl;
 typedef struct IDWriteTextLayoutVtbl { void* table[]; } IDWriteTextLayoutVtbl;
+typedef struct IDWriteRenderingParamsVtbl { void* table[]; } IDWriteRenderingParamsVtbl;
 
 typedef struct IDWriteFactory { IDWriteFactoryVtbl* vtbl; } IDWriteFactory;
 typedef struct IDWriteTextFormat { IDWriteTextFormatVtbl* vtbl; } IDWriteTextFormat;
 typedef struct IDWriteTextLayout { IDWriteTextLayoutVtbl* vtbl; } IDWriteTextLayout;
+typedef struct IDWriteRenderingParams { IDWriteRenderingParamsVtbl* vtbl; } IDWriteRenderingParams;
 
 static inline ULONG IDWriteFactory_Release(IDWriteFactory* self)
 {
@@ -123,6 +125,32 @@ static inline HRESULT IDWriteFactory_CreateTextFormat(IDWriteFactory* self,
                                                       IDWriteTextFormat** textFormat)
 {
     return ((HRESULT (WINAPI*)(IDWriteFactory*, WCHAR const*, IUnknown*, DWRITE_FONT_WEIGHT, DWRITE_FONT_STYLE, DWRITE_FONT_STRETCH, FLOAT, WCHAR const*, IDWriteTextFormat**))self->vtbl->table[15])(self, fontFamilyName, fontCollection, fontWeight, fontStyle, fontStretch, fontSize, localeName, textFormat);
+}
+
+static inline HRESULT IDWriteFactory_CreateRenderingParams(IDWriteFactory* self, IDWriteRenderingParams** renderingParams)
+{
+    return ((HRESULT (WINAPI*)(IDWriteFactory*, IDWriteRenderingParams**))self->vtbl->table[10])(self, renderingParams);
+}
+
+static inline HRESULT IDWriteFactory_CreateTextLayout(IDWriteFactory* self,
+                                                      WCHAR const* string,
+                                                      UINT32 stringLength,
+                                                      IDWriteTextFormat* textFormat,
+                                                      FLOAT maxWidth,
+                                                      FLOAT maxHeight,
+                                                      IDWriteTextLayout** textLayout)
+{
+    return ((HRESULT (WINAPI*)(IDWriteFactory*, WCHAR const*, UINT32, IDWriteTextFormat*, FLOAT,  FLOAT, IDWriteTextLayout**))self->vtbl->table[18])(self, string, stringLength, textFormat, maxWidth, maxHeight, textLayout);
+}
+
+static inline ULONG IDWriteTextLayout_Release(IDWriteTextLayout* self)
+{
+    return ((ULONG (WINAPI*)(IDWriteTextLayout*))self->vtbl->table[2])(self);
+}
+
+static inline HRESULT IDWriteTextLayout_GetMetrics(IDWriteTextLayout* self, DWRITE_TEXT_METRICS* textMetrics)
+{
+    return ((HRESULT (WINAPI*)(IDWriteTextLayout*, DWRITE_TEXT_METRICS*))self->vtbl->table[60])(self, textMetrics);
 }
 
 static inline HRESULT IDWriteTextFormat_SetTextAlignment(IDWriteTextFormat* self, DWRITE_TEXT_ALIGNMENT textAlignment)
@@ -145,25 +173,14 @@ static inline ULONG IDWriteTextFormat_Release(IDWriteTextFormat* self)
     return ((ULONG (WINAPI*)(IDWriteTextFormat*))self->vtbl->table[2])(self);
 }
 
-static inline HRESULT IDWriteFactory_CreateTextLayout(IDWriteFactory* self,
-                                                      WCHAR const* string,
-                                                      UINT32 stringLength,
-                                                      IDWriteTextFormat* textFormat,
-                                                      FLOAT maxWidth,
-                                                      FLOAT maxHeight,
-                                                      IDWriteTextLayout** textLayout)
+static inline FLOAT IDWriteRenderingParams_GetClearTypeLevel(IDWriteRenderingParams* self)
 {
-    return ((HRESULT (WINAPI*)(IDWriteFactory*, WCHAR const*, UINT32, IDWriteTextFormat*, FLOAT,  FLOAT, IDWriteTextLayout**))self->vtbl->table[18])(self, string, stringLength, textFormat, maxWidth, maxHeight, textLayout);
+    return ((FLOAT (WINAPI*)(IDWriteRenderingParams*))self->vtbl->table[5])(self);
 }
 
-static inline ULONG IDWriteTextLayout_Release(IDWriteTextLayout* self)
+static inline ULONG IDWriteRenderingParams_Release(IDWriteRenderingParams* self)
 {
-    return ((ULONG (WINAPI*)(IDWriteTextLayout*))self->vtbl->table[2])(self);
-}
-
-static inline HRESULT IDWriteTextLayout_GetMetrics(IDWriteTextLayout* self, DWRITE_TEXT_METRICS* textMetrics)
-{
-    return ((HRESULT (WINAPI*)(IDWriteTextLayout*, DWRITE_TEXT_METRICS*))self->vtbl->table[60])(self, textMetrics);
+    return ((ULONG (WINAPI*)(IDWriteRenderingParams*))self->vtbl->table[2])(self);
 }
 
 EXTERN_C HRESULT DECLSPEC_IMPORT DWriteCreateFactory(DWRITE_FACTORY_TYPE factoryType, REFIID iid, IUnknown** factory);

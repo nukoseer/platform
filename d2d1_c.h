@@ -139,6 +139,7 @@ typedef struct D2D1_ROUNDED_RECT
 
 typedef D2D_COLOR_F D2D1_COLOR_F;
 typedef struct ID2D1Brush ID2D1Brush;
+typedef struct IDWriteRenderingParams IDWriteRenderingParams;
 typedef UINT64 D2D1_TAG;
 
 typedef struct D2D1_BRUSH_PROPERTIES
@@ -230,6 +231,16 @@ static inline void ID2D1RenderTarget_SetTextAntialiasMode(ID2D1RenderTarget* sel
 static inline D2D1_TEXT_ANTIALIAS_MODE ID2D1RenderTarget_GetTextAntialiasMode(ID2D1RenderTarget* self)
 {
     return ((D2D1_TEXT_ANTIALIAS_MODE (WINAPI*)(ID2D1RenderTarget*))self->vtbl->table[35])(self);
+}
+
+static inline void ID2D1RenderTarget_SetTextRenderingParams(ID2D1RenderTarget* self, IDWriteRenderingParams* textRenderingParams)
+{
+    ((void (WINAPI*)(ID2D1RenderTarget*, IDWriteRenderingParams*))self->vtbl->table[36])(self, textRenderingParams);
+}
+
+static inline void ID2D1RenderTarget_GetTextRenderingParams(ID2D1RenderTarget* self, IDWriteRenderingParams** textRenderingParams)
+{
+    ((void (WINAPI*)(ID2D1RenderTarget*, IDWriteRenderingParams**))self->vtbl->table[37])(self, textRenderingParams);
 }
 
 static inline void ID2D1RenderTarget_BeginDraw(ID2D1RenderTarget* self)
