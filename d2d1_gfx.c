@@ -17,11 +17,11 @@ static d2d1_t* d2d1_init(void)
     result = DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, &IID_IDWriteFactory, (IUnknown**)&d2d1->dwrite->factory);
     assert(SUCCEEDED(result) && "[DWRITE] Failed to create factory.");
 
-    result = IDWriteFactory_CreateTextFormat(d2d1->dwrite->factory, L"Iosevka Fixed", 0,
+    result = IDWriteFactory_CreateTextFormat(d2d1->dwrite->factory, L"Georgia", 0,
                                              DWRITE_FONT_WEIGHT_REGULAR,
                                              DWRITE_FONT_STYLE_NORMAL,
                                              DWRITE_FONT_STRETCH_NORMAL,
-                                             72.0f, L"en-us", &d2d1->dwrite->text_format);
+                                             36.0f, L"en-us", &d2d1->dwrite->text_format);
     assert(SUCCEEDED(result) && "[DWRITE] Failed to create text format.");
 
     // result = IDWriteTextFormat_SetTextAlignment(d2d1->dwrite->text_format, DWRITE_TEXT_ALIGNMENT_CENTER);

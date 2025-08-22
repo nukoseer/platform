@@ -121,13 +121,49 @@ typedef struct memory_t
     size_t transient_size;
 } memory_t;
 
+typedef enum graphics_buffer_usage_t
+{
+    BUFFER_USAGE_DEFAULT = 0,
+    BUFFER_USAGE_IMMUTABLE = 1,
+    BUFFER_USAGE_DYNAMIC = 2,
+} graphics_buffer_usage_t;
+
+typedef enum graphics_buffer_bind_t
+{
+    BUFFER_BIND_VERTEX_BUFFER = 0x1L,
+    BUFFER_BIND_INDEX_BUFFER = 0x2L,
+    BUFFER_BIND_CONSTANT_BUFFER = 0x4L,
+} graphics_buffer_bind_t;
+
+typedef struct graphics_buffer_t
+{
+    void* platform;
+} graphics_buffer_t;
+
+/****************************************************************************************/
+/* IMPORTANT: This functions are defined in platform layer and called from gamel layer. */
+/****************************************************************************************/
+
+#define graphics_create_buffer_function(name) graphics_buffer_t name(const void* data, size_t size, graphics_buffer_usage_t usage, graphics_buffer_bind_t bind_flags)
+typedef graphics_create_buffer_function(graphics_create_buffer_f);
+
+typedef struct graphics_t
+{
+    graphics_create_buffer_f* create_buffer;
+} graphics_t;
+
 typedef struct platform_t
 {
     memory_t* memory;
     input_t* input;
+    graphics_t* graphics;
 
     f32 delta_time;
 } platform_t;
+
+/***************************************************************************************/
+/* IMPORTANT: This functions are defined in game layer and called from platform layer. */
+/***************************************************************************************/
 
 #define init_function(name) void name(platform_t* platform)
 typedef init_function(init_f);

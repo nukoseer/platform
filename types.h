@@ -15,6 +15,8 @@ typedef int64_t i64;
 typedef float f32;
 typedef double f64;
 
+typedef uintptr_t uptr;
+
 #undef bool
 typedef int32_t bool;
 

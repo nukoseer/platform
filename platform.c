@@ -13,14 +13,14 @@
 #include <stdio.h> // snprintf
 
 #include "utils.h"
+#include "platform.h"
 
 #include "d3d11_gfx.h"
 #include "d2d1_gfx.h"
 
 #include "d3d11_gfx.c"
 #include "d2d1_gfx.c"
-
-#include "platform.h"
+#include "gfx.c"
 
 #pragma comment(lib, "user32")
 #pragma comment(lib, "kernel32")
@@ -154,7 +154,7 @@ static void toggle_fullscreen(window_t* window)
 
 static bool set_process_dpi_aware(void)
 {
-    bool result = (SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE) == S_OK);
+    bool result = (SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) == S_OK);
 
     if (!result)
     {
@@ -430,7 +430,7 @@ static bool process_thread_messages(window_t* window, input_t* input)
     return quit;
 }
 
-static void memory_init(memory_t* memory)
+static inline void memory_init(memory_t* memory)
 {
     memory->permanent_size = MIBIBYTES(256);
     memory->transient_size = GIBIBYTES(1);
@@ -474,8 +474,8 @@ static DWORD WINAPI main_thread(void* param)
         { { +0.33f, -0.33f }, { 0.0f, 0.0f, 1.0f, } },
     };
 
-    d3d11_buffer_t vertex_buffer = d3d11_create_buffer(window->d3d11->device, vertex_data, sizeof(vertex_data),
-                                                       D3D11_USAGE_IMMUTABLE, D3D11_BIND_VERTEX_BUFFER);
+    ID3D11Buffer* vertex_buffer = d3d11_create_buffer(window->d3d11->device, vertex_data, sizeof(vertex_data),
+                                                      D3D11_USAGE_IMMUTABLE, D3D11_BIND_VERTEX_BUFFER);
 
     D3D11_INPUT_ELEMENT_DESC descs[] =
     {
@@ -561,10 +561,16 @@ static DWORD WINAPI main_thread(void* param)
     input_t* new_input = inputs + 0;
     input_t* old_input = inputs + 1;
 
+    graphics_t graphics =
+    {
+        .create_buffer = gfx_create_buffer,
+    };
+
     platform_t platform =
     {
         .memory = &memory,
         .input = new_input,
+        .graphics = &graphics,
     };
 
     module_t module = load_module();
@@ -597,7 +603,7 @@ static DWORD WINAPI main_thread(void* param)
             ID3D11DeviceContext_IASetPrimitiveTopology(window->d3d11->context, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
             UINT offset = 0;
             UINT stride = sizeof(Vertex);
-            ID3D11DeviceContext_IASetVertexBuffers(window->d3d11->context, 0, 1, &vertex_buffer.buffer, &stride, &offset);
+            ID3D11DeviceContext_IASetVertexBuffers(window->d3d11->context, 0, 1, &vertex_buffer, &stride, &offset);
 
             ID3D11DeviceContext_VSSetShader(window->d3d11->context, vertex_shader.vertex, 0, 0);
 
@@ -650,7 +656,8 @@ static DWORD WINAPI main_thread(void* param)
                 .radiusX = 2.0f, .radiusY = 2.0f,
             };
             ID2D1RenderTarget_DrawRoundedRectangle(window->d2d1->render_target, &rounded_rect, (ID2D1Brush*)window->d2d1->solid_color_brush, 1.0f, 0);
-            ID2D1RenderTarget_DrawText(window->d2d1->render_target, text, sizeof(text) / 2 - 1, window->d2d1->dwrite->text_format, &layout, (ID2D1Brush*)window->d2d1->solid_color_brush, D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT, DWRITE_MEASURING_MODE_NATURAL);
+            ID2D1RenderTarget_DrawText(window->d2d1->render_target, text, sizeof(text) / 2 - 1, window->d2d1->dwrite->text_format,
+                                       &layout, (ID2D1Brush*)window->d2d1->solid_color_brush, D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT, DWRITE_MEASURING_MODE_NATURAL);
             
             ID2D1RenderTarget_EndDraw(window->d2d1->render_target, 0, 0);
 

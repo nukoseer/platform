@@ -10,11 +10,6 @@ typedef enum d3d11_shader_type_t
     D3D11_COUNT_SHADER_TYPE,
 } d3d11_shader_type_t;
 
-typedef struct d3d11_buffer_t
-{
-    ID3D11Buffer* buffer;
-} d3d11_buffer_t;
-
 typedef struct d3d11_shader_t
 {
     d3d11_shader_type_t type;

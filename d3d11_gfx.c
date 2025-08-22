@@ -2,10 +2,10 @@
 
 static d3d11_t global_d3d11 = { 0 };
 
-static d3d11_buffer_t d3d11_create_buffer(ID3D11Device* device, const void* data, size_t size, u32 usage, u32 bind_flags)
+static ID3D11Buffer* d3d11_create_buffer(ID3D11Device* device, const void* data, size_t size, u32 usage, u32 bind_flags)
 {
     HRESULT result = S_OK;
-    d3d11_buffer_t buffer = { 0 };
+    ID3D11Buffer* buffer = 0;
 
     D3D11_BUFFER_DESC desc =
     {
@@ -15,7 +15,7 @@ static d3d11_buffer_t d3d11_create_buffer(ID3D11Device* device, const void* data
     };
 
     D3D11_SUBRESOURCE_DATA initial = { .pSysMem = data };
-    result = ID3D11Device_CreateBuffer(device, &desc, &initial, &buffer.buffer);
+    result = ID3D11Device_CreateBuffer(device, &desc, &initial, &buffer);
     assert(SUCCEEDED(result) && "Failed to create buffer.");
 
     return buffer;
