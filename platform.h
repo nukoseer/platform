@@ -140,6 +140,21 @@ typedef struct graphics_buffer_t
     void* platform;
 } graphics_buffer_t;
 
+typedef enum graphics_shader_type_t
+{
+    NULL_SHADER_TYPE,
+    
+    VERTEX_SHADER_TYPE,
+    PIXEL_SHADER_TYPE,
+    
+    COUNT_SHADER_TYPE,
+} graphics_shader_type_t;
+
+typedef struct graphics_shader_t
+{
+    void* platform;
+} graphics_shader_t;
+
 /****************************************************************************************/
 /* IMPORTANT: This functions are defined in platform layer and called from gamel layer. */
 /****************************************************************************************/
@@ -147,9 +162,23 @@ typedef struct graphics_buffer_t
 #define graphics_create_buffer_function(name) graphics_buffer_t name(const void* data, size_t size, graphics_buffer_usage_t usage, graphics_buffer_bind_t bind_flags)
 typedef graphics_create_buffer_function(graphics_create_buffer_f);
 
+#define graphics_create_shader_function(name) graphics_shader_t name(const void* buffer, size_t size, graphics_shader_type_t shader_type)
+typedef graphics_create_shader_function(graphics_create_shader_f);
+
 typedef struct graphics_t
 {
-    graphics_create_buffer_f* create_buffer;
+    union
+    {
+        struct functions
+        {
+            graphics_create_buffer_f* create_buffer;
+            graphics_create_shader_f* create_shader;
+        };
+
+        // IMPORTANT: As far as I remember function pointers are not guaranteed
+        // to be the same size as data pointers but what can I do?
+        void* functions[sizeof(struct functions) / sizeof(void*)];
+    };
 } graphics_t;
 
 typedef struct platform_t

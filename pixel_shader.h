@@ -26,7 +26,7 @@ ret
 // Approximately 0 instruction slots used
 #endif
 
-const BYTE d3d11_pshader[] =
+const BYTE pshader[] =
 {
      68,  88,  66,  67,  80, 239, 
     109,  26,   0, 147,   6, 156, 

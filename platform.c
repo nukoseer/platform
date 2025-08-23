@@ -81,7 +81,7 @@ static void fatal_error_system(const char* message)
 
 static void fatal_error(const char* message) 
 {
-    MessageBox(0, "Error", message, MB_ICONEXCLAMATION);
+    MessageBox(0, message, "Error", MB_ICONEXCLAMATION);
     ExitProcess(0);
 }
 
@@ -484,13 +484,13 @@ static DWORD WINAPI main_thread(void* param)
     };
 
 #if 1
-    #include "d3d11_vshader.h"
-    #include "d3d11_pshader.h"
+    #include "vertex_shader.h"
+    #include "pixel_shader.h"
 
-    d3d11_shader_t vertex_shader = d3d11_create_shader(window->d3d11->device, d3d11_vshader, sizeof(d3d11_vshader), D3D11_VERTEX_SHADER_TYPE);
-    d3d11_shader_t pixel_shader = d3d11_create_shader(window->d3d11->device, d3d11_pshader, sizeof(d3d11_pshader), D3D11_PIXEL_SHADER_TYPE);
+    ID3D11VertexShader* vertex_shader = d3d11_create_vertex_shader(window->d3d11->device, vshader, sizeof(vshader));
+    ID3D11PixelShader* pixel_shader = d3d11_create_pixel_shader(window->d3d11->device, pshader, sizeof(pshader));
     d3d11_input_layout_t input_layout = d3d11_create_input_layout(window->d3d11->device, descs, array_count(descs),
-                                                                  d3d11_vshader, sizeof(d3d11_vshader));
+                                                                  vshader, sizeof(vshader));
 #else
     const char hlsl[] =
     "#line " stringfy(__LINE__) "                               \n\n" // actual line number in this file for nicer error messages
@@ -530,8 +530,8 @@ static DWORD WINAPI main_thread(void* param)
     d3d11_compile_t vertex_compile = d3d11_compile(hlsl, sizeof(hlsl), "vs", "vs_5_0", flags);
     d3d11_compile_t pixel_compile = d3d11_compile(hlsl, sizeof(hlsl), "ps", "ps_5_0", flags);
 
-    d3d11_shader_t vertex_shader = d3d11_create_shader(window->d3d11->device, vertex_compile.data, vertex_compile.size, VERTEX_SHADER_TYPE);
-    d3d11_shader_t pixel_shader = d3d11_create_shader(window->d3d11->device, pixel_compile.data, pixel_compile.size, PIXEL_SHADER_TYPE);
+    ID3D11VertexShader* vertex_shader = d3d11_create_vertex_shader(window->d3d11->device, vertex_compile.data, vertex_compile.size);
+    ID3D11PixelShader* pixel_shader = d3d11_create_pixel_shader(window->d3d11->device, pixel_compile.data, pixel_compile.size);
     d3d11_input_layout_t input_layout = d3d11_create_input_layout(window->d3d11->device, descs, array_count(descs),
                                                                   vertex_compile.data, vertex_compile.size);
 
@@ -564,6 +564,7 @@ static DWORD WINAPI main_thread(void* param)
     graphics_t graphics =
     {
         .create_buffer = gfx_create_buffer,
+        .create_shader = gfx_create_shader,
     };
 
     platform_t platform =
@@ -572,6 +573,13 @@ static DWORD WINAPI main_thread(void* param)
         .input = new_input,
         .graphics = &graphics,
     };
+
+    for (u32 function_index = 0; function_index < array_count(graphics.functions); ++function_index)
+    {
+        void* function = graphics.functions[function_index];
+
+        fatal(function, "[PLATFORM] Unassigned graphics function.");
+    }
 
     module_t module = load_module();
     module.init(&platform);
@@ -605,7 +613,7 @@ static DWORD WINAPI main_thread(void* param)
             UINT stride = sizeof(Vertex);
             ID3D11DeviceContext_IASetVertexBuffers(window->d3d11->context, 0, 1, &vertex_buffer, &stride, &offset);
 
-            ID3D11DeviceContext_VSSetShader(window->d3d11->context, vertex_shader.vertex, 0, 0);
+            ID3D11DeviceContext_VSSetShader(window->d3d11->context, vertex_shader, 0, 0);
 
             // NOTE: Output viewport covering all client area of window.
             D3D11_VIEWPORT viewport =
@@ -621,7 +629,7 @@ static DWORD WINAPI main_thread(void* param)
             ID3D11DeviceContext_RSSetViewports(window->d3d11->context, 1, &viewport);
             ID3D11DeviceContext_RSSetState(window->d3d11->context, rasterizer_state);
 
-            ID3D11DeviceContext_PSSetShader(window->d3d11->context, pixel_shader.pixel, 0, 0);
+            ID3D11DeviceContext_PSSetShader(window->d3d11->context, pixel_shader, 0, 0);
 
             ID3D11DeviceContext_OMSetRenderTargets(window->d3d11->context, 1, &window->d3d11->rt_view, 0);
 

@@ -32,7 +32,7 @@ ret
 // Approximately 0 instruction slots used
 #endif
 
-const BYTE d3d11_vshader[] =
+const BYTE vshader[] =
 {
      68,  88,  66,  67, 126,  72, 
     200, 108, 110, 146,  38,  78, 

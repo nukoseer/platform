@@ -25,3 +25,6 @@ typedef int32_t bool;
 
 #define true  1
 #define false 0
+
+// NOTE: This is for HLSL shader output. We should not need this at the end probably.
+#define BYTE uint8_t
