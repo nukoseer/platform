@@ -49,10 +49,10 @@ typedef struct window_t
 {
     HWND hwnd;
     WINDOWPLACEMENT placement;
-    int width;
-    int height;
-    int current_width;
-    int current_height;
+    i32 width;
+    i32 height;
+    i32 current_width;
+    i32 current_height;
     IDXGISwapChain1* swap_chain;
     d3d11_t* d3d11;
     d2d1_t* d2d1;
@@ -154,8 +154,8 @@ static void toggle_fullscreen(window_t* window)
 
 static bool set_process_dpi_aware(void)
 {
-    bool result = (SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) == S_OK);
-
+    bool result = (SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) == TRUE);
+    
     if (!result)
     {
         result = SetProcessDPIAware();
@@ -638,7 +638,7 @@ static DWORD WINAPI main_thread(void* param)
             ID2D1RenderTarget_BeginDraw(window->d2d1->render_target);
 
             IDWriteTextLayout* text_layout = 0;
-            WCHAR text[] = L"Hello";
+            WCHAR text[] = L"Hello world!";
             // TODO: IDWriteFactory_CreateTextLayout should not be here I guess?
             IDWriteFactory_CreateTextLayout(window->d2d1->dwrite->factory,
                                             text,                                            
@@ -650,8 +650,9 @@ static DWORD WINAPI main_thread(void* param)
             DWRITE_TEXT_METRICS text_metrics = { 0 };
             IDWriteTextLayout_GetMetrics(text_layout, &text_metrics);
 
-            FLOAT left = (window->width) / 2.0f - (text_metrics.width / 2.0f); 
-            FLOAT top = (window->height) / 2.0f - (text_metrics.height / 2.0f);
+            FLOAT left = (window->width) * 0.5f - (text_metrics.width * 0.5f);
+            // NOTE: Normalized device coordinates to pixels([1.0f, -1.0f] to [0.0f, 1.0f]) + padding
+            FLOAT top = ((window->height) * (1.0f - (-0.33f)) * 0.5f) + 8.0f;
             D2D1_RECT_F layout =
             {
                 .left = left,
