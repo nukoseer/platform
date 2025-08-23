@@ -105,6 +105,18 @@ static LRESULT CALLBACK window_proc(HWND hwnd, UINT message, WPARAM wparam, LPAR
             PostThreadMessage(global_main_thread_id, message, wparam, lparam);
         } break;
 
+        case WM_PAINT:
+        {
+            PAINTSTRUCT paint_struct = { 0 };
+            BeginPaint(hwnd, &paint_struct);
+            EndPaint(hwnd, &paint_struct);
+        } break;
+
+        case WM_ERASEBKGND:
+        {
+            result = 1;
+        } break;
+
         case WM_MENUCHAR:
         {
             // NOTE: Prevent bing sound.
