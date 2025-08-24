@@ -1,6 +1,12 @@
 // TODO: This is just random value for now.
 #define GFX_MAX_RESOUCE 32
 
+typedef struct gfx_buffer_t
+{
+    ID3D11Buffer* buffer;
+    usize size;
+} gfx_buffer_t;
+
 typedef struct gfx_shader_t
 {
     void* shader;
@@ -15,11 +21,20 @@ typedef struct gfx_program_t
     ID3D11InputLayout* input_layout;
 } gfx_program_t;
 
+typedef struct gfx_pipeline_t
+{
+    ID3D11RasterizerState* rasterizer_state;
+} gfx_pipeline_t;
+
+static gfx_buffer_t global_buffers[GFX_MAX_RESOUCE];
 static gfx_shader_t global_shaders[GFX_MAX_RESOUCE];
 static gfx_program_t global_programs[GFX_MAX_RESOUCE];
+static gfx_pipeline_t global_pipelines[GFX_MAX_RESOUCE];
 
+static usize global_buffer_count;
 static usize global_shader_count;
 static usize global_program_count;
+static usize global_pipeline_count;
 
 static inline map_dxgi_format(graphics_format_t format)
 {
@@ -49,10 +64,14 @@ static inline map_dxgi_format(graphics_format_t format)
 static graphics_create_buffer_function(gfx_create_buffer)
 {
     graphics_buffer_t graphics_buffer = { 0 };
+    usize buffer_index = global_buffer_count++;
+    gfx_buffer_t* gfx_buffer = global_buffers + buffer_index;
 
-    graphics_buffer.platform = d3d11_create_buffer(global_d3d11.device,
-                                                   buffer_desc->data, buffer_desc->size,
-                                                   buffer_desc->usage, buffer_desc->bind);
+    gfx_buffer->buffer = d3d11_create_buffer(global_d3d11.device,
+                                             buffer_desc->data, buffer_desc->size,
+                                             buffer_desc->usage, buffer_desc->bind);
+
+    graphics_buffer.platform = buffer_index;
 
     return graphics_buffer;
 }
@@ -115,4 +134,37 @@ static graphics_create_program_function(gfx_create_program)
     graphics_program.platform = program_index;
 
     return graphics_program;
+}
+
+static graphics_create_pipeline_function(gfx_create_pipeline)
+{
+    graphics_pipeline_t graphics_pipeline = { 0 };
+    usize pipeline_index = global_pipeline_count++;
+    gfx_pipeline_t* gfx_pipeline = global_pipelines + pipeline_index;
+
+    // NOTE: Disable culling.
+    // Meaning every triangle will be drawn regardless of
+    // facing direction (clock-wise or counter clock-wise).
+    D3D11_RASTERIZER_DESC desc =
+    {
+        .FillMode = pipeline_desc->wireframe ? D3D11_FILL_WIREFRAME : D3D11_FILL_SOLID,
+        .CullMode = pipeline_desc->cull ? D3D11_CULL_BACK : D3D11_CULL_NONE,
+        .DepthClipEnable = TRUE,
+    };
+
+    ID3D11Device_CreateRasterizerState(global_d3d11.device, &desc, &gfx_pipeline->rasterizer_state);
+
+    graphics_pipeline.platform = pipeline_index;
+    
+    return graphics_pipeline;
+}
+
+static graphics_set_program_function(gfx_set_program)
+{
+    usize program_index = (usize)program.platform;
+    gfx_program_t* gfx_program = global_programs + program_index;
+
+    ID3D11DeviceContext_VSSetShader(global_d3d11.context, gfx_program->vertex_shader, 0, 0);
+    ID3D11DeviceContext_PSSetShader(global_d3d11.context, gfx_program->pixel_shader, 0, 0);
+    ID3D11DeviceContext_IASetInputLayout(global_d3d11.context, gfx_program->input_layout);
 }

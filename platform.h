@@ -151,7 +151,7 @@ typedef struct graphics_buffer_desc_t
 
 typedef struct graphics_buffer_t
 {
-    void* platform;
+    usize platform;
 } graphics_buffer_t;
 
 typedef enum graphics_shader_type_t
@@ -200,6 +200,18 @@ typedef struct graphics_program_t
     usize platform;
 } graphics_program_t;
 
+typedef struct graphics_pipeline_desc_t
+{
+    // NOTE: Rasterizer State.
+    bool cull;
+    bool wireframe;
+} graphics_pipeline_desc_t;
+
+typedef struct graphics_pipeline_t
+{
+    usize platform;
+} graphics_pipeline_t;
+
 /****************************************************************************************/
 /* IMPORTANT: This functions are defined in platform layer and called from game layer. */
 /****************************************************************************************/
@@ -213,6 +225,12 @@ typedef graphics_create_shader_function(graphics_create_shader_f);
 #define graphics_create_program_function(name) graphics_program_t name(const graphics_program_desc_t* program_desc)
 typedef graphics_create_program_function(graphics_create_program_f);
 
+#define graphics_create_pipeline_function(name) graphics_pipeline_t name(const graphics_pipeline_desc_t* pipeline_desc)
+typedef graphics_create_pipeline_function(graphics_create_pipeline_f);
+
+#define graphics_set_program_function(name) void name(graphics_program_t program)
+typedef graphics_set_program_function(graphics_set_program_f);
+
 typedef struct graphics_t
 {
     union
@@ -222,6 +240,8 @@ typedef struct graphics_t
             graphics_create_buffer_f* create_buffer;
             graphics_create_shader_f* create_shader;
             graphics_create_program_f* create_program;
+            graphics_create_pipeline_f* create_pipeline;
+            graphics_set_program_f* set_program;
         };
 
         // IMPORTANT: As far as I remember function pointers are not guaranteed

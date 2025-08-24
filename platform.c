@@ -578,6 +578,8 @@ static DWORD WINAPI main_thread(void* param)
         .create_buffer = gfx_create_buffer,
         .create_shader = gfx_create_shader,
         .create_program = gfx_create_program,
+        .create_pipeline = gfx_create_pipeline,
+        .set_program = gfx_set_program,
     };
 
     platform_t platform =

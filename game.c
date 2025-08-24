@@ -53,6 +53,14 @@ init_function(init)
     });
 
     (void)program;
+
+    graphics_pipeline_t pipeline = graphics->create_pipeline(&(graphics_pipeline_desc_t)
+    {
+        .cull = false,
+        .wireframe = false,
+    });
+    
+    (void)pipeline;
 }
 
 update_function(update)
