@@ -17,12 +17,42 @@ init_function(init)
         +0.33f, -0.33f, 0.0f, 0.0f, 1.0f,
     };
 
-    graphics_buffer_t vertex_buffer = graphics->create_buffer(vertex_data, sizeof(vertex_data), BUFFER_USAGE_IMMUTABLE, BUFFER_BIND_VERTEX_BUFFER);
+    graphics_buffer_t vertex_buffer = graphics->create_buffer(&(graphics_buffer_desc_t)
+    {
+        .data = vertex_data,
+        .size = sizeof(vertex_data),
+        .usage = BUFFER_USAGE_IMMUTABLE,
+        .bind = BUFFER_BIND_VERTEX_BUFFER
+    });
     (void)vertex_buffer;
 
-    graphics_shader_t vertex_shader = graphics->create_shader(vshader, sizeof(vshader), VERTEX_SHADER_TYPE);
-    graphics_shader_t pixel_shader = graphics->create_shader(pshader, sizeof(pshader), PIXEL_SHADER_TYPE);
-    (void)vertex_shader; (void)pixel_shader;
+    graphics_shader_t vertex_shader = graphics->create_shader(&(graphics_shader_desc_t)
+    {
+        .bytecode = vshader,
+        .bytecode_size = sizeof(vshader),
+        .type = VERTEX_SHADER_TYPE,
+    });
+
+    graphics_shader_t pixel_shader = graphics->create_shader(&(graphics_shader_desc_t)
+    {
+        .bytecode = pshader,
+        .bytecode_size = sizeof(pshader),
+        .type = PIXEL_SHADER_TYPE,
+    });
+        
+    graphics_program_t program = graphics->create_program(&(graphics_program_desc_t)
+    {
+        .vertex_shader = vertex_shader,
+        .pixel_shader = pixel_shader,
+        .attributes = (graphics_vertex_attribute_t[])
+        {
+            { "POSITION", FORMAT_R32G32_FLOAT,    0,               0, 0, 0, 0 },
+            { "COLOR",    FORMAT_R32G32B32_FLOAT, 2 * sizeof(f32), 0, 0, 0, 0 },
+        },
+        .attribute_count = 2,
+    });
+
+    (void)program;
 }
 
 update_function(update)

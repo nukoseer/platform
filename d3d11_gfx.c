@@ -50,13 +50,13 @@ static void d3d11_compile_release(d3d11_compile_t* compile)
     *compile = (d3d11_compile_t){ 0 };
 }
 
-static d3d11_input_layout_t d3d11_create_input_layout(ID3D11Device* device, const D3D11_INPUT_ELEMENT_DESC* descs, size_t desc_count,
+static ID3D11InputLayout* d3d11_create_input_layout(ID3D11Device* device, const D3D11_INPUT_ELEMENT_DESC* descs, size_t desc_count,
                                                const void* data, size_t size)
 {
     HRESULT result = S_OK;
-    d3d11_input_layout_t input_layout = { 0 };
+    ID3D11InputLayout* input_layout = 0;
     
-    result = ID3D11Device_CreateInputLayout(device, descs, (UINT)desc_count, data, size, &input_layout.layout);
+    result = ID3D11Device_CreateInputLayout(device, descs, (UINT)desc_count, data, size, &input_layout);
     assert(SUCCEEDED(result) && "Failed to create input layout.");
 
     return input_layout;

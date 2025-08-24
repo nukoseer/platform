@@ -501,8 +501,8 @@ static DWORD WINAPI main_thread(void* param)
 
     ID3D11VertexShader* vertex_shader = d3d11_create_vertex_shader(window->d3d11->device, vshader, sizeof(vshader));
     ID3D11PixelShader* pixel_shader = d3d11_create_pixel_shader(window->d3d11->device, pshader, sizeof(pshader));
-    d3d11_input_layout_t input_layout = d3d11_create_input_layout(window->d3d11->device, descs, array_count(descs),
-                                                                  vshader, sizeof(vshader));
+    ID3D11InputLayout* input_layout = d3d11_create_input_layout(window->d3d11->device, descs, array_count(descs),
+                                                                vshader, sizeof(vshader));
 #else
     const char hlsl[] =
     "#line " stringfy(__LINE__) "                               \n\n" // actual line number in this file for nicer error messages
@@ -577,6 +577,7 @@ static DWORD WINAPI main_thread(void* param)
     {
         .create_buffer = gfx_create_buffer,
         .create_shader = gfx_create_shader,
+        .create_program = gfx_create_program,
     };
 
     platform_t platform =
@@ -619,7 +620,7 @@ static DWORD WINAPI main_thread(void* param)
             FLOAT color[] = { 0.0f, 0.0f, 0.0f, 0.0f };
             ID3D11DeviceContext_ClearRenderTargetView(window->d3d11->context, window->d3d11->rt_view, color);
 
-            ID3D11DeviceContext_IASetInputLayout(window->d3d11->context, input_layout.layout);
+            ID3D11DeviceContext_IASetInputLayout(window->d3d11->context, input_layout);
             ID3D11DeviceContext_IASetPrimitiveTopology(window->d3d11->context, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
             UINT offset = 0;
             UINT stride = sizeof(Vertex);

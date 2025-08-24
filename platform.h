@@ -121,6 +121,12 @@ typedef struct memory_t
     size_t transient_size;
 } memory_t;
 
+typedef enum graphics_format_t
+{
+    FORMAT_R32G32_FLOAT,
+    FORMAT_R32G32B32_FLOAT,
+} graphics_format_t;
+
 typedef enum graphics_buffer_usage_t
 {
     BUFFER_USAGE_DEFAULT = 0,
@@ -134,6 +140,14 @@ typedef enum graphics_buffer_bind_t
     BUFFER_BIND_INDEX_BUFFER = 0x2L,
     BUFFER_BIND_CONSTANT_BUFFER = 0x4L,
 } graphics_buffer_bind_t;
+
+typedef struct graphics_buffer_desc_t
+{
+    void* data;
+    usize size;
+    graphics_buffer_usage_t usage;
+    graphics_buffer_bind_t bind;
+} graphics_buffer_desc_t;
 
 typedef struct graphics_buffer_t
 {
@@ -150,20 +164,54 @@ typedef enum graphics_shader_type_t
     COUNT_SHADER_TYPE,
 } graphics_shader_type_t;
 
+typedef struct graphics_shader_desc_t
+{
+    const void* bytecode;
+    usize bytecode_size;
+    graphics_shader_type_t type;
+} graphics_shader_desc_t;
+
 typedef struct graphics_shader_t
 {
-    void* platform;
+    usize platform;
 } graphics_shader_t;
 
+typedef struct graphics_vertex_attribute_t
+{
+    const char* semantic;
+    graphics_format_t format;
+    u32 offset;
+    u8 index;
+    u8 slot;
+    u8 per_instance;
+    u8 step_rate;
+} graphics_vertex_attribute_t;
+
+typedef struct graphics_program_desc_t
+{
+    graphics_shader_t vertex_shader;
+    graphics_shader_t pixel_shader;
+    graphics_vertex_attribute_t* attributes;
+    usize attribute_count;
+} graphics_program_desc_t;
+
+typedef struct graphics_program_t
+{
+    usize platform;
+} graphics_program_t;
+
 /****************************************************************************************/
-/* IMPORTANT: This functions are defined in platform layer and called from gamel layer. */
+/* IMPORTANT: This functions are defined in platform layer and called from game layer. */
 /****************************************************************************************/
 
-#define graphics_create_buffer_function(name) graphics_buffer_t name(const void* data, size_t size, graphics_buffer_usage_t usage, graphics_buffer_bind_t bind_flags)
+#define graphics_create_buffer_function(name) graphics_buffer_t name(const graphics_buffer_desc_t* buffer_desc)
 typedef graphics_create_buffer_function(graphics_create_buffer_f);
 
-#define graphics_create_shader_function(name) graphics_shader_t name(const void* buffer, size_t size, graphics_shader_type_t shader_type)
+#define graphics_create_shader_function(name) graphics_shader_t name(const graphics_shader_desc_t* shader_desc)
 typedef graphics_create_shader_function(graphics_create_shader_f);
+
+#define graphics_create_program_function(name) graphics_program_t name(const graphics_program_desc_t* program_desc)
+typedef graphics_create_program_function(graphics_create_program_f);
 
 typedef struct graphics_t
 {
@@ -173,6 +221,7 @@ typedef struct graphics_t
         {
             graphics_create_buffer_f* create_buffer;
             graphics_create_shader_f* create_shader;
+            graphics_create_program_f* create_program;
         };
 
         // IMPORTANT: As far as I remember function pointers are not guaranteed

@@ -17,6 +17,8 @@ typedef double f64;
 
 typedef uintptr_t uptr;
 
+typedef size_t usize;
+
 #undef bool
 typedef int32_t bool;
 
