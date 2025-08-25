@@ -114,10 +114,10 @@ typedef struct input_t
 
 typedef struct memory_t
 {
-    void* permanent;
+    u8* permanent;
     size_t permanent_size;
 
-    void* transient;
+    u8* transient;
     size_t transient_size;
 } memory_t;
 
@@ -228,8 +228,14 @@ typedef graphics_create_program_function(graphics_create_program_f);
 #define graphics_create_pipeline_function(name) graphics_pipeline_t name(const graphics_pipeline_desc_t* pipeline_desc)
 typedef graphics_create_pipeline_function(graphics_create_pipeline_f);
 
+#define graphics_set_vertex_buffer_function(name) void name(graphics_buffer_t vertex_buffer, u32 slot, u32 stride, u32 offset)
+typedef graphics_set_vertex_buffer_function(graphics_set_vertex_buffer_f);
+
 #define graphics_set_program_function(name) void name(graphics_program_t program)
 typedef graphics_set_program_function(graphics_set_program_f);
+
+#define graphics_set_pipeline_function(name) void name(graphics_pipeline_t pipeline)
+typedef graphics_set_pipeline_function(graphics_set_pipeline_f);
 
 typedef struct graphics_t
 {
@@ -241,7 +247,9 @@ typedef struct graphics_t
             graphics_create_shader_f* create_shader;
             graphics_create_program_f* create_program;
             graphics_create_pipeline_f* create_pipeline;
+            graphics_set_vertex_buffer_f* set_vertex_buffer;
             graphics_set_program_f* set_program;
+            graphics_set_pipeline_f* set_pipeline;
         };
 
         // IMPORTANT: As far as I remember function pointers are not guaranteed

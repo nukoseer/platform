@@ -26,6 +26,8 @@ typedef struct gfx_pipeline_t
     ID3D11RasterizerState* rasterizer_state;
 } gfx_pipeline_t;
 
+// TODO: We should manage the lifetime of these resouces.
+// Now we only create new resources, we never release.
 static gfx_buffer_t global_buffers[GFX_MAX_RESOUCE];
 static gfx_shader_t global_shaders[GFX_MAX_RESOUCE];
 static gfx_program_t global_programs[GFX_MAX_RESOUCE];
@@ -159,6 +161,14 @@ static graphics_create_pipeline_function(gfx_create_pipeline)
     return graphics_pipeline;
 }
 
+static graphics_set_vertex_buffer_function(gfx_set_vertex_buffer)
+{
+    usize vertex_buffer_index = (usize)vertex_buffer.platform;
+    gfx_buffer_t* gfx_vertex_buffer = global_buffers + vertex_buffer_index;
+
+    ID3D11DeviceContext_IASetVertexBuffers(global_d3d11.context, slot, 1, &gfx_vertex_buffer->buffer, &stride, &offset);
+}
+
 static graphics_set_program_function(gfx_set_program)
 {
     usize program_index = (usize)program.platform;
@@ -167,4 +177,12 @@ static graphics_set_program_function(gfx_set_program)
     ID3D11DeviceContext_VSSetShader(global_d3d11.context, gfx_program->vertex_shader, 0, 0);
     ID3D11DeviceContext_PSSetShader(global_d3d11.context, gfx_program->pixel_shader, 0, 0);
     ID3D11DeviceContext_IASetInputLayout(global_d3d11.context, gfx_program->input_layout);
+}
+
+static graphics_set_pipeline_function(gfx_set_pipeline)
+{
+    usize pipeline_index = (usize)pipeline.platform;
+    gfx_pipeline_t* gfx_pipeline = global_pipelines + pipeline_index;
+
+    ID3D11DeviceContext_RSSetState(global_d3d11.context, gfx_pipeline->rasterizer_state);
 }
