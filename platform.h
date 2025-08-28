@@ -123,6 +123,7 @@ typedef struct memory_t
 
 typedef enum graphics_format_t
 {
+    FORMAT_R8G8B8A8_UNORM,
     FORMAT_R32G32_FLOAT,
     FORMAT_R32G32B32_FLOAT,
 } graphics_format_t;
@@ -134,25 +135,79 @@ typedef enum graphics_buffer_usage_t
     BUFFER_USAGE_DYNAMIC = 2,
 } graphics_buffer_usage_t;
 
-typedef enum graphics_buffer_bind_t
+typedef enum graphics_bind_t
 {
-    BUFFER_BIND_VERTEX_BUFFER = 0x1L,
-    BUFFER_BIND_INDEX_BUFFER = 0x2L,
-    BUFFER_BIND_CONSTANT_BUFFER = 0x4L,
-} graphics_buffer_bind_t;
+    BIND_NULL,
+    
+    BIND_VERTEX_BUFFER = (1 << 0),
+    BIND_INDEX_BUFFER = (1 << 1),
+    BIND_CONSTANT_BUFFER = (1 << 2),
+    BIND_SHADER_RESOURCE = (1 << 3),
+    BIND_RENDER_TARGET = (1 << 4),
+    BIND_DEPTH_STENCIL = (1 << 5),
+} graphics_bind_t;
+
+typedef enum graphics_stage_t
+{
+    STAGE_NULL,
+    STAGE_VERTEX_SHADER,
+    STAGE_PIXEL_SHADER,
+} graphics_stage_t;
+
+// NOTE: We can add as we need.
+typedef enum graphics_filter_t
+{
+    FILTER_MIN_MAG_MIP_POINT,
+} graphics_filter_t;
+
+typedef enum graphics_texture_address_t
+{
+    TEXTURE_ADDRESS_NULL,
+    TEXTURE_ADDRESS_WRAP,
+    TEXTURE_ADDRESS_MIRROR,
+    TEXTURE_ADDRESS_CLAMP,
+    TEXTURE_ADDRESS_BORDER,
+    TEXTURE_ADDRESS_MIRROR_ONCE
+} graphics_texture_address_t;
 
 typedef struct graphics_buffer_desc_t
 {
     void* data;
     usize size;
     graphics_buffer_usage_t usage;
-    graphics_buffer_bind_t bind;
+    graphics_bind_t bind;
 } graphics_buffer_desc_t;
 
 typedef struct graphics_buffer_t
 {
     usize platform;
 } graphics_buffer_t;
+
+typedef struct graphics_texture_2d_desc_t
+{
+    graphics_format_t format;
+    graphics_bind_t bind;
+    u32 width;
+    u32 height;
+} graphics_texture_2d_desc_t;
+
+typedef struct graphics_texture_t
+{
+    usize platform;
+} graphics_texture_t;
+
+typedef struct graphics_sampler_desc_t
+{
+    graphics_filter_t filter;
+    graphics_texture_address_t address_u;
+    graphics_texture_address_t address_v;
+    graphics_texture_address_t address_w;
+} graphics_sampler_desc_t;
+
+typedef struct graphics_sampler_t
+{
+    usize platform;
+} graphics_sampler_t;
 
 typedef enum graphics_shader_type_t
 {
@@ -212,12 +267,43 @@ typedef struct graphics_pipeline_t
     usize platform;
 } graphics_pipeline_t;
 
+typedef struct graphics_target_t
+{
+    usize platform;
+} graphics_target_t;
+
+typedef struct graphics_pass_desc_t
+{
+    bool clear_color;
+    f32 clear_rgba[4];
+
+    // TODO: clear_depth/stencil, use_depth/stencil
+    // color_load/store, depth_load/store, stencil_load/store
+} graphics_pass_desc_t;
+
+typedef enum graphics_topology_t
+{
+    TOPOLOGY_POINT_LIST,
+    TOPOLOGY_LINE_LIST,
+    TOPOLOGY_LINE_STRIP,
+    TOPOLOGY_TRIANGLE_LIST,
+    TOPOLOGY_TRIANGLE_STRIP,
+    TOPOLOGY_LINE_LIST_ADJ,
+    TOPOLOGY_TRIANGLE_LIST_ADJ,
+} graphics_topology_t;
+
 /****************************************************************************************/
 /* IMPORTANT: This functions are defined in platform layer and called from game layer. */
 /****************************************************************************************/
 
 #define graphics_create_buffer_function(name) graphics_buffer_t name(const graphics_buffer_desc_t* buffer_desc)
 typedef graphics_create_buffer_function(graphics_create_buffer_f);
+
+#define graphics_create_texture_2d_function(name) graphics_texture_t name(const graphics_texture_2d_desc_t* texture_2d_desc, const void* initial_data, u32 pitch)
+typedef graphics_create_texture_2d_function(graphics_create_texture_2d_f);
+
+#define graphics_create_sampler_function(name) graphics_sampler_t name(const graphics_sampler_desc_t* sampler_desc)
+typedef graphics_create_sampler_function(graphics_create_sampler_f);
 
 #define graphics_create_shader_function(name) graphics_shader_t name(const graphics_shader_desc_t* shader_desc)
 typedef graphics_create_shader_function(graphics_create_shader_f);
@@ -237,6 +323,24 @@ typedef graphics_set_program_function(graphics_set_program_f);
 #define graphics_set_pipeline_function(name) void name(graphics_pipeline_t pipeline)
 typedef graphics_set_pipeline_function(graphics_set_pipeline_f);
 
+#define graphics_set_samplers_function(name) void name(graphics_stage_t stage, const graphics_sampler_t* samplers, u32 count, u32 first_slot)
+typedef graphics_set_samplers_function(graphics_set_samplers_f);
+
+#define graphics_set_srvs_function(name) void name(graphics_stage_t stage, const graphics_texture_t* textures, u32 count, u32 first_slot)
+typedef graphics_set_srvs_function(graphics_set_srvs_f);
+
+#define graphics_get_backbuffer_target_function(name) graphics_target_t name(void)
+typedef graphics_get_backbuffer_target_function(graphics_get_backbuffer_target_f);
+
+#define graphics_begin_pass_function(name) void name(graphics_target_t target, const graphics_pass_desc_t* pass_desc)
+typedef graphics_begin_pass_function(graphics_begin_pass_f);
+
+#define graphics_end_pass_function(name) void name(void)
+typedef graphics_end_pass_function(graphics_end_pass_f);
+
+#define graphics_draw_function(name) void name(graphics_topology_t topology, u32 vertex_count, u32 start_vertex)
+typedef graphics_draw_function(graphics_draw_f);
+
 typedef struct graphics_t
 {
     union
@@ -244,12 +348,20 @@ typedef struct graphics_t
         struct functions
         {
             graphics_create_buffer_f* create_buffer;
+            graphics_create_texture_2d_f* create_texture_2d;
+            graphics_create_sampler_f* create_sampler;
             graphics_create_shader_f* create_shader;
             graphics_create_program_f* create_program;
             graphics_create_pipeline_f* create_pipeline;
             graphics_set_vertex_buffer_f* set_vertex_buffer;
+            graphics_set_srvs_f* set_srvs;
+            graphics_set_samplers_f* set_samplers;
             graphics_set_program_f* set_program;
             graphics_set_pipeline_f* set_pipeline;
+            graphics_get_backbuffer_target_f* get_backbuffer_target;
+            graphics_begin_pass_f* begin_pass;
+            graphics_end_pass_f* end_pass;
+            graphics_draw_f* draw;
         };
 
         // IMPORTANT: As far as I remember function pointers are not guaranteed
@@ -264,6 +376,8 @@ typedef struct platform_t
     input_t* input;
     graphics_t* graphics;
 
+    u32 width;
+    u32 height;
     f32 delta_time;
 } platform_t;
 

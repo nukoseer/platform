@@ -306,6 +306,9 @@ static void resize_back_buffer(window_t* window)
             IDXGISwapChain1_GetBuffer(window->swap_chain, 0, &IID_ID3D11Texture2D, (void**)&back_buffer);
             ID3D11Device_CreateRenderTargetView(window->d3d11->device, (ID3D11Resource*)back_buffer, 0, &window->d3d11->rt_view);
 
+            window->d3d11->width = window->width;
+            window->d3d11->height = window->height;
+
             IDXGISurface* dxgi_surface = 0;
             result = ID3D11Texture2D_QueryInterface(back_buffer, &IID_IDXGISurface, (void**)&dxgi_surface);
             fatal_system(SUCCEEDED(result), "[DXGI] Failed to get surface.");
@@ -334,7 +337,7 @@ static void resize_back_buffer(window_t* window)
             D2D1_TEXT_ANTIALIAS_MODE text_antialias_mode = ID2D1RenderTarget_GetTextAntialiasMode(window->d2d1->render_target);
             fatal(text_antialias_mode == D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE, "[D2D1] Failed to set text anti-alias mode.");
 
-            D2D1_COLOR_F d2d1_color = { 1.0f, 1.0f, 1.0f, 1.0f };
+            D2D1_COLOR_F d2d1_color = { 0.9098f, 0.6098f, 0.0f, 1.0f };
             result = ID2D1RenderTarget_CreateSolidColorBrush(window->d2d1->render_target,
                                                              &d2d1_color,
                                                              0,
@@ -347,7 +350,7 @@ static void resize_back_buffer(window_t* window)
 
         window->current_width = window->width;
         window->current_height = window->height;
-    }
+   }
 }
 
 static bool process_thread_messages(window_t* window, input_t* input)
@@ -473,6 +476,8 @@ static DWORD WINAPI main_thread(void* param)
     window->d2d1 = d2d1_init();
     window->swap_chain = d3d11_create_swap_chain(window->hwnd, window->d3d11);
 
+    resize_back_buffer(window);
+
     // typedef struct Vertex
     // {
     //     f32 position[2];
@@ -576,12 +581,20 @@ static DWORD WINAPI main_thread(void* param)
     graphics_t graphics =
     {
         .create_buffer = gfx_create_buffer,
+        .create_texture_2d = gfx_create_texture_2d,
+        .create_sampler = gfx_create_sampler,
         .create_shader = gfx_create_shader,
         .create_program = gfx_create_program,
         .create_pipeline = gfx_create_pipeline,
         .set_vertex_buffer = gfx_set_vertex_buffer,
+        .set_srvs = gfx_set_srvs,
+        .set_samplers = gfx_set_samplers,
         .set_program = gfx_set_program,
         .set_pipeline = gfx_set_pipeline,
+        .get_backbuffer_target = gfx_get_backbuffer_target,
+        .begin_pass = gfx_begin_pass,
+        .end_pass = gfx_end_pass,
+        .draw = gfx_draw,
     };
 
     platform_t platform =
@@ -589,6 +602,8 @@ static DWORD WINAPI main_thread(void* param)
         .memory = &memory,
         .input = new_input,
         .graphics = &graphics,
+        .width = window->width,
+        .height = window->height,
     };
 
     for (u32 function_index = 0; function_index < array_count(graphics.functions); ++function_index)
@@ -609,11 +624,19 @@ static DWORD WINAPI main_thread(void* param)
 
     while (!quit)
     {
+        for (u32 key = KEY_NULL; key < KEY_COUNT; ++key)
+        {
+            new_input->keys[key] = (old_input->keys[key].action == KEY_ACTION_PRESS) ? old_input->keys[key] : (key_input_t){ 0 };
+        }
+        
         quit = process_thread_messages(window, new_input);
+
+        platform.input = new_input;
 
         resize_back_buffer(window);
 
-        platform.input = new_input;
+        platform.width = window->width;
+        platform.height = window->height;
         
         module.update(&platform);
 
@@ -621,11 +644,11 @@ static DWORD WINAPI main_thread(void* param)
 
         if (window->d3d11->rt_view)
         {
-            FLOAT color[] = { 0.0f, 0.0f, 0.0f, 0.0f };
-            ID3D11DeviceContext_ClearRenderTargetView(window->d3d11->context, window->d3d11->rt_view, color);
+            // FLOAT color[] = { 0.0f, 0.0f, 0.0f, 0.0f };
+            // ID3D11DeviceContext_ClearRenderTargetView(window->d3d11->context, window->d3d11->rt_view, color);
 
             // ID3D11DeviceContext_IASetInputLayout(window->d3d11->context, input_layout);
-            ID3D11DeviceContext_IASetPrimitiveTopology(window->d3d11->context, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+            // ID3D11DeviceContext_IASetPrimitiveTopology(window->d3d11->context, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
             // UINT offset = 0;
             // UINT stride = sizeof(Vertex);
             // ID3D11DeviceContext_IASetVertexBuffers(window->d3d11->context, 0, 1, &vertex_buffer, &stride, &offset);
@@ -633,57 +656,61 @@ static DWORD WINAPI main_thread(void* param)
             // ID3D11DeviceContext_VSSetShader(window->d3d11->context, vertex_shader, 0, 0);
 
             // NOTE: Output viewport covering all client area of window.
-            D3D11_VIEWPORT viewport =
-            {
-                .TopLeftX = 0,
-                .TopLeftY = 0,
-                .Width = (FLOAT)window->width,
-                .Height = (FLOAT)window->height,
-                .MinDepth = 0,
-                .MaxDepth = 1,
-            };
+            // D3D11_VIEWPORT viewport =
+            // {
+            //     .TopLeftX = 0,
+            //     .TopLeftY = 0,
+            //     .Width = (FLOAT)window->width,
+            //     .Height = (FLOAT)window->height,
+            //     .MinDepth = 0,
+            //     .MaxDepth = 1,
+            // };
 
-            ID3D11DeviceContext_RSSetViewports(window->d3d11->context, 1, &viewport);
+            // ID3D11DeviceContext_RSSetViewports(window->d3d11->context, 1, &viewport);
             // ID3D11DeviceContext_RSSetState(window->d3d11->context, rasterizer_state);
 
             // ID3D11DeviceContext_PSSetShader(window->d3d11->context, pixel_shader, 0, 0);
 
-            ID3D11DeviceContext_OMSetRenderTargets(window->d3d11->context, 1, &window->d3d11->rt_view, 0);
+            // ID3D11DeviceContext_OMSetRenderTargets(window->d3d11->context, 1, &window->d3d11->rt_view, 0);
 
-            ID3D11DeviceContext_Draw(window->d3d11->context, 3, 0);
+            // ID3D11DeviceContext_Draw(window->d3d11->context, 3, 0);
 
             ID2D1RenderTarget_BeginDraw(window->d2d1->render_target);
 
             IDWriteTextLayout* text_layout = 0;
-            WCHAR text[] = L"Hello world!";
-            // TODO: IDWriteFactory_CreateTextLayout should not be here I guess?
-            IDWriteFactory_CreateTextLayout(window->d2d1->dwrite->factory,
-                                            text,                                            
-                                            sizeof(text) / 2 - 1,
-                                            window->d2d1->dwrite->text_format,
-                                            (FLOAT)window->width,
-                                            (FLOAT)window->height,
-                                            &text_layout);
-            DWRITE_TEXT_METRICS text_metrics = { 0 };
-            IDWriteTextLayout_GetMetrics(text_layout, &text_metrics);
+            WCHAR text[32] = { 0 };
 
-            FLOAT left = (window->width) * 0.5f - (text_metrics.width * 0.5f);
-            // NOTE: Normalized device coordinates to pixels([1.0f, -1.0f] to [0.0f, 1.0f]) + padding
-            FLOAT top = ((window->height) * (1.0f - (-0.33f)) * 0.5f) + 8.0f;
-            D2D1_RECT_F layout =
+            if (swprintf(text, sizeof(text), L"%.1f ms", platform.delta_time * 1000) > 0)
             {
-                .left = left,
-                .top = top,
-                .right = left + text_metrics.width,
-                .bottom = top + text_metrics.height
-            };
-            D2D1_ROUNDED_RECT rounded_rect = {
-                .rect = layout,
-                .radiusX = 2.0f, .radiusY = 2.0f,
-            };
-            ID2D1RenderTarget_DrawRoundedRectangle(window->d2d1->render_target, &rounded_rect, (ID2D1Brush*)window->d2d1->solid_color_brush, 1.0f, 0);
-            ID2D1RenderTarget_DrawText(window->d2d1->render_target, text, sizeof(text) / 2 - 1, window->d2d1->dwrite->text_format,
-                                       &layout, (ID2D1Brush*)window->d2d1->solid_color_brush, D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT, DWRITE_MEASURING_MODE_NATURAL);
+                // TODO: IDWriteFactory_CreateTextLayout should not be here I guess?
+                IDWriteFactory_CreateTextLayout(window->d2d1->dwrite->factory,
+                                                text,                                            
+                                                sizeof(text) / 2 - 1,
+                                                window->d2d1->dwrite->text_format,
+                                                (FLOAT)window->width,
+                                                (FLOAT)window->height,
+                                                &text_layout);
+                DWRITE_TEXT_METRICS text_metrics = { 0 };
+                IDWriteTextLayout_GetMetrics(text_layout, &text_metrics);
+
+                FLOAT left = (window->width) * 0.5f - (text_metrics.width * 0.5f);
+                // NOTE: Normalized device coordinates to pixels([1.0f, -1.0f] to [0.0f, 1.0f]) + padding
+                FLOAT top = ((window->height) * (1.0f - (-0.33f)) * 0.5f) + 8.0f;
+                D2D1_RECT_F layout =
+                {
+                    .left = left,
+                    .top = top,
+                    .right = left + text_metrics.width,
+                    .bottom = top + text_metrics.height
+                };
+                D2D1_ROUNDED_RECT rounded_rect = {
+                    .rect = layout,
+                    .radiusX = 2.0f, .radiusY = 2.0f,
+                };
+                ID2D1RenderTarget_DrawRoundedRectangle(window->d2d1->render_target, &rounded_rect, (ID2D1Brush*)window->d2d1->solid_color_brush, 1.0f, 0);
+                ID2D1RenderTarget_DrawText(window->d2d1->render_target, text, sizeof(text) / 2 - 1, window->d2d1->dwrite->text_format,
+                                           &layout, (ID2D1Brush*)window->d2d1->solid_color_brush, D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT, DWRITE_MEASURING_MODE_NATURAL);
+            }
             
             ID2D1RenderTarget_EndDraw(window->d2d1->render_target, 0, 0);
 
@@ -703,17 +730,12 @@ static DWORD WINAPI main_thread(void* param)
         }
         else if (FAILED(result))
         {
-            assert(!"Failed to present swap chain.");
+            assert(!"[DXGI] Failed to present swap chain.");
         }
 
         input_t* temp_input = new_input;
         new_input = old_input;
         old_input = temp_input;
-
-        for (u32 key = KEY_NULL; key < KEY_COUNT; ++key)
-        {
-            new_input->keys[key] = (old_input->keys[key].action == KEY_ACTION_PRESS) ? old_input->keys[key] : (key_input_t){ 0 };
-        }
 
         u64 time_end = get_ticks();
         f32 elapsed_secs = get_secs_elapsed(time_last, time_end);
@@ -741,13 +763,6 @@ static DWORD WINAPI main_thread(void* param)
 
         platform.delta_time = get_secs_elapsed(time_last, time_end);
         time_last = time_end;
-
-        char delta_time_str[32] = { 0 };
-
-        if (snprintf(delta_time_str, sizeof(delta_time_str), "%.1f ms", platform.delta_time * 1000) > 0)
-        {
-            SetWindowText(window->hwnd, delta_time_str);
-        }
     }
 
     ExitProcess(0);

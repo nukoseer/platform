@@ -5,26 +5,28 @@
 #include "vertex_shader.h"
 #include "pixel_shader.h"
 
-typedef struct game_t
-{
-    graphics_buffer_t vertex_buffer;
-    graphics_shader_t vertex_shader;
-    graphics_shader_t pixel_shader;
-    graphics_program_t program;
-    graphics_pipeline_t pipeline;
-} game_t;
-
 typedef struct vertex_t
 {
     f32 position[2];
     f32 color[3];
 } vertex_t;
 
+typedef struct game_t
+{
+    vertex_t vertex_data[3];
+    graphics_buffer_t vertex_buffer;
+    graphics_texture_t offscreen_scene;
+    graphics_sampler_t sampler;
+    graphics_shader_t vertex_shader;
+    graphics_shader_t pixel_shader;
+    graphics_program_t program;
+    graphics_pipeline_t pipeline;
+} game_t;
+
 init_function(init)
 {
     memory_t* memory = platform->memory;
     graphics_t* graphics = platform->graphics;
-    
     game_t* game = (game_t*)memory->permanent;
 
     vertex_t vertex_data[] =
@@ -33,14 +35,37 @@ init_function(init)
         { { -0.33f, -0.33f }, { 0.0f, 1.0f, 0.0f, } },
         { { +0.33f, -0.33f }, { 0.0f, 0.0f, 1.0f, } },
     };
+
+    memcpy(game->vertex_data, vertex_data, sizeof(game->vertex_data));
     
     game->vertex_buffer = graphics->create_buffer(&(graphics_buffer_desc_t)
     {
         .data = vertex_data,
         .size = sizeof(vertex_data),
         .usage = BUFFER_USAGE_IMMUTABLE,
-        .bind = BUFFER_BIND_VERTEX_BUFFER
+        .bind = BIND_VERTEX_BUFFER,
     });
+
+    // TODO: This is for offscreen rendering.
+    // It should be same format, width and height with backbuffer.
+    // Probably we should update this when backbuffer is resized.
+    game->offscreen_scene = graphics->create_texture_2d(&(graphics_texture_2d_desc_t)
+    {
+        .format = FORMAT_R8G8B8A8_UNORM,
+        .bind = BIND_SHADER_RESOURCE | BIND_RENDER_TARGET,
+        .width = platform->width,
+        .height = platform->height,
+    }, 0, 0);
+
+    game->sampler = graphics->create_sampler(&(graphics_sampler_desc_t)
+    {
+        .filter = FILTER_MIN_MAG_MIP_POINT,
+        .address_u = TEXTURE_ADDRESS_WRAP,
+        .address_v = TEXTURE_ADDRESS_WRAP,
+        .address_w = TEXTURE_ADDRESS_WRAP,
+    });
+
+    // TODO: Create RenderTargetView for offscreen_scene to render.
 
     game->vertex_shader = graphics->create_shader(&(graphics_shader_desc_t)
     {
@@ -84,10 +109,14 @@ render_function(render)
 {
     memory_t* memory = platform->memory;
     graphics_t* graphics = platform->graphics;
-
     game_t* game = (game_t*)memory->permanent;
 
+    graphics_target_t backbuffer_target = graphics->get_backbuffer_target();
+
+    graphics->begin_pass(backbuffer_target, &(graphics_pass_desc_t){ .clear_color = true, .clear_rgba = { 1.0f, 0.9098f, 0.9098f, 0.0f }});
+    graphics->set_vertex_buffer(game->vertex_buffer, 0, sizeof(vertex_t), 0);
     graphics->set_program(game->program);
     graphics->set_pipeline(game->pipeline);
-    graphics->set_vertex_buffer(game->vertex_buffer, 0, 2 * sizeof(f32) + 3 * sizeof(f32), 0);
+    graphics->draw(TOPOLOGY_TRIANGLE_LIST, array_count(game->vertex_data), 0);
+    graphics->end_pass();
 }
