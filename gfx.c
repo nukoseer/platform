@@ -1,5 +1,6 @@
 // TODO: This is just random value for now.
 #define GFX_MAX_RESOUCE 32
+#define GFX_BACKBUFFER_TARGET_INDEX 0xFFFFFFFF
 
 typedef struct gfx_buffer_t
 {
@@ -58,17 +59,17 @@ static gfx_shader_t global_shaders[GFX_MAX_RESOUCE];
 static gfx_program_t global_programs[GFX_MAX_RESOUCE];
 static gfx_pipeline_t global_pipelines[GFX_MAX_RESOUCE];
 
-static usize global_buffer_count = 1;
-static usize global_texture_count = 1;
-// TODO: Use 0th index as back buffer target?
-// We should think how to handle this properly.
-static usize global_target_count = 1;
-static usize global_sampler_count = 1;
-static usize global_shader_count = 1;
-static usize global_program_count = 1;
-static usize global_pipeline_count = 1;
+static usize global_buffer_count;
+static usize global_texture_count;
+static usize global_target_count;
+static usize global_sampler_count;
+static usize global_shader_count;
+static usize global_program_count;
+static usize global_pipeline_count;
 
 static usize global_pass_count;
+
+gfx_target_t global_backbuffer_target;
 
 static DXGI_FORMAT map_dxgi_format(graphics_format_t format)
 {
@@ -236,6 +237,14 @@ static D3D11_PRIMITIVE_TOPOLOGY map_primitive_topology(graphics_topology_t topol
     return primitive_topology;
 }
 
+static gfx_target_t* get_gfx_target(usize target_index)
+{
+    gfx_target_t* gfx_target = (target_index == GFX_BACKBUFFER_TARGET_INDEX ?
+                                &global_backbuffer_target : global_targets + target_index);
+
+    return gfx_target;
+}
+
 static graphics_create_buffer_function(gfx_create_buffer)
 {
     graphics_buffer_t graphics_buffer = { 0 };
@@ -288,7 +297,7 @@ static graphics_create_texture_2d_function(gfx_create_texture_2d)
     // TODO: Probably we should think about failure cases.
     assert(SUCCEEDED(result) && "[GFX] Failed to create texture 2d.");
 
-    usize texture_index = global_texture_count++;
+    usize texture_index = global_texture_count++ % GFX_MAX_RESOUCE;
     gfx_texture_t* gfx_texture = global_textures + texture_index;
 
     *gfx_texture = (gfx_texture_t)
@@ -327,8 +336,8 @@ static graphics_create_target_function(gfx_create_target)
     assert(gfx_texture->texture && "[GFX] Invalid texture for target.");
     
     graphics_target_t graphics_target = { 0 };
-    usize target_index = global_target_count++;
-    gfx_target_t* gfx_target = global_targets + target_index;
+    usize target_index = global_target_count++ % GFX_MAX_RESOUCE;
+    gfx_target_t* gfx_target = get_gfx_target(target_index);
 
     D3D11_RENDER_TARGET_VIEW_DESC desc =
     {
@@ -382,12 +391,12 @@ static graphics_create_shader_function(gfx_create_shader)
     usize shader_index = global_shader_count++;
     gfx_shader_t* gfx_shader = global_shaders + shader_index;
 
-    if (shader_desc->type == VERTEX_SHADER_TYPE)
+    if (shader_desc->stage == STAGE_VERTEX_SHADER)
     {
         gfx_shader->shader = d3d11_create_vertex_shader(global_d3d11.device, shader_desc->bytecode, shader_desc->bytecode_size);
         
     }
-    else if (shader_desc->type == PIXEL_SHADER_TYPE)
+    else if (shader_desc->stage == STAGE_PIXEL_SHADER)
     {
         gfx_shader->shader = d3d11_create_pixel_shader(global_d3d11.device, shader_desc->bytecode, shader_desc->bytecode_size);
     }
@@ -462,6 +471,46 @@ static graphics_create_pipeline_function(gfx_create_pipeline)
     return graphics_pipeline;
 }
 
+static graphics_is_valid_texture_2d_function(gfx_is_valid_texture_2d)
+{
+    usize texture_index = (usize)texture.platform;
+    gfx_texture_t* gfx_texture = global_textures + texture_index;
+    bool is_valid = !!gfx_texture->texture;
+
+    return is_valid;
+}
+
+static graphics_is_valid_target_function(gfx_is_valid_target)
+{
+    usize target_index = (usize)target.platform;
+    gfx_target_t* gfx_target = global_targets + target_index;
+    bool is_valid = !!gfx_target->render_target;
+
+    return is_valid;
+}
+
+// TODO: We need some kind of generation counter to handle deleted objects.
+static graphics_delete_texture_2d_function(gfx_delete_texture_2d)
+{
+    usize texture_index = (usize)texture.platform;
+    gfx_texture_t* gfx_texture = global_textures + texture_index;
+
+    ID3D11ShaderResourceView_Release(gfx_texture->srv);
+    ID3D11Texture2D_Release(gfx_texture->texture);
+    
+    *gfx_texture = (gfx_texture_t){ 0 };
+}
+
+static graphics_delete_target_function(gfx_delete_target)
+{
+    usize target_index = (usize)target.platform;
+    gfx_target_t* gfx_target = get_gfx_target(target_index);
+
+    ID3D11RenderTargetView_Release(gfx_target->render_target);
+    
+    *gfx_target = (gfx_target_t){ 0 };
+}
+
 static graphics_set_vertex_buffer_function(gfx_set_vertex_buffer)
 {
     usize vertex_buffer_index = (usize)vertex_buffer.platform;
@@ -495,7 +544,8 @@ static graphics_set_samplers_function(gfx_set_samplers)
 
     for (u32 index = 0; index < count; ++index)
     {
-        if (!samplers || !samplers[index].platform)
+        if (!samplers)
+            // || !samplers[index].platform)
         {
             samplers_states[index] = 0;
             continue;
@@ -531,7 +581,8 @@ static graphics_set_srvs_function(gfx_set_srvs)
 
     for (u32 index = 0; index < count; ++index)
     {
-        if (!textures || !textures[index].platform)
+        if (!textures)
+            // || !textures[index].platform)
         {
             srvs[index] = 0;
             continue;
@@ -563,13 +614,14 @@ static graphics_set_srvs_function(gfx_set_srvs)
 static graphics_get_backbuffer_target_function(gfx_get_backbuffer_target)
 {
     graphics_target_t graphics_target = { 0 };
-    gfx_target_t* gfx_target = global_targets + 0;
+    usize target_index = GFX_BACKBUFFER_TARGET_INDEX;
+    gfx_target_t* gfx_target = get_gfx_target(target_index);
 
     gfx_target->render_target = global_d3d11.rt_view;
     gfx_target->width = global_d3d11.width;
     gfx_target->height = global_d3d11.height;
 
-    graphics_target.platform = 0;
+    graphics_target.platform = target_index;
 
     return graphics_target;
 }
@@ -577,7 +629,7 @@ static graphics_get_backbuffer_target_function(gfx_get_backbuffer_target)
 static graphics_get_target_size_function(gfx_get_target_size)
 {
     usize target_index = (usize)target.platform;
-    gfx_target_t* gfx_target = global_targets + target_index;
+    gfx_target_t* gfx_target = get_gfx_target(target_index);
 
     assert(gfx_target->render_target && "[GFX] Invalid target.");
 
@@ -588,7 +640,7 @@ static graphics_get_target_size_function(gfx_get_target_size)
 static graphics_begin_pass_function(gfx_begin_pass)
 {
     usize target_index = (usize)target.platform;
-    gfx_target_t* gfx_target = global_targets + target_index;
+    gfx_target_t* gfx_target = get_gfx_target(target_index);
 
     if (gfx_target->render_target)
     {
@@ -635,6 +687,8 @@ static graphics_end_pass_function(gfx_end_pass)
     ID3D11DeviceContext_RSSetState(global_d3d11.context, null_rs);
 
     ID3D11DeviceContext_OMSetRenderTargets(global_d3d11.context, 0, 0, 0);
+
+    ID3D11DeviceContext_IASetInputLayout(global_d3d11.context, 0);
     
     // ID3D11Buffer* null_buffer = 0;
     // UINT stride = 0;

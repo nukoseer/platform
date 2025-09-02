@@ -34,6 +34,9 @@
 
 #define PLATFORM_WINDOW_CLASS "platform_window"
 
+__declspec(dllexport) unsigned long NvOptimusEnablement = 0x00000001;
+__declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
+
 #define fatal_system(x, message) do { if (!(x)) { fatal_error_system(message); } } while (0)
 #define fatal(x, message) do { if (!(x)) { fatal_error(message); } } while (0)
 
@@ -587,6 +590,10 @@ static DWORD WINAPI main_thread(void* param)
         .create_shader = gfx_create_shader,
         .create_program = gfx_create_program,
         .create_pipeline = gfx_create_pipeline,
+        .is_valid_texture_2d = gfx_is_valid_texture_2d,
+        .is_valid_target = gfx_is_valid_target,
+        .delete_texture_2d = gfx_delete_texture_2d,
+        .delete_target = gfx_delete_target,
         .set_vertex_buffer = gfx_set_vertex_buffer,
         .set_srvs = gfx_set_srvs,
         .set_samplers = gfx_set_samplers,

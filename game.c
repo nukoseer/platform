@@ -19,17 +19,16 @@ typedef struct game_t
     vertex_t vertex_data[3];
     graphics_buffer_t vertex_buffer;
     graphics_texture_t offscreen_scene;
-    graphics_sampler_t sampler;
     graphics_target_t offscreen_target;
     graphics_shader_t vertex_shader;
     graphics_shader_t pixel_shader;
     graphics_program_t program;
-    graphics_pipeline_t pipeline;
+    graphics_pipeline_t default_pipeline;
 
+    graphics_sampler_t point_sampler;
     graphics_shader_t composite_vertex_shader;
     graphics_shader_t composite_pixel_shader;
     graphics_program_t composite_program;
-    graphics_pipeline_t composite_pipeline;
 } game_t;
 
 init_function(init)
@@ -55,40 +54,18 @@ init_function(init)
         .bind = BIND_VERTEX_BUFFER,
     });
 
-    // TODO: This is for offscreen rendering.
-    // It should be same format, width and height with backbuffer.
-    // Probably we should update this when backbuffer is resized.
-    game->offscreen_scene = graphics->create_texture_2d(&(graphics_texture_2d_desc_t)
-    {
-        .format = FORMAT_R8G8B8A8_UNORM,
-        .bind = BIND_SHADER_RESOURCE | BIND_RENDER_TARGET,
-        .width = platform->width,
-        .height = platform->height,
-    }, 0, 0);
-
-    game->sampler = graphics->create_sampler(&(graphics_sampler_desc_t)
-    {
-        .filter = FILTER_MIN_MAG_MIP_POINT,
-        .address_u = TEXTURE_ADDRESS_WRAP,
-        .address_v = TEXTURE_ADDRESS_WRAP,
-        .address_w = TEXTURE_ADDRESS_WRAP,
-    });
-
-    // NOTE: Create RenderTargetView for offscreen_scene to render.
-    game->offscreen_target = graphics->create_target(game->offscreen_scene);
-
     game->vertex_shader = graphics->create_shader(&(graphics_shader_desc_t)
     {
         .bytecode = vshader,
         .bytecode_size = sizeof(vshader),
-        .type = VERTEX_SHADER_TYPE,
+        .stage = STAGE_VERTEX_SHADER,
     });
 
     game->pixel_shader = graphics->create_shader(&(graphics_shader_desc_t)
     {
         .bytecode = pshader,
         .bytecode_size = sizeof(pshader),
-        .type = PIXEL_SHADER_TYPE,
+        .stage = STAGE_PIXEL_SHADER,
     });
         
     game->program = graphics->create_program(&(graphics_program_desc_t)
@@ -103,7 +80,7 @@ init_function(init)
         .attribute_count = 2,
     });
 
-    game->pipeline = graphics->create_pipeline(&(graphics_pipeline_desc_t)
+    game->default_pipeline = graphics->create_pipeline(&(graphics_pipeline_desc_t)
     {
         .cull = false,
         .wireframe = false,
@@ -114,14 +91,14 @@ init_function(init)
     {
         .bytecode = composite_vshader,
         .bytecode_size = sizeof(composite_vshader),
-        .type = VERTEX_SHADER_TYPE,
+        .stage = STAGE_VERTEX_SHADER,
     });
 
     game->composite_pixel_shader = graphics->create_shader(&(graphics_shader_desc_t)
     {
         .bytecode = composite_pshader,
         .bytecode_size = sizeof(composite_pshader),
-        .type = PIXEL_SHADER_TYPE,
+        .stage = STAGE_PIXEL_SHADER,
     });
         
     game->composite_program = graphics->create_program(&(graphics_program_desc_t)
@@ -133,10 +110,12 @@ init_function(init)
         .attribute_count = 0,
     });
 
-    game->composite_pipeline = graphics->create_pipeline(&(graphics_pipeline_desc_t)
+    game->point_sampler = graphics->create_sampler(&(graphics_sampler_desc_t)
     {
-        .cull = false,
-        .wireframe = false,
+        .filter = FILTER_MIN_MAG_MIP_POINT,
+        .address_u = TEXTURE_ADDRESS_WRAP,
+        .address_v = TEXTURE_ADDRESS_WRAP,
+        .address_w = TEXTURE_ADDRESS_WRAP,
     });
 }
 
@@ -145,41 +124,66 @@ update_function(update)
     
 }
 
+static void resize_offscreen_buffer(graphics_t* graphics, game_t* game)
+{
+    bool is_valid = graphics->is_valid_target(game->offscreen_target);
+    bool resize = false;
+    u32 backbuffer_width = 0;
+    u32 backbuffer_height = 0;
+    
+    graphics->get_target_size(graphics->get_backbuffer_target(), &backbuffer_width, &backbuffer_height);
+    
+    if (is_valid)
+    {
+        u32 offscreen_width = 0;
+        u32 offscreen_height = 0;
+
+        graphics->get_target_size(game->offscreen_target, &offscreen_width, &offscreen_height);
+
+        if (offscreen_width != backbuffer_width || offscreen_height != backbuffer_height)
+        {
+            graphics->delete_target(game->offscreen_target);
+            graphics->delete_texture_2d(game->offscreen_scene);
+            resize = true;
+        }
+    }
+
+    if (!is_valid || resize)
+    {
+        game->offscreen_scene = graphics->create_texture_2d(&(graphics_texture_2d_desc_t)
+        {
+            .format = FORMAT_R8G8B8A8_UNORM,
+            .bind = BIND_SHADER_RESOURCE | BIND_RENDER_TARGET,
+            .width = backbuffer_width,
+            .height = backbuffer_height,
+        }, 0, 0);
+
+        // NOTE: Create RenderTargetView for offscreen_scene to render.
+        game->offscreen_target = graphics->create_target(game->offscreen_scene);   
+    }
+}
+
 render_function(render)
 {
     memory_t* memory = platform->memory;
     graphics_t* graphics = platform->graphics;
     game_t* game = (game_t*)memory->permanent;
 
-    graphics_target_t backbuffer_target = graphics->get_backbuffer_target();
-    graphics_target_t offscreen_target = game->offscreen_target;
-
-    u32 backbuffer_width = 0;
-    u32 backbuffer_height = 0;
-    u32 offscreen_width = 0;
-    u32 offscreen_height = 0;
-
-    graphics->get_target_size(backbuffer_target, &backbuffer_width, &backbuffer_height);
-    graphics->get_target_size(offscreen_target, &offscreen_width, &offscreen_height);
-
-    if (offscreen_width != backbuffer_width || offscreen_height != backbuffer_height)
-    {
-        // TODO: Recreate offscreen texture and target.
-    }
-
+    resize_offscreen_buffer(graphics, game);
+    
     // NOTE: Offscreen rendering pass.
-    graphics->begin_pass(offscreen_target, &(graphics_pass_desc_t){ .clear_color = true, .clear_rgba = { 1.0f, 0.9098f, 0.9098f, 0.0f }});
+    graphics->begin_pass(game->offscreen_target, &(graphics_pass_desc_t){ .clear_color = true, .clear_rgba = { 1.0f, 0.9098f, 0.9098f, 0.0f }});
     graphics->set_vertex_buffer(game->vertex_buffer, 0, sizeof(vertex_t), 0);
     graphics->set_program(game->program);
-    graphics->set_pipeline(game->pipeline);
+    graphics->set_pipeline(game->default_pipeline);
     graphics->draw(TOPOLOGY_TRIANGLE_LIST, array_count(game->vertex_data), 0);
     graphics->end_pass();
 
     // NOTE: Composite pass rendering to backbuffer.
-    graphics->begin_pass(backbuffer_target, &(graphics_pass_desc_t){ .clear_color = true, .clear_rgba = { 0.0f, 0.0f, 0.0f, 1.0f }});
+    graphics->begin_pass(graphics->get_backbuffer_target(), &(graphics_pass_desc_t){ .clear_color = false });
     graphics->set_program(game->composite_program);
-    graphics->set_pipeline(game->composite_pipeline);
-    graphics->set_samplers(STAGE_PIXEL_SHADER, &game->sampler, 1, 0);
+    graphics->set_pipeline(game->default_pipeline);
+    graphics->set_samplers(STAGE_PIXEL_SHADER, &game->point_sampler, 1, 0);
     graphics->set_srvs(STAGE_PIXEL_SHADER, &game->offscreen_scene, 1, 0);
     graphics->draw(TOPOLOGY_TRIANGLE_LIST, 3, 0);
     graphics->end_pass();

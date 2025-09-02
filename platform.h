@@ -209,21 +209,11 @@ typedef struct graphics_sampler_t
     usize platform;
 } graphics_sampler_t;
 
-typedef enum graphics_shader_type_t
-{
-    NULL_SHADER_TYPE,
-    
-    VERTEX_SHADER_TYPE,
-    PIXEL_SHADER_TYPE,
-    
-    COUNT_SHADER_TYPE,
-} graphics_shader_type_t;
-
 typedef struct graphics_shader_desc_t
 {
     const void* bytecode;
     usize bytecode_size;
-    graphics_shader_type_t type;
+    graphics_stage_t stage;
 } graphics_shader_desc_t;
 
 typedef struct graphics_shader_t
@@ -305,7 +295,7 @@ typedef graphics_create_texture_2d_function(graphics_create_texture_2d_f);
 #define graphics_create_sampler_function(name) graphics_sampler_t name(const graphics_sampler_desc_t* sampler_desc)
 typedef graphics_create_sampler_function(graphics_create_sampler_f);
 
-#define graphics_create_target_function(name) graphics_target_t name(const graphics_texture_t texture)
+#define graphics_create_target_function(name) graphics_target_t name(graphics_texture_t texture)
 typedef graphics_create_target_function(graphics_create_target_f);
 
 #define graphics_create_shader_function(name) graphics_shader_t name(const graphics_shader_desc_t* shader_desc)
@@ -316,6 +306,18 @@ typedef graphics_create_program_function(graphics_create_program_f);
 
 #define graphics_create_pipeline_function(name) graphics_pipeline_t name(const graphics_pipeline_desc_t* pipeline_desc)
 typedef graphics_create_pipeline_function(graphics_create_pipeline_f);
+
+#define graphics_is_valid_texture_2d_function(name) bool name(graphics_texture_t texture)
+typedef graphics_is_valid_texture_2d_function(graphics_is_valid_texture_2d_f);
+
+#define graphics_is_valid_target_function(name) bool name(graphics_target_t target)
+typedef graphics_is_valid_target_function(graphics_is_valid_target_f);
+
+#define graphics_delete_texture_2d_function(name) void name(graphics_texture_t texture)
+typedef graphics_delete_texture_2d_function(graphics_delete_texture_2d_f);
+
+#define graphics_delete_target_function(name) void name(graphics_target_t target)
+typedef graphics_delete_target_function(graphics_delete_target_f);
 
 #define graphics_set_vertex_buffer_function(name) void name(graphics_buffer_t vertex_buffer, u32 slot, u32 stride, u32 offset)
 typedef graphics_set_vertex_buffer_function(graphics_set_vertex_buffer_f);
@@ -360,6 +362,10 @@ typedef struct graphics_t
             graphics_create_shader_f* create_shader;
             graphics_create_program_f* create_program;
             graphics_create_pipeline_f* create_pipeline;
+            graphics_is_valid_texture_2d_f* is_valid_texture_2d;
+            graphics_is_valid_target_f* is_valid_target;
+            graphics_delete_texture_2d_f* delete_texture_2d;
+            graphics_delete_target_f* delete_target;
             graphics_set_vertex_buffer_f* set_vertex_buffer;
             graphics_set_srvs_f* set_srvs;
             graphics_set_samplers_f* set_samplers;
