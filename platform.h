@@ -305,6 +305,9 @@ typedef graphics_create_texture_2d_function(graphics_create_texture_2d_f);
 #define graphics_create_sampler_function(name) graphics_sampler_t name(const graphics_sampler_desc_t* sampler_desc)
 typedef graphics_create_sampler_function(graphics_create_sampler_f);
 
+#define graphics_create_target_function(name) graphics_target_t name(const graphics_texture_t texture)
+typedef graphics_create_target_function(graphics_create_target_f);
+
 #define graphics_create_shader_function(name) graphics_shader_t name(const graphics_shader_desc_t* shader_desc)
 typedef graphics_create_shader_function(graphics_create_shader_f);
 
@@ -332,6 +335,9 @@ typedef graphics_set_srvs_function(graphics_set_srvs_f);
 #define graphics_get_backbuffer_target_function(name) graphics_target_t name(void)
 typedef graphics_get_backbuffer_target_function(graphics_get_backbuffer_target_f);
 
+#define graphics_get_target_size_function(name) void name(graphics_target_t target, u32* width, u32* height)
+typedef graphics_get_target_size_function(graphics_get_target_size_f);
+
 #define graphics_begin_pass_function(name) void name(graphics_target_t target, const graphics_pass_desc_t* pass_desc)
 typedef graphics_begin_pass_function(graphics_begin_pass_f);
 
@@ -350,6 +356,7 @@ typedef struct graphics_t
             graphics_create_buffer_f* create_buffer;
             graphics_create_texture_2d_f* create_texture_2d;
             graphics_create_sampler_f* create_sampler;
+            graphics_create_target_f* create_target;
             graphics_create_shader_f* create_shader;
             graphics_create_program_f* create_program;
             graphics_create_pipeline_f* create_pipeline;
@@ -359,6 +366,7 @@ typedef struct graphics_t
             graphics_set_program_f* set_program;
             graphics_set_pipeline_f* set_pipeline;
             graphics_get_backbuffer_target_f* get_backbuffer_target;
+            graphics_get_target_size_f* get_target_size;
             graphics_begin_pass_f* begin_pass;
             graphics_end_pass_f* end_pass;
             graphics_draw_f* draw;

@@ -16,6 +16,14 @@ typedef struct gfx_texture_t
     UINT height;
 } gfx_texture_t;
 
+typedef struct gfx_target_t
+{
+    // TODO: Multiple render targets and optional depth stencil?
+    ID3D11RenderTargetView* render_target;
+    i32 width;
+    i32 height;
+} gfx_target_t;
+
 typedef struct gfx_sampler_t
 {
     ID3D11SamplerState* sampler_state;
@@ -40,33 +48,25 @@ typedef struct gfx_pipeline_t
     ID3D11RasterizerState* rasterizer_state;
 } gfx_pipeline_t;
 
-typedef struct gfx_target_t
-{
-    // TODO: Multiple render targets and optional depth stencil?
-    ID3D11RenderTargetView* render_target;
-    i32 width;
-    i32 height;
-} gfx_target_t;
-
 // TODO: We should manage the lifetime of these resouces.
 // Now we only create new resources, we never release.
 static gfx_buffer_t global_buffers[GFX_MAX_RESOUCE];
 static gfx_texture_t global_textures[GFX_MAX_RESOUCE];
+static gfx_target_t global_targets[GFX_MAX_RESOUCE];
 static gfx_sampler_t global_samplers[GFX_MAX_RESOUCE];
 static gfx_shader_t global_shaders[GFX_MAX_RESOUCE];
 static gfx_program_t global_programs[GFX_MAX_RESOUCE];
 static gfx_pipeline_t global_pipelines[GFX_MAX_RESOUCE];
-static gfx_target_t global_targets[GFX_MAX_RESOUCE];
 
-static usize global_buffer_count;
-static usize global_texture_count;
-static usize global_sampler_count;
-static usize global_shader_count;
-static usize global_program_count;
-static usize global_pipeline_count;
+static usize global_buffer_count = 1;
+static usize global_texture_count = 1;
 // TODO: Use 0th index as back buffer target?
 // We should think how to handle this properly.
 static usize global_target_count = 1;
+static usize global_sampler_count = 1;
+static usize global_shader_count = 1;
+static usize global_program_count = 1;
+static usize global_pipeline_count = 1;
 
 static usize global_pass_count;
 
@@ -288,10 +288,10 @@ static graphics_create_texture_2d_function(gfx_create_texture_2d)
     // TODO: Probably we should think about failure cases.
     assert(SUCCEEDED(result) && "[GFX] Failed to create texture 2d.");
 
-    usize texture_2d_index = global_texture_count++;
-    gfx_texture_t* gfx_texture_2d = global_textures + global_texture_count;
+    usize texture_index = global_texture_count++;
+    gfx_texture_t* gfx_texture = global_textures + texture_index;
 
-    *gfx_texture_2d = (gfx_texture_t)
+    *gfx_texture = (gfx_texture_t)
     {
         .texture = texture_2d,
         .srv = 0,
@@ -309,14 +309,44 @@ static graphics_create_texture_2d_function(gfx_create_texture_2d)
             .Texture2D = { .MostDetailedMip = 0, .MipLevels = 1, },
         };
 
-        result = ID3D11Device_CreateShaderResourceView(global_d3d11.device, (ID3D11Resource*)texture_2d, &srv_desc, &gfx_texture_2d->srv);
+        result = ID3D11Device_CreateShaderResourceView(global_d3d11.device, (ID3D11Resource*)texture_2d, &srv_desc, &gfx_texture->srv);
         // TODO: Maybe this is not fatal but leave it for checking.
         assert(SUCCEEDED(result) && "[GFX] Failed to create shader resource view.");
     }
     
-    graphics_texture.platform = texture_2d_index;
+    graphics_texture.platform = texture_index;
 
     return graphics_texture;
+}
+
+static graphics_create_target_function(gfx_create_target)
+{
+    usize texture_index = (usize)texture.platform;
+    gfx_texture_t* gfx_texture = global_textures + texture_index;
+
+    assert(gfx_texture->texture && "[GFX] Invalid texture for target.");
+    
+    graphics_target_t graphics_target = { 0 };
+    usize target_index = global_target_count++;
+    gfx_target_t* gfx_target = global_targets + target_index;
+
+    D3D11_RENDER_TARGET_VIEW_DESC desc =
+    {
+        .Format = gfx_texture->format,
+        .ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D,
+        .Texture2D = { .MipSlice = 0, },
+    };
+
+    HRESULT result = ID3D11Device_CreateRenderTargetView(global_d3d11.device, (ID3D11Resource*)gfx_texture->texture, &desc, &gfx_target->render_target);
+
+    gfx_target->width = gfx_texture->width;
+    gfx_target->height = gfx_texture->height;
+
+    assert(SUCCEEDED(result) && "[GFX] Failed to create render target view.");
+    
+    graphics_target.platform = target_index;
+
+    return graphics_target;
 }
 
 static graphics_create_sampler_function(gfx_create_sampler)
@@ -398,8 +428,11 @@ static graphics_create_program_function(gfx_create_program)
 
     gfx_program->vertex_shader = vertex_shader->shader;
     gfx_program->pixel_shader = pixel_shader->shader;
-    
-    gfx_program->input_layout = d3d11_create_input_layout(global_d3d11.device, descs, program_desc->attribute_count, vertex_shader->bytecode, vertex_shader->bytecode_size);
+
+    if (program_desc->attributes && program_desc->attribute_count > 0)
+    {
+        gfx_program->input_layout = d3d11_create_input_layout(global_d3d11.device, descs, program_desc->attribute_count, vertex_shader->bytecode, vertex_shader->bytecode_size);
+    }
 
     graphics_program.platform = program_index;
 
@@ -468,7 +501,7 @@ static graphics_set_samplers_function(gfx_set_samplers)
             continue;
         }
 
-        gfx_sampler_t* gfx_sampler = global_samplers + index;
+        gfx_sampler_t* gfx_sampler = global_samplers + samplers[index].platform;
         samplers_states[index] = gfx_sampler->sampler_state ? gfx_sampler->sampler_state : 0;
     }
 
@@ -504,7 +537,7 @@ static graphics_set_srvs_function(gfx_set_srvs)
             continue;
         }
         
-        gfx_texture_t* gfx_texture = global_textures + index;
+        gfx_texture_t* gfx_texture = global_textures + textures[index].platform;
         srvs[index] = gfx_texture->srv ? gfx_texture->srv : 0;
     }
 
@@ -541,6 +574,17 @@ static graphics_get_backbuffer_target_function(gfx_get_backbuffer_target)
     return graphics_target;
 }
 
+static graphics_get_target_size_function(gfx_get_target_size)
+{
+    usize target_index = (usize)target.platform;
+    gfx_target_t* gfx_target = global_targets + target_index;
+
+    assert(gfx_target->render_target && "[GFX] Invalid target.");
+
+    *width = (u32)gfx_target->width;
+    *height = (u32)gfx_target->height;
+}
+
 static graphics_begin_pass_function(gfx_begin_pass)
 {
     usize target_index = (usize)target.platform;
@@ -549,7 +593,12 @@ static graphics_begin_pass_function(gfx_begin_pass)
     if (gfx_target->render_target)
     {
         ID3D11DeviceContext_OMSetRenderTargets(global_d3d11.context, 1, &gfx_target->render_target, 0);
+        // TODO: We do not use any blend or depth/stencil states for now.
+        ID3D11DeviceContext_OMSetBlendState(global_d3d11.context, 0, 0, 0xffffffff);
+        ID3D11DeviceContext_OMSetDepthStencilState(global_d3d11.context, 0, 0);  
 
+        assert(gfx_target->width > 0 && gfx_target->height > 0 && "[GFX] Invalid target size.");
+        
         D3D11_VIEWPORT viewport =
         {
             .TopLeftX = 0,
@@ -577,7 +626,20 @@ static graphics_end_pass_function(gfx_end_pass)
 {
     assert(global_pass_count == 1 && "[GFX] Multiple begin pass.");
     --global_pass_count;
-    // TODO: Not sure what to do here?
+
+    ID3D11ShaderResourceView* null_srv = 0;
+    ID3D11DeviceContext_VSSetShaderResources(global_d3d11.context, 0, 1, &null_srv);
+    ID3D11DeviceContext_PSSetShaderResources(global_d3d11.context, 0, 1, &null_srv);
+
+    ID3D11RasterizerState* null_rs = 0;
+    ID3D11DeviceContext_RSSetState(global_d3d11.context, null_rs);
+
+    ID3D11DeviceContext_OMSetRenderTargets(global_d3d11.context, 0, 0, 0);
+    
+    // ID3D11Buffer* null_buffer = 0;
+    // UINT stride = 0;
+    // UINT offset = 0;
+    // ID3D11DeviceContext_IASetVertexBuffers(global_d3d11.context, 0, 1, &null_buffer, &stride, &offset);
 }
 
 static graphics_draw_function(gfx_draw)
