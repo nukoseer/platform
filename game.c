@@ -5,14 +5,23 @@
 #include "vertex_shader.h"
 #include "pixel_shader.h"
 
-#include "composite_vertex_shader.h"
-#include "composite_pixel_shader.h"
+#include "post_vertex_shader.h"
+#include "post_pixel_shader.h"
 
 typedef struct vertex_t
 {
     f32 position[2];
     f32 color[3];
 } vertex_t;
+
+typedef struct post_setting_t
+{
+    f32 inverse_dst_size[2];
+    f32 inverse_src_size[2];
+
+    f32 invert;
+    f32 _pad[3];
+} post_setting_t;
 
 typedef struct game_t
 {
@@ -25,10 +34,11 @@ typedef struct game_t
     graphics_program_t program;
     graphics_pipeline_t default_pipeline;
 
+    graphics_buffer_t post_buffer;
     graphics_sampler_t point_sampler;
-    graphics_shader_t composite_vertex_shader;
-    graphics_shader_t composite_pixel_shader;
-    graphics_program_t composite_program;
+    graphics_shader_t post_vertex_shader;
+    graphics_shader_t post_pixel_shader;
+    graphics_program_t post_program;
 } game_t;
 
 init_function(init)
@@ -50,7 +60,7 @@ init_function(init)
     {
         .data = vertex_data,
         .size = sizeof(vertex_data),
-        .usage = BUFFER_USAGE_IMMUTABLE,
+        .usage = USAGE_IMMUTABLE,
         .bind = BIND_VERTEX_BUFFER,
     });
 
@@ -86,25 +96,32 @@ init_function(init)
         .wireframe = false,
     });
 
-    // NOTE: Composite shaders and pipeline.
-    game->composite_vertex_shader = graphics->create_shader(&(graphics_shader_desc_t)
+    // NOTE: Post shaders and pipeline.
+    game->post_buffer = graphics->create_buffer(&(graphics_buffer_desc_t)
     {
-        .bytecode = composite_vshader,
-        .bytecode_size = sizeof(composite_vshader),
+        .size = sizeof(post_setting_t),
+        .usage = USAGE_DYNAMIC,
+        .bind = BIND_CONSTANT_BUFFER,
+    });
+    
+    game->post_vertex_shader = graphics->create_shader(&(graphics_shader_desc_t)
+    {
+        .bytecode = post_vshader,
+        .bytecode_size = sizeof(post_vshader),
         .stage = STAGE_VERTEX_SHADER,
     });
 
-    game->composite_pixel_shader = graphics->create_shader(&(graphics_shader_desc_t)
+    game->post_pixel_shader = graphics->create_shader(&(graphics_shader_desc_t)
     {
-        .bytecode = composite_pshader,
-        .bytecode_size = sizeof(composite_pshader),
+        .bytecode = post_pshader,
+        .bytecode_size = sizeof(post_pshader),
         .stage = STAGE_PIXEL_SHADER,
     });
         
-    game->composite_program = graphics->create_program(&(graphics_program_desc_t)
+    game->post_program = graphics->create_program(&(graphics_program_desc_t)
     {
-        .vertex_shader = game->composite_vertex_shader,
-        .pixel_shader = game->composite_pixel_shader,
+        .vertex_shader = game->post_vertex_shader,
+        .pixel_shader = game->post_pixel_shader,
         // NOTE: No input layout.
         .attributes = 0,
         .attribute_count = 0,
@@ -173,15 +190,25 @@ render_function(render)
     
     // NOTE: Offscreen rendering pass.
     graphics->begin_pass(game->offscreen_target, &(graphics_pass_desc_t){ .clear_color = true, .clear_rgba = { 1.0f, 0.9098f, 0.9098f, 0.0f }});
-    graphics->set_vertex_buffer(game->vertex_buffer, 0, sizeof(vertex_t), 0);
+    graphics->set_buffer(game->vertex_buffer, STAGE_VERTEX_SHADER, 0, sizeof(vertex_t), 0);
     graphics->set_program(game->program);
     graphics->set_pipeline(game->default_pipeline);
     graphics->draw(TOPOLOGY_TRIANGLE_LIST, array_count(game->vertex_data), 0);
     graphics->end_pass();
 
-    // NOTE: Composite pass rendering to backbuffer.
+    // NOTE: Post pass rendering to backbuffer.
     graphics->begin_pass(graphics->get_backbuffer_target(), &(graphics_pass_desc_t){ .clear_color = false });
-    graphics->set_program(game->composite_program);
+
+    post_setting_t post_setting =
+    {
+        .inverse_dst_size = { [0] = 1.0f / platform->width, [1] = 1.0f / platform->height },
+        .inverse_src_size = { [0] = 1.0f / platform->width, [1] = 1.0f / platform->height },
+        .invert = (platform->input->keys[KEY_T].action == KEY_ACTION_PRESS) ? 1.0f : 0.0f,
+    };
+    
+    graphics->update_buffer(game->post_buffer, &post_setting, 0, sizeof(post_setting));
+    graphics->set_buffer(game->post_buffer, STAGE_PIXEL_SHADER, 0, 0, 0);
+    graphics->set_program(game->post_program);
     graphics->set_pipeline(game->default_pipeline);
     graphics->set_samplers(STAGE_PIXEL_SHADER, &game->point_sampler, 1, 0);
     graphics->set_srvs(STAGE_PIXEL_SHADER, &game->offscreen_scene, 1, 0);

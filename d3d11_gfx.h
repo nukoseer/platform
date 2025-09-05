@@ -1,38 +1,5 @@
 #pragma once
 
-typedef enum d3d11_shader_type_t
-{
-    D3D11_NULL_SHADER_TYPE,
-
-    D3D11_VERTEX_SHADER_TYPE,
-    D3D11_PIXEL_SHADER_TYPE,
-
-    D3D11_COUNT_SHADER_TYPE,
-} d3d11_shader_type_t;
-
-typedef struct d3d11_shader_t
-{
-    d3d11_shader_type_t type;
-
-    union
-    {
-        ID3D11VertexShader* vertex;
-        ID3D11PixelShader* pixel;
-    };
-} d3d11_shader_t;
-
-typedef struct d3d11_input_layout_t
-{
-    ID3D11InputLayout* layout;
-} d3d11_input_layout_t;
-
-typedef struct d3d11_compile_t
-{
-    ID3DBlob* code;
-    void* data;
-    size_t size;
-} d3d11_compile_t;
-
 typedef struct d3d11_t
 {
     ID3D11Device* device;

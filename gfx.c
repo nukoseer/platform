@@ -6,6 +6,8 @@ typedef struct gfx_buffer_t
 {
     ID3D11Buffer* buffer;
     usize size;
+    D3D11_USAGE usage;
+    D3D11_BIND_FLAG bind;
 } gfx_buffer_t;
 
 typedef struct gfx_texture_t
@@ -101,9 +103,9 @@ static DXGI_FORMAT map_dxgi_format(graphics_format_t format)
     return dxgi_format;
 }
 
-static UINT map_bind(graphics_bind_t bind)
+static D3D11_BIND_FLAG map_bind(graphics_bind_t bind)
 {
-    UINT bind_map = 0;
+    D3D11_BIND_FLAG bind_map = 0;
 
     if (bind & BIND_VERTEX_BUFFER)
         bind_map |= D3D11_BIND_VERTEX_BUFFER;
@@ -146,6 +148,36 @@ static D3D11_FILTER map_filter(graphics_filter_t filter)
     }
 
     return filter_map;
+}
+
+static D3D11_USAGE map_usage(graphics_usage_t usage)
+{
+    D3D11_USAGE usage_map = 0;
+
+    switch (usage)
+    {
+        case USAGE_DEFAULT:
+        {
+            usage_map = D3D11_USAGE_DEFAULT;
+        } break;
+
+        case USAGE_IMMUTABLE:
+        {
+            usage_map = D3D11_USAGE_IMMUTABLE;
+        } break;
+
+        case USAGE_DYNAMIC:
+        {
+            usage_map = D3D11_USAGE_DYNAMIC;
+        } break;
+
+        default:
+        {
+            assert(!"[GFX] Failed to map usage.");
+        } break;
+    }
+
+    return usage_map;
 }
 
 static D3D11_TEXTURE_ADDRESS_MODE map_texture_address(graphics_texture_address_t texture_address)
@@ -250,11 +282,33 @@ static graphics_create_buffer_function(gfx_create_buffer)
     graphics_buffer_t graphics_buffer = { 0 };
     usize buffer_index = global_buffer_count++;
     gfx_buffer_t* gfx_buffer = global_buffers + buffer_index;
+    D3D11_USAGE usage = map_usage(buffer_desc->usage);
+    D3D11_BIND_FLAG bind = map_bind(buffer_desc->bind);
 
-    gfx_buffer->buffer = d3d11_create_buffer(global_d3d11.device,
-                                             buffer_desc->data, buffer_desc->size,
-                                             buffer_desc->usage, map_bind(buffer_desc->bind));
+    D3D11_BUFFER_DESC desc =
+    {
+        .ByteWidth = (UINT)buffer_desc->size,
+        .Usage = usage,
+        .BindFlags = bind,
+        .CPUAccessFlags = (usage == D3D11_USAGE_DYNAMIC) ? D3D11_CPU_ACCESS_WRITE : 0,
+    };
 
+    D3D11_SUBRESOURCE_DATA initial = { 0 };
+    D3D11_SUBRESOURCE_DATA* ptr_initial = 0;
+
+    if (buffer_desc->data)
+    {
+        initial.pSysMem = buffer_desc->data;
+        ptr_initial = &initial;
+    }
+    
+    HRESULT result = ID3D11Device_CreateBuffer(global_d3d11.device, &desc, ptr_initial, &gfx_buffer->buffer);
+    assert(SUCCEEDED(result) && "[GFX ]Failed to create buffer.");
+
+    gfx_buffer->size = buffer_desc->size;
+    gfx_buffer->usage = usage;
+    gfx_buffer->bind = bind;
+    
     graphics_buffer.platform = buffer_index;
 
     return graphics_buffer;
@@ -393,12 +447,12 @@ static graphics_create_shader_function(gfx_create_shader)
 
     if (shader_desc->stage == STAGE_VERTEX_SHADER)
     {
-        gfx_shader->shader = d3d11_create_vertex_shader(global_d3d11.device, shader_desc->bytecode, shader_desc->bytecode_size);
+        ID3D11Device_CreateVertexShader(global_d3d11.device, shader_desc->bytecode, shader_desc->bytecode_size, 0, (ID3D11VertexShader**)&gfx_shader->shader);
         
     }
     else if (shader_desc->stage == STAGE_PIXEL_SHADER)
     {
-        gfx_shader->shader = d3d11_create_pixel_shader(global_d3d11.device, shader_desc->bytecode, shader_desc->bytecode_size);
+        ID3D11Device_CreatePixelShader(global_d3d11.device, shader_desc->bytecode, shader_desc->bytecode_size, 0, (ID3D11PixelShader**)&gfx_shader->shader);
     }
 
     gfx_shader->bytecode = shader_desc->bytecode;
@@ -440,7 +494,8 @@ static graphics_create_program_function(gfx_create_program)
 
     if (program_desc->attributes && program_desc->attribute_count > 0)
     {
-        gfx_program->input_layout = d3d11_create_input_layout(global_d3d11.device, descs, program_desc->attribute_count, vertex_shader->bytecode, vertex_shader->bytecode_size);
+        HRESULT result = ID3D11Device_CreateInputLayout(global_d3d11.device, descs, (UINT)program_desc->attribute_count, vertex_shader->bytecode, vertex_shader->bytecode_size, &gfx_program->input_layout);
+        assert(SUCCEEDED(result) && "[GFX] Failed to create input layout.");
     }
 
     graphics_program.platform = program_index;
@@ -454,9 +509,6 @@ static graphics_create_pipeline_function(gfx_create_pipeline)
     usize pipeline_index = global_pipeline_count++;
     gfx_pipeline_t* gfx_pipeline = global_pipelines + pipeline_index;
 
-    // NOTE: Disable culling.
-    // Meaning every triangle will be drawn regardless of
-    // facing direction (clock-wise or counter clock-wise).
     D3D11_RASTERIZER_DESC desc =
     {
         .FillMode = pipeline_desc->wireframe ? D3D11_FILL_WIREFRAME : D3D11_FILL_SOLID,
@@ -469,6 +521,26 @@ static graphics_create_pipeline_function(gfx_create_pipeline)
     graphics_pipeline.platform = pipeline_index;
     
     return graphics_pipeline;
+}
+
+static graphics_update_buffer_function(gfx_update_buffer)
+{
+    usize buffer_index = (usize)buffer.platform;
+    gfx_buffer_t* gfx_buffer = global_buffers + buffer_index;
+    
+    if (gfx_buffer->usage == D3D11_USAGE_DYNAMIC)
+    {
+        D3D11_MAPPED_SUBRESOURCE mapped = { 0 };
+        UINT map_type = (offset == 0 && size == gfx_buffer->size) ? D3D11_MAP_WRITE_DISCARD : D3D11_MAP_WRITE_NO_OVERWRITE;
+        HRESULT result = ID3D11DeviceContext_Map(global_d3d11.context, (ID3D11Resource*)gfx_buffer->buffer, 0, map_type, 0, &mapped);
+        assert(SUCCEEDED(result) && "[GFX] Failed to map buffer.");
+        memcpy((u8*)mapped.pData + offset, src, size);
+        ID3D11DeviceContext_Unmap(global_d3d11.context, (ID3D11Resource*)gfx_buffer->buffer, 0);
+    }
+    else
+    {
+        ID3D11DeviceContext_UpdateSubresource(global_d3d11.context, (ID3D11Resource*)gfx_buffer->buffer, 0, 0, src, 0, 0);
+    }
 }
 
 static graphics_is_valid_texture_2d_function(gfx_is_valid_texture_2d)
@@ -511,12 +583,35 @@ static graphics_delete_target_function(gfx_delete_target)
     *gfx_target = (gfx_target_t){ 0 };
 }
 
-static graphics_set_vertex_buffer_function(gfx_set_vertex_buffer)
+static graphics_set_buffer_function(gfx_set_buffer)
 {
-    usize vertex_buffer_index = (usize)vertex_buffer.platform;
-    gfx_buffer_t* gfx_vertex_buffer = global_buffers + vertex_buffer_index;
+    usize buffer_index = (usize)buffer.platform;
+    gfx_buffer_t* gfx_buffer = global_buffers + buffer_index;
 
-    ID3D11DeviceContext_IASetVertexBuffers(global_d3d11.context, slot, 1, &gfx_vertex_buffer->buffer, &stride, &offset);
+    switch (gfx_buffer->bind)
+    {
+        case D3D11_BIND_VERTEX_BUFFER:
+        {
+            ID3D11DeviceContext_IASetVertexBuffers(global_d3d11.context, slot, 1, &gfx_buffer->buffer, &stride, &offset);
+        } break;
+
+        case D3D11_BIND_CONSTANT_BUFFER:
+        {
+            if (stage == STAGE_VERTEX_SHADER)
+            {
+                ID3D11DeviceContext_VSSetConstantBuffers(global_d3d11.context, slot, 1, &gfx_buffer->buffer);
+            }
+            else if (stage == STAGE_PIXEL_SHADER)
+            {
+                ID3D11DeviceContext_PSSetConstantBuffers(global_d3d11.context, slot, 1, &gfx_buffer->buffer);
+            }
+        } break;
+
+        default:
+        {
+            assert(!"[GFX] Failed to set buffer.");
+        } break;
+    }
 }
 
 static graphics_set_program_function(gfx_set_program)

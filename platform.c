@@ -481,99 +481,6 @@ static DWORD WINAPI main_thread(void* param)
 
     resize_back_buffer(window);
 
-    // typedef struct Vertex
-    // {
-    //     f32 position[2];
-    //     f32 color[3];
-    // } Vertex;
-
-    // Vertex vertex_data[] =
-    // {
-    //     { { +0.00f, +0.66f }, { 1.0f, 0.0f, 0.0f, } },
-    //     { { -0.33f, -0.33f }, { 0.0f, 1.0f, 0.0f, } },
-    //     { { +0.33f, -0.33f }, { 0.0f, 0.0f, 1.0f, } },
-    // };
-
-    // ID3D11Buffer* vertex_buffer = d3d11_create_buffer(window->d3d11->device, vertex_data, sizeof(vertex_data),
-    //                                                   D3D11_USAGE_IMMUTABLE, D3D11_BIND_VERTEX_BUFFER);
-
-    // D3D11_INPUT_ELEMENT_DESC descs[] =
-    // {
-    //     { "POSITION", 0, DXGI_FORMAT_R32G32_FLOAT,    0, offsetof(Vertex, position), D3D11_INPUT_PER_VERTEX_DATA, 0 },
-    //     { "COLOR",    0, DXGI_FORMAT_R32G32B32_FLOAT, 0, offsetof(Vertex, color),    D3D11_INPUT_PER_VERTEX_DATA, 0 },
-    // };
-
-// #if 1
-//     #include "vertex_shader.h"
-//     #include "pixel_shader.h"
-
-//     ID3D11VertexShader* vertex_shader = d3d11_create_vertex_shader(window->d3d11->device, vshader, sizeof(vshader));
-//     ID3D11PixelShader* pixel_shader = d3d11_create_pixel_shader(window->d3d11->device, pshader, sizeof(pshader));
-//     ID3D11InputLayout* input_layout = d3d11_create_input_layout(window->d3d11->device, descs, array_count(descs),
-//                                                                 vshader, sizeof(vshader));
-// #else
-//     const char hlsl[] =
-//     "#line " stringfy(__LINE__) "                               \n\n" // actual line number in this file for nicer error messages
-//     "                                                           \n"
-//     "struct VS_INPUT                                            \n"
-//     "{                                                          \n"
-//     "    float2 pos   : POSITION;                               \n" // these names must match D3D11_INPUT_ELEMENT_DESC array
-//     "    float3 color : COLOR;                                  \n"
-//     "};                                                         \n"
-//     "                                                           \n"
-//     "struct PS_INPUT                                            \n"
-//     "{                                                          \n"
-//     "    float4 pos   : SV_POSITION;                            \n" // these names do not matter, except SV_... ones
-//     "    float4 color : COLOR;                                  \n"
-//     "};                                                         \n"
-//     "                                                           \n"
-//     "PS_INPUT vs(VS_INPUT input)                                \n"
-//     "{                                                          \n"
-//     "    PS_INPUT output;                                       \n"
-//     "    output.pos = float4(input.pos, 0, 1);                  \n"
-//     "    output.color = float4(input.color, 1);                 \n"
-//     "    return output;                                         \n"
-//     "}                                                          \n"
-//     "                                                           \n"
-//     "float4 ps(PS_INPUT input) : SV_TARGET                      \n"
-//     "{                                                          \n"
-//     "    return input.color;                                    \n"
-//     "}                                                          \n";
-
-//     UINT flags = D3DCOMPILE_PACK_MATRIX_COLUMN_MAJOR | D3DCOMPILE_ENABLE_STRICTNESS | D3DCOMPILE_WARNINGS_ARE_ERRORS;
-// #ifdef _DEBUG
-//     flags |= D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
-// #else
-//     flags |= D3DCOMPILE_OPTIMIZATION_LEVEL3;
-// #endif
-
-//     d3d11_compile_t vertex_compile = d3d11_compile(hlsl, sizeof(hlsl), "vs", "vs_5_0", flags);
-//     d3d11_compile_t pixel_compile = d3d11_compile(hlsl, sizeof(hlsl), "ps", "ps_5_0", flags);
-
-//     ID3D11VertexShader* vertex_shader = d3d11_create_vertex_shader(window->d3d11->device, vertex_compile.data, vertex_compile.size);
-//     ID3D11PixelShader* pixel_shader = d3d11_create_pixel_shader(window->d3d11->device, pixel_compile.data, pixel_compile.size);
-//     d3d11_input_layout_t input_layout = d3d11_create_input_layout(window->d3d11->device, descs, array_count(descs),
-//                                                                   vertex_compile.data, vertex_compile.size);
-
-//     d3d11_compile_release(&vertex_compile);
-//     d3d11_compile_release(&pixel_compile);
-
-// #endif
-
-//     ID3D11RasterizerState* rasterizer_state;
-//     {
-//         // NOTE: Disable culling.
-//         // Meaning every triangle will be drawn regardless of
-//         // facing direction (clock-wise or counter clock-wise).
-//         D3D11_RASTERIZER_DESC desc =
-//         {
-//             .FillMode = D3D11_FILL_SOLID,
-//             .CullMode = D3D11_CULL_NONE,
-//             .DepthClipEnable = TRUE,
-//         };
-//         ID3D11Device_CreateRasterizerState(window->d3d11->device, &desc, &rasterizer_state);
-//     }
-
     memory_t memory = { 0 };
     memory_init(&memory);
 
@@ -590,11 +497,12 @@ static DWORD WINAPI main_thread(void* param)
         .create_shader = gfx_create_shader,
         .create_program = gfx_create_program,
         .create_pipeline = gfx_create_pipeline,
+        .update_buffer = gfx_update_buffer,
         .is_valid_texture_2d = gfx_is_valid_texture_2d,
         .is_valid_target = gfx_is_valid_target,
         .delete_texture_2d = gfx_delete_texture_2d,
         .delete_target = gfx_delete_target,
-        .set_vertex_buffer = gfx_set_vertex_buffer,
+        .set_buffer = gfx_set_buffer,
         .set_srvs = gfx_set_srvs,
         .set_samplers = gfx_set_samplers,
         .set_program = gfx_set_program,
@@ -653,37 +561,6 @@ static DWORD WINAPI main_thread(void* param)
 
         if (window->d3d11->rt_view)
         {
-            // FLOAT color[] = { 0.0f, 0.0f, 0.0f, 0.0f };
-            // ID3D11DeviceContext_ClearRenderTargetView(window->d3d11->context, window->d3d11->rt_view, color);
-
-            // ID3D11DeviceContext_IASetInputLayout(window->d3d11->context, input_layout);
-            // ID3D11DeviceContext_IASetPrimitiveTopology(window->d3d11->context, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-            // UINT offset = 0;
-            // UINT stride = sizeof(Vertex);
-            // ID3D11DeviceContext_IASetVertexBuffers(window->d3d11->context, 0, 1, &vertex_buffer, &stride, &offset);
-
-            // ID3D11DeviceContext_VSSetShader(window->d3d11->context, vertex_shader, 0, 0);
-
-            // NOTE: Output viewport covering all client area of window.
-            // D3D11_VIEWPORT viewport =
-            // {
-            //     .TopLeftX = 0,
-            //     .TopLeftY = 0,
-            //     .Width = (FLOAT)window->width,
-            //     .Height = (FLOAT)window->height,
-            //     .MinDepth = 0,
-            //     .MaxDepth = 1,
-            // };
-
-            // ID3D11DeviceContext_RSSetViewports(window->d3d11->context, 1, &viewport);
-            // ID3D11DeviceContext_RSSetState(window->d3d11->context, rasterizer_state);
-
-            // ID3D11DeviceContext_PSSetShader(window->d3d11->context, pixel_shader, 0, 0);
-
-            // ID3D11DeviceContext_OMSetRenderTargets(window->d3d11->context, 1, &window->d3d11->rt_view, 0);
-
-            // ID3D11DeviceContext_Draw(window->d3d11->context, 3, 0);
-
             ID2D1RenderTarget_BeginDraw(window->d2d1->render_target);
 
             IDWriteTextLayout* text_layout = 0;

@@ -128,12 +128,12 @@ typedef enum graphics_format_t
     FORMAT_R32G32B32_FLOAT,
 } graphics_format_t;
 
-typedef enum graphics_buffer_usage_t
+typedef enum graphics_usage_t
 {
-    BUFFER_USAGE_DEFAULT = 0,
-    BUFFER_USAGE_IMMUTABLE = 1,
-    BUFFER_USAGE_DYNAMIC = 2,
-} graphics_buffer_usage_t;
+    USAGE_DEFAULT = 0,
+    USAGE_IMMUTABLE = 1,
+    USAGE_DYNAMIC = 2,
+} graphics_usage_t;
 
 typedef enum graphics_bind_t
 {
@@ -174,7 +174,7 @@ typedef struct graphics_buffer_desc_t
 {
     void* data;
     usize size;
-    graphics_buffer_usage_t usage;
+    graphics_usage_t usage;
     graphics_bind_t bind;
 } graphics_buffer_desc_t;
 
@@ -307,6 +307,9 @@ typedef graphics_create_program_function(graphics_create_program_f);
 #define graphics_create_pipeline_function(name) graphics_pipeline_t name(const graphics_pipeline_desc_t* pipeline_desc)
 typedef graphics_create_pipeline_function(graphics_create_pipeline_f);
 
+#define graphics_update_buffer_function(name) void name(graphics_buffer_t buffer, const void* src, u32 offset, u32 size)
+typedef graphics_update_buffer_function(graphics_update_buffer_f);
+
 #define graphics_is_valid_texture_2d_function(name) bool name(graphics_texture_t texture)
 typedef graphics_is_valid_texture_2d_function(graphics_is_valid_texture_2d_f);
 
@@ -319,8 +322,8 @@ typedef graphics_delete_texture_2d_function(graphics_delete_texture_2d_f);
 #define graphics_delete_target_function(name) void name(graphics_target_t target)
 typedef graphics_delete_target_function(graphics_delete_target_f);
 
-#define graphics_set_vertex_buffer_function(name) void name(graphics_buffer_t vertex_buffer, u32 slot, u32 stride, u32 offset)
-typedef graphics_set_vertex_buffer_function(graphics_set_vertex_buffer_f);
+#define graphics_set_buffer_function(name) void name(graphics_buffer_t buffer, graphics_stage_t stage, u32 slot, u32 stride, u32 offset)
+typedef graphics_set_buffer_function(graphics_set_buffer_f);
 
 #define graphics_set_program_function(name) void name(graphics_program_t program)
 typedef graphics_set_program_function(graphics_set_program_f);
@@ -362,11 +365,12 @@ typedef struct graphics_t
             graphics_create_shader_f* create_shader;
             graphics_create_program_f* create_program;
             graphics_create_pipeline_f* create_pipeline;
+            graphics_update_buffer_f* update_buffer;
             graphics_is_valid_texture_2d_f* is_valid_texture_2d;
             graphics_is_valid_target_f* is_valid_target;
             graphics_delete_texture_2d_f* delete_texture_2d;
             graphics_delete_target_f* delete_target;
-            graphics_set_vertex_buffer_f* set_vertex_buffer;
+            graphics_set_buffer_f* set_buffer;
             graphics_set_srvs_f* set_srvs;
             graphics_set_samplers_f* set_samplers;
             graphics_set_program_f* set_program;
