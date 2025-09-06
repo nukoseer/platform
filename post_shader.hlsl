@@ -10,9 +10,11 @@ cbuffer global_post_setting : register(b0)
 {
     float2 inverse_dst_size;
     float2 inverse_src_size;
-
+    float aspect_ratio;
     float invert;
-    float3 _pad;
+    
+    float vignette;
+    float vignette_soft;
 };
 
 PS_INPUT vs(uint id : SV_VertexID)
@@ -30,6 +32,19 @@ float4 ps(PS_INPUT input) : SV_TARGET
     float2 uv = input.position.xy * inverse_dst_size;
     float3 color = global_scene.Sample(global_sampler, uv).rgb;
 
+    if (vignette > 0.0)
+    {
+        float2 difference = (uv - 0.5);
+        float ratio = length(difference);
+        // NOTE: Radius where darkening begins.
+        // Higher the vignette begins closer to the center.
+        float inner = 1.0 - vignette;
+        // NOTE: Radius where it reaches the full strength.
+        float outer = inner + (vignette * vignette_soft);
+        float vig = smoothstep(inner, outer, ratio);
+        color *= (1.0 - vig);
+    }
+    
     // Invert if greater than 0.0
     color = lerp(color, 1.0 - color, invert);
 

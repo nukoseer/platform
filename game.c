@@ -18,9 +18,12 @@ typedef struct post_setting_t
 {
     f32 inverse_dst_size[2];
     f32 inverse_src_size[2];
+    f32 aspect_ratio;
 
     f32 invert;
-    f32 _pad[3];
+
+    f32 vignette;
+    f32 vignette_soft;
 } post_setting_t;
 
 typedef struct game_t
@@ -39,6 +42,7 @@ typedef struct game_t
     graphics_shader_t post_vertex_shader;
     graphics_shader_t post_pixel_shader;
     graphics_program_t post_program;
+    post_setting_t post_setting;
 } game_t;
 
 init_function(init)
@@ -199,14 +203,24 @@ render_function(render)
     // NOTE: Post pass rendering to backbuffer.
     graphics->begin_pass(graphics->get_backbuffer_target(), &(graphics_pass_desc_t){ .clear_color = false });
 
-    post_setting_t post_setting =
+    game->post_setting.inverse_dst_size[0] = 1.0f / platform->width;
+    game->post_setting.inverse_dst_size[1] = 1.0f / platform->height;
+    game->post_setting.inverse_src_size[0] = 1.0f / platform->width;
+    game->post_setting.inverse_src_size[1] = 1.0f / platform->height;
+    game->post_setting.aspect_ratio = (f32)platform->width / (f32)platform->height;
+    game->post_setting.vignette_soft = 0.45f;
+
+    if (platform->input->keys[KEY_T].action == KEY_ACTION_RELEASE)
     {
-        .inverse_dst_size = { [0] = 1.0f / platform->width, [1] = 1.0f / platform->height },
-        .inverse_src_size = { [0] = 1.0f / platform->width, [1] = 1.0f / platform->height },
-        .invert = (platform->input->keys[KEY_T].action == KEY_ACTION_PRESS) ? 1.0f : 0.0f,
-    };
-    
-    graphics->update_buffer(game->post_buffer, &post_setting, 0, sizeof(post_setting));
+        game->post_setting.invert = game->post_setting.invert == 0.0f ? 1.0f : 0.0f;
+    }
+
+    if ((platform->input->keys[KEY_A].action == KEY_ACTION_RELEASE))
+    {
+        game->post_setting.vignette = game->post_setting.vignette == 0.0f ? 1.0f : 0.0f;
+    }
+
+    graphics->update_buffer(game->post_buffer, &game->post_setting, 0, sizeof(game->post_setting));
     graphics->set_buffer(game->post_buffer, STAGE_PIXEL_SHADER, 0, 0, 0);
     graphics->set_program(game->post_program);
     graphics->set_pipeline(game->default_pipeline);
