@@ -83,6 +83,11 @@ static DXGI_FORMAT map_dxgi_format(graphics_format_t format)
         {
             dxgi_format = DXGI_FORMAT_R8G8B8A8_UNORM;
         } break;
+
+        case FORMAT_R8G8B8A8_UNORM_SRGB:
+        {
+            dxgi_format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+        } break;
         
         case FORMAT_R32G32_FLOAT:
         {
@@ -139,6 +144,11 @@ static D3D11_FILTER map_filter(graphics_filter_t filter)
         case FILTER_MIN_MAG_MIP_POINT:
         {
             filter_map = D3D11_FILTER_MIN_MAG_MIP_POINT;
+        } break;
+
+        case FILTER_MIN_MAG_MIP_LINEAR:
+        {
+            filter_map = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
         } break;
 
         default:
@@ -378,6 +388,8 @@ static graphics_create_texture_2d_function(gfx_create_texture_2d)
     }
     
     graphics_texture.platform = texture_index;
+    graphics_texture.width = gfx_texture->width;
+    graphics_texture.height = gfx_texture->height;
 
     return graphics_texture;
 }

@@ -124,6 +124,7 @@ typedef struct memory_t
 typedef enum graphics_format_t
 {
     FORMAT_R8G8B8A8_UNORM,
+    FORMAT_R8G8B8A8_UNORM_SRGB,
     FORMAT_R32G32_FLOAT,
     FORMAT_R32G32B32_FLOAT,
 } graphics_format_t;
@@ -158,6 +159,7 @@ typedef enum graphics_stage_t
 typedef enum graphics_filter_t
 {
     FILTER_MIN_MAG_MIP_POINT,
+    FILTER_MIN_MAG_MIP_LINEAR,
 } graphics_filter_t;
 
 typedef enum graphics_texture_address_t
@@ -194,6 +196,8 @@ typedef struct graphics_texture_2d_desc_t
 typedef struct graphics_texture_t
 {
     usize platform;
+    u32 width;
+    u32 height;
 } graphics_texture_t;
 
 typedef struct graphics_sampler_desc_t
