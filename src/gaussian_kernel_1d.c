@@ -4,21 +4,29 @@
 
 int main(int argc, char** argv)
 {
-    if (argc != 2)
+    if (argc != 3)
     {
         printf("Usage: %s <kernel_size>\n", argv[0]);
         return 1;
     }
 
-    int number = atoi(argv[1]);
-    if (number % 2 == 0)
+    int ksize = atoi(argv[1]);
+    if (ksize % 2 == 0)
     {
         printf("Kernel size must be an odd number.\n");
         return 1;
     }
+
+    char* end = 0;
+    float sgma = strtof(argv[2], &end);
+    if (argv[2] == end)
+    {
+        printf("Sigma could not parse.\n");
+        return 1;
+    }
     
-    int kernel_size = number; // Must be odd
-    float sigma = 2.0f;
+    int kernel_size = ksize; // Must be odd
+    float sigma = sgma;
     float* kernel = (float*)malloc(kernel_size * sizeof(float));
     float sum = 0.0f;
 
@@ -52,6 +60,20 @@ int main(int argc, char** argv)
         printf("%12f ", kernel[i]);
     }
     printf("\n");
+
+    printf("{ ");
+    for (int i = 0; i < kernel_size; i++)
+    {
+        if (i == kernel_size - 1)
+        {
+            printf("%f", kernel[i]);
+        }
+        else
+        {
+            printf("%f, ", kernel[i]);
+        }
+    }
+    printf(" }");
 
     return 0;
 }

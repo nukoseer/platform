@@ -2,13 +2,13 @@
 #include "utils.h"
 #include "platform.h"
 
-#include "vertex_shader.h"
-#include "pixel_shader.h"
-#include "glow_mask_pixel_shader.h"
-#include "blur_vertex_shader.h"
-#include "blur_pixel_shader.h"
-#include "post_vertex_shader.h"
-#include "post_pixel_shader.h"
+#include "../shader/vertex_shader.h"
+#include "../shader/pixel_shader.h"
+#include "../shader/glow_mask_pixel_shader.h"
+#include "../shader/blur_vertex_shader.h"
+#include "../shader/blur_pixel_shader.h"
+#include "../shader/post_vertex_shader.h"
+#include "../shader/post_pixel_shader.h"
 
 typedef struct vertex_t
 {
