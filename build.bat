@@ -130,6 +130,7 @@ if /I "%debug%"=="yes" (
    set common_linker_flags_dll=%common_linker_flags_dll% %release_linker_flags_dll%
 )
 
+%compiler% %common_compiler_flags% ..\gaussian_kernel_1d.c %link_section% %common_linker_flags% %OUTPUT%gaussian_kernel_1d.exe
 %compiler% %common_compiler_flags% ..\platform.c %link_section% %common_linker_flags% %OUTPUT%platform.exe
 rem -MJ ../compile_commands.json
 %compiler% %common_compiler_flags% ..\game.c %link_section_dll% %common_linker_flags_dll% %export_symbol%:init %export_symbol%:update %export_symbol%:render %OUTPUT%game.dll
