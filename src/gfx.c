@@ -898,9 +898,9 @@ static graphics_end_pass_function(gfx_end_pass)
     assert(global_pass_count == 1 && "[GFX] Multiple begin pass.");
     --global_pass_count;
 
-    ID3D11ShaderResourceView* null_srv = 0;
-    ID3D11DeviceContext_VSSetShaderResources(global_d3d11.context, 0, 1, &null_srv);
-    ID3D11DeviceContext_PSSetShaderResources(global_d3d11.context, 0, 1, &null_srv);
+    ID3D11ShaderResourceView* null_srvs[16] = { 0 };
+    ID3D11DeviceContext_VSSetShaderResources(global_d3d11.context, 0, 16, null_srvs);
+    ID3D11DeviceContext_PSSetShaderResources(global_d3d11.context, 0, 16, null_srvs);
 
     ID3D11RasterizerState* null_rs = 0;
     ID3D11DeviceContext_RSSetState(global_d3d11.context, null_rs);
