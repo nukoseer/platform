@@ -333,6 +333,7 @@ render_function(render)
     }
     graphics->end_pass();
 
+    // NOTE: Glow mask pass.
     graphics->begin_pass(game->glow_mask_target, &(graphics_pass_desc_t){ .clear_color = true, .clear_rgba = { 0.0f, 0.0f, 0.0f, 0.0f } });
     {
         graphics->set_buffer(game->vertex_buffer, STAGE_VERTEX_SHADER, 0, sizeof(vertex_t), 0);
@@ -345,6 +346,7 @@ render_function(render)
     }
     graphics->end_pass();
 
+    // NOTE: Horizontal blur. glow_mask -> glow_a.
     graphics->begin_pass(game->glow_a_target, &(graphics_pass_desc_t){ .clear_color = false });
     {
         game->glow_blur_setting = (glow_blur_setting_t)
@@ -362,6 +364,7 @@ render_function(render)
     }
     graphics->end_pass();
 
+    // NOTE: Vertical blur. glow_a -> glow_b.
     graphics->begin_pass(game->glow_b_target, &(graphics_pass_desc_t){ .clear_color = false });
     {
         game->glow_blur_setting = (glow_blur_setting_t)
@@ -408,7 +411,9 @@ render_function(render)
         graphics->set_buffer(game->post_buffer, STAGE_PIXEL_SHADER, 0, 0, 0);
         graphics->set_program(game->post_program);
         graphics->set_pipeline(game->default_pipeline);
-        graphics->set_samplers(STAGE_PIXEL_SHADER, &game->point_sampler, 1, 0);
+        graphics_sampler_t samplers[] = { game->point_sampler, game->linear_sampler };
+        graphics->set_samplers(STAGE_PIXEL_SHADER, samplers, 2, 0);
+        // NOTE: Offscreen scene, horizontal and vertical blur, unblurred version (for filtering core part and leaving the halo).
         graphics_texture_t srvs[] = { game->offscreen_scene, game->glow_b, game->glow_mask };
         graphics->set_srvs(STAGE_PIXEL_SHADER, srvs, 3, 0);
         graphics->draw(TOPOLOGY_TRIANGLE_LIST, 3, 0);

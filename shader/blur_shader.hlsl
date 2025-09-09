@@ -1,5 +1,5 @@
 Texture2D global_glow_mask : register(t0);
-SamplerState global_sampler : register(s0);
+SamplerState global_linear_sampler : register(s0);
 
 cbuffer global_blur_buffer : register(b0)
 {
@@ -27,14 +27,15 @@ static const float w[weight_count] = { 0.155285, 0.144214, 0.115516, 0.079805, 0
 
 float3 gaussian_blur_13tap_1d(float2 uv)
 {
-    float3 color = global_glow_mask.Sample(global_sampler, uv).rgb * w[0];
+    float3 color = global_glow_mask.Sample(global_linear_sampler, uv).rgb * w[0];
 
     [unroll] for (uint i = 0; i < weight_count - 1; i += 2)
     {
         float weight = w[i + 1] + w[i + 2];
         float offset = i + 1.0 + (w[i + 2] / weight);
         float2 dir = direction * inverse_dst_size * offset;
-        color += (global_glow_mask.Sample(global_sampler, uv + dir).rgb + global_glow_mask.Sample(global_sampler, uv - dir).rgb) * weight;
+        color += (global_glow_mask.Sample(global_linear_sampler, uv + dir).rgb +
+                  global_glow_mask.Sample(global_linear_sampler, uv - dir).rgb) * weight;
     }
     
     return color;
