@@ -2,6 +2,9 @@
 #define GFX_MAX_RESOUCE 32
 #define GFX_BACKBUFFER_TARGET_INDEX 0xFFFFFFFF
 
+#define GFX_GENERATION_SHIFT 32
+#define GFX_INDEX_MASK ((1ull << GFX_GENERATION_SHIFT) - 1ull)
+
 typedef struct gfx_buffer_t
 {
     ID3D11Buffer* buffer;
@@ -12,19 +15,23 @@ typedef struct gfx_buffer_t
 
 typedef struct gfx_texture_t
 {
+    u32 generation;
     ID3D11Texture2D* texture;
     ID3D11ShaderResourceView* srv;
     DXGI_FORMAT format;
     UINT width;
     UINT height;
+    u32 next_free_index;
 } gfx_texture_t;
 
 typedef struct gfx_target_t
 {
+    u32 generation;
     // TODO: Multiple render targets and optional depth stencil?
     ID3D11RenderTargetView* render_target;
     i32 width;
     i32 height;
+    u32 next_free_index;
 } gfx_target_t;
 
 typedef struct gfx_sampler_t
@@ -61,17 +68,72 @@ static gfx_shader_t global_shaders[GFX_MAX_RESOUCE];
 static gfx_program_t global_programs[GFX_MAX_RESOUCE];
 static gfx_pipeline_t global_pipelines[GFX_MAX_RESOUCE];
 
-static usize global_buffer_count;
-static usize global_texture_count;
-static usize global_target_count;
-static usize global_sampler_count;
-static usize global_shader_count;
-static usize global_program_count;
-static usize global_pipeline_count;
-
-static usize global_pass_count;
+static u32 global_buffer_count;
+static u32 global_texture_count = 1;
+static u32 global_target_count = 1;
+static u32 global_sampler_count;
+static u32 global_shader_count;
+static u32 global_program_count;
+static u32 global_pipeline_count;
+static u32 global_pass_count;
 
 gfx_target_t global_backbuffer_target;
+
+#define next_index_function(name)                                                                                    \
+static inline u32 next_##name##_index(void)                                                                          \
+{                                                                                                                    \
+    u32 name##_index = 0;                                                                                            \
+                                                                                                                     \
+    if (global_##name##s[0].next_free_index)                                                                         \
+    {                                                                                                                \
+        name##_index = global_##name##s[0].next_free_index;                                                          \
+        global_##name##s[0].next_free_index = global_##name##s[global_##name##s[0].next_free_index].next_free_index; \
+    }                                                                                                                \
+    else                                                                                                             \
+    {                                                                                                                \
+        name##_index = global_##name##_count++;                                                                      \
+                                                                                                                     \
+        if (name##_index == 0 || name##_index >= GFX_MAX_RESOUCE)                                                    \
+        {                                                                                                            \
+            assert(!"Max resource count exceeded.");                                                                 \
+        }                                                                                                            \
+    }                                                                                                                \
+                                                                                                                     \
+    return name##_index;                                                                                             \
+}
+
+#define free_index_function(name)                                                                                    \
+static inline void free_##name##_index(u32 free_index)                                                               \
+{                                                                                                                    \
+    u32 current_free_##name##_index = global_##name##s[0].next_free_index;                                           \
+                                                                                                                     \
+    global_##name##s[0].next_free_index = free_index;                                                                \
+    global_##name##s[global_##name##s[0].next_free_index].next_free_index = current_free_##name##_index;             \
+}                                                                                                                    
+
+next_index_function(texture);
+next_index_function(target);
+
+free_index_function(texture);
+free_index_function(target);
+
+static inline u32 get_generation(u64 packed)
+{
+    u32 generation = (u32)(packed >> GFX_GENERATION_SHIFT);
+    return generation;
+}
+
+static inline u32 get_index(u64 packed)
+{
+    u32 index = (u32)(packed & GFX_INDEX_MASK);
+    return index;
+}
+
+static inline u64 pack_generation_index(u32 generation, u32 index)
+{
+    u64 generation_index = ((u64)generation << GFX_GENERATION_SHIFT) | ((u64)index & GFX_INDEX_MASK);
+    return generation_index;
+}
 
 static DXGI_FORMAT map_dxgi_format(graphics_format_t format)
 {
@@ -291,6 +353,7 @@ static graphics_create_buffer_function(gfx_create_buffer)
 {
     graphics_buffer_t graphics_buffer = { 0 };
     usize buffer_index = global_buffer_count++;
+
     gfx_buffer_t* gfx_buffer = global_buffers + buffer_index;
     D3D11_USAGE usage = map_usage(buffer_desc->usage);
     D3D11_BIND_FLAG bind = map_bind(buffer_desc->bind);
@@ -361,11 +424,13 @@ static graphics_create_texture_2d_function(gfx_create_texture_2d)
     // TODO: Probably we should think about failure cases.
     assert(SUCCEEDED(result) && "[GFX] Failed to create texture 2d.");
 
-    usize texture_index = global_texture_count++ % GFX_MAX_RESOUCE;
+    u32 texture_index = next_texture_index();
     gfx_texture_t* gfx_texture = global_textures + texture_index;
+    u32 texture_generation = gfx_texture->generation;
 
     *gfx_texture = (gfx_texture_t)
     {
+        .generation = texture_generation,
         .texture = texture_2d,
         .srv = 0,
         .format = desc.Format,
@@ -387,7 +452,7 @@ static graphics_create_texture_2d_function(gfx_create_texture_2d)
         assert(SUCCEEDED(result) && "[GFX] Failed to create shader resource view.");
     }
     
-    graphics_texture.platform = texture_index;
+    graphics_texture.platform = pack_generation_index(texture_generation, texture_index);
     graphics_texture.width = gfx_texture->width;
     graphics_texture.height = gfx_texture->height;
 
@@ -396,14 +461,23 @@ static graphics_create_texture_2d_function(gfx_create_texture_2d)
 
 static graphics_create_target_function(gfx_create_target)
 {
-    usize texture_index = (usize)texture.platform;
+    u32 texture_generation = get_generation(texture.platform);
+    u32 texture_index = get_index(texture.platform);
     gfx_texture_t* gfx_texture = global_textures + texture_index;
+
+    if (texture_generation != gfx_texture->generation)
+    {
+        assert(!"[GFX] Texture generation does not match.");
+    }
 
     assert(gfx_texture->texture && "[GFX] Invalid texture for target.");
     
     graphics_target_t graphics_target = { 0 };
-    usize target_index = global_target_count++ % GFX_MAX_RESOUCE;
+    u32 target_index = next_target_index();
     gfx_target_t* gfx_target = get_gfx_target(target_index);
+    u32 target_generation = gfx_target->generation;
+
+    *gfx_target = (gfx_target_t){ 0 };
 
     D3D11_RENDER_TARGET_VIEW_DESC desc =
     {
@@ -413,13 +487,13 @@ static graphics_create_target_function(gfx_create_target)
     };
 
     HRESULT result = ID3D11Device_CreateRenderTargetView(global_d3d11.device, (ID3D11Resource*)gfx_texture->texture, &desc, &gfx_target->render_target);
+    assert(SUCCEEDED(result) && "[GFX] Failed to create render target view.");
 
     gfx_target->width = gfx_texture->width;
     gfx_target->height = gfx_texture->height;
-
-    assert(SUCCEEDED(result) && "[GFX] Failed to create render target view.");
+    gfx_target->generation = target_generation;
     
-    graphics_target.platform = target_index;
+    graphics_target.platform = pack_generation_index(target_generation, target_index);
 
     return graphics_target;
 }
@@ -557,18 +631,20 @@ static graphics_update_buffer_function(gfx_update_buffer)
 
 static graphics_is_valid_texture_2d_function(gfx_is_valid_texture_2d)
 {
-    usize texture_index = (usize)texture.platform;
+    u32 texture_generation = get_generation(texture.platform);
+    u32 texture_index = get_index(texture.platform);
     gfx_texture_t* gfx_texture = global_textures + texture_index;
-    bool is_valid = !!gfx_texture->texture;
+    bool is_valid = (texture_generation == gfx_texture->generation) && gfx_texture->texture;
 
     return is_valid;
 }
 
 static graphics_is_valid_target_function(gfx_is_valid_target)
 {
-    usize target_index = (usize)target.platform;
+    u32 target_generation = get_generation(target.platform);
+    u32 target_index = get_index(target.platform);
     gfx_target_t* gfx_target = global_targets + target_index;
-    bool is_valid = !!gfx_target->render_target;
+    bool is_valid = (target_generation == gfx_target->generation) && gfx_target->render_target;
 
     return is_valid;
 }
@@ -576,23 +652,45 @@ static graphics_is_valid_target_function(gfx_is_valid_target)
 // TODO: We need some kind of generation counter to handle deleted objects.
 static graphics_delete_texture_2d_function(gfx_delete_texture_2d)
 {
-    usize texture_index = (usize)texture.platform;
+    u32 texture_generation = get_generation(texture.platform);
+    u32 texture_index = get_index(texture.platform);
     gfx_texture_t* gfx_texture = global_textures + texture_index;
+
+    if (gfx_texture->generation != texture_generation)
+    {
+        // TODO: Can we just silently skip?
+        assert(!"[GFX] Texture generation does not match.");
+        return;
+    }
 
     ID3D11ShaderResourceView_Release(gfx_texture->srv);
     ID3D11Texture2D_Release(gfx_texture->texture);
-    
+
     *gfx_texture = (gfx_texture_t){ 0 };
+    gfx_texture->generation = texture_generation + 1;
+
+    free_texture_index(texture_index);
 }
 
 static graphics_delete_target_function(gfx_delete_target)
 {
-    usize target_index = (usize)target.platform;
+    u32 target_generation = get_generation(target.platform);
+    u32 target_index = get_index(target.platform);
     gfx_target_t* gfx_target = get_gfx_target(target_index);
+
+    if (target_generation != gfx_target->generation)
+    {
+        // TODO: Can we just silently skip?
+        assert(!"[GFX] Target generation does not match.");
+        return;
+    }
 
     ID3D11RenderTargetView_Release(gfx_target->render_target);
     
     *gfx_target = (gfx_target_t){ 0 };
+    gfx_target->generation = target_generation + 1;
+
+    free_target_index(target_index);
 }
 
 static graphics_set_buffer_function(gfx_set_buffer)
@@ -694,8 +792,15 @@ static graphics_set_srvs_function(gfx_set_srvs)
             srvs[index] = 0;
             continue;
         }
+        u32 texture_generation = get_generation(textures[index].platform);
+        u32 texture_index = get_index(textures[index].platform);
+        gfx_texture_t* gfx_texture = global_textures + texture_index;
+
+        if (texture_generation != gfx_texture->generation)
+        {
+            assert(!"[GFX] Texture generation does not match.");
+        }
         
-        gfx_texture_t* gfx_texture = global_textures + textures[index].platform;
         srvs[index] = gfx_texture->srv ? gfx_texture->srv : 0;
     }
 
@@ -746,9 +851,16 @@ static graphics_get_target_size_function(gfx_get_target_size)
 
 static graphics_begin_pass_function(gfx_begin_pass)
 {
-    usize target_index = (usize)target.platform;
+    u32 target_generation = get_generation(target.platform);
+    u32 target_index = get_index(target.platform);
     gfx_target_t* gfx_target = get_gfx_target(target_index);
 
+    if (target_generation != gfx_target->generation)
+    {
+        assert(!"[GFX] Target generation does not match.");
+        return;
+    }
+    
     if (gfx_target->render_target)
     {
         ID3D11DeviceContext_OMSetRenderTargets(global_d3d11.context, 1, &gfx_target->render_target, 0);

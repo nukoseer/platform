@@ -195,7 +195,7 @@ typedef struct graphics_texture_2d_desc_t
 
 typedef struct graphics_texture_t
 {
-    usize platform;
+    u64 platform;
     u32 width;
     u32 height;
 } graphics_texture_t;
@@ -263,7 +263,7 @@ typedef struct graphics_pipeline_t
 
 typedef struct graphics_target_t
 {
-    usize platform;
+    u64 platform;
 } graphics_target_t;
 
 typedef struct graphics_pass_desc_t

@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <string.h>
 #include "utils.h"
 #include "platform.h"
 
@@ -397,12 +398,12 @@ render_function(render)
             game->post_setting.invert = game->post_setting.invert == 0.0f ? 1.0f : 0.0f;
         }
 
-        if ((platform->input->keys[KEY_V].action == KEY_ACTION_RELEASE))
+        if (platform->input->keys[KEY_V].action == KEY_ACTION_RELEASE)
         {
             game->post_setting.vignette = game->post_setting.vignette == 0.0f ? 1.0f : 0.0f;
         }
 
-        if ((platform->input->keys[KEY_G].action == KEY_ACTION_RELEASE))
+        if (platform->input->keys[KEY_G].action == KEY_ACTION_RELEASE)
         {
             game->post_setting.glow_intensity = game->post_setting.glow_intensity == 0.0f ? 1.0f : 0.0f;
         }
