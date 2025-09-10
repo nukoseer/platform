@@ -7,10 +7,12 @@
 
 typedef struct gfx_buffer_t
 {
+    u32 generation;
     ID3D11Buffer* buffer;
     usize size;
     D3D11_USAGE usage;
     D3D11_BIND_FLAG bind;
+    u32 next_free_index;
 } gfx_buffer_t;
 
 typedef struct gfx_texture_t
@@ -68,7 +70,7 @@ static gfx_shader_t global_shaders[GFX_MAX_RESOUCE];
 static gfx_program_t global_programs[GFX_MAX_RESOUCE];
 static gfx_pipeline_t global_pipelines[GFX_MAX_RESOUCE];
 
-static u32 global_buffer_count;
+static u32 global_buffer_count = 1;
 static u32 global_texture_count = 1;
 static u32 global_target_count = 1;
 static u32 global_sampler_count;
@@ -111,9 +113,11 @@ static inline void free_##name##_index(u32 free_index)                          
     global_##name##s[global_##name##s[0].next_free_index].next_free_index = current_free_##name##_index;             \
 }                                                                                                                    
 
+next_index_function(buffer);
 next_index_function(texture);
 next_index_function(target);
 
+free_index_function(buffer);
 free_index_function(texture);
 free_index_function(target);
 
@@ -352,9 +356,6 @@ static gfx_target_t* get_gfx_target(usize target_index)
 static graphics_create_buffer_function(gfx_create_buffer)
 {
     graphics_buffer_t graphics_buffer = { 0 };
-    usize buffer_index = global_buffer_count++;
-
-    gfx_buffer_t* gfx_buffer = global_buffers + buffer_index;
     D3D11_USAGE usage = map_usage(buffer_desc->usage);
     D3D11_BIND_FLAG bind = map_bind(buffer_desc->bind);
 
@@ -374,15 +375,25 @@ static graphics_create_buffer_function(gfx_create_buffer)
         initial.pSysMem = buffer_desc->data;
         ptr_initial = &initial;
     }
-    
-    HRESULT result = ID3D11Device_CreateBuffer(global_d3d11.device, &desc, ptr_initial, &gfx_buffer->buffer);
+
+    ID3D11Buffer* buffer = 0;
+    HRESULT result = ID3D11Device_CreateBuffer(global_d3d11.device, &desc, ptr_initial, &buffer);
     assert(SUCCEEDED(result) && "[GFX ]Failed to create buffer.");
 
-    gfx_buffer->size = buffer_desc->size;
-    gfx_buffer->usage = usage;
-    gfx_buffer->bind = bind;
+    u32 buffer_index = next_buffer_index();
+    gfx_buffer_t* gfx_buffer = global_buffers + buffer_index;
+    u32 buffer_generation = gfx_buffer->generation;
+
+    *gfx_buffer = (gfx_buffer_t)
+    {
+        .generation = buffer_generation,
+        .buffer = buffer,
+        .size = buffer_desc->size,
+        .usage = usage,
+        .bind = bind,
+    };
     
-    graphics_buffer.platform = buffer_index;
+    graphics_buffer.platform = pack_generation_index(buffer_generation, buffer_index);
 
     return graphics_buffer;
 }
@@ -643,7 +654,7 @@ static graphics_is_valid_target_function(gfx_is_valid_target)
 {
     u32 target_generation = get_generation(target.platform);
     u32 target_index = get_index(target.platform);
-    gfx_target_t* gfx_target = global_targets + target_index;
+    gfx_target_t* gfx_target = get_gfx_target(target_index);
     bool is_valid = (target_generation == gfx_target->generation) && gfx_target->render_target;
 
     return is_valid;
@@ -840,9 +851,16 @@ static graphics_get_backbuffer_target_function(gfx_get_backbuffer_target)
 
 static graphics_get_target_size_function(gfx_get_target_size)
 {
-    usize target_index = (usize)target.platform;
+    u32 target_generation = get_generation(target.platform);
+    u32 target_index = get_index(target.platform);
     gfx_target_t* gfx_target = get_gfx_target(target_index);
 
+    if (target_generation != gfx_target->generation)
+    {
+        assert(!"[GFX] Target generation does not match.");
+        return;
+    }
+    
     assert(gfx_target->render_target && "[GFX] Invalid target.");
 
     *width = (u32)gfx_target->width;
