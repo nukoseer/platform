@@ -62,6 +62,7 @@ static graphics_2d_create_font_function(gfx_2d_create_font)
     assert(converted == required_wide_length);
 
     IDWriteTextFormat* text_format = 0;
+    f32 font_size = point_size * 96.0f / 72.0f;
     result = IDWriteFactory_CreateTextFormat(global_d2d1.dwrite->factory, font_name_wide, 0,
                                              DWRITE_FONT_WEIGHT_REGULAR,
                                              DWRITE_FONT_STYLE_NORMAL,

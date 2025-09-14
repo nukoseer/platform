@@ -376,7 +376,7 @@ typedef struct graphics_2d_font_color_t
     u64 platform;
 } graphics_2d_font_color_t;
 
-#define graphics_2d_create_font_function(name) graphics_2d_font_t name(const char* font_name, f32 font_size)
+#define graphics_2d_create_font_function(name) graphics_2d_font_t name(const char* font_name, f32 point_size)
 typedef graphics_2d_create_font_function(graphics_2d_create_font_f);
 
 #define graphics_2d_create_font_color_function(name) graphics_2d_font_color_t name(f32 r, f32 g, f32 b, f32 a)

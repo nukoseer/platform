@@ -241,7 +241,7 @@ init_function(init)
         .address_w = TEXTURE_ADDRESS_WRAP,
     });
 
-    game->font = graphics->create_font("Georgia", 36.0f);
+    game->font = graphics->create_font("Georgia", 24);
     game->font_color = graphics->create_font_color(0.9098f, 0.6098f, 0.0f, 1.0f);
 }
 
