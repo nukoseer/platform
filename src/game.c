@@ -78,6 +78,9 @@ typedef struct game_t
     graphics_shader_t post_pixel_shader;
     graphics_program_t post_program;
     post_setting_t post_setting;
+
+    graphics_2d_font_t font;
+    graphics_2d_font_color_t font_color;
 } game_t;
 
 init_function(init)
@@ -237,6 +240,9 @@ init_function(init)
         .address_v = TEXTURE_ADDRESS_WRAP,
         .address_w = TEXTURE_ADDRESS_WRAP,
     });
+
+    game->font = graphics->create_font("Georgia", 36.0f);
+    game->font_color = graphics->create_font_color(0.9098f, 0.6098f, 0.0f, 1.0f);
 }
 
 update_function(update)
@@ -420,4 +426,19 @@ render_function(render)
         graphics->draw(TOPOLOGY_TRIANGLE_LIST, 3, 0);
     }
     graphics->end_pass();
+
+    graphics->begin_draw();
+    {
+        char frame_ms_text[32] = { 0 };
+        size_t frame_ms_length = 0;
+
+        if ((frame_ms_length = snprintf(frame_ms_text, sizeof(frame_ms_text), "%.2f ms", platform->delta_time * 1000)) > 0)
+        {
+            graphics->draw_text(game->font, game->font_color, TEXT_ALIGNMENT_CENTER,
+                                0.0f, (platform->height * (1.0f - (-0.33f)) * 0.5f) + 8.0f, (f32)platform->width, (f32)platform->height,
+                                frame_ms_text, frame_ms_length);   
+        }
+        
+    }
+    graphics->end_draw();
 }

@@ -356,6 +356,41 @@ typedef graphics_end_pass_function(graphics_end_pass_f);
 #define graphics_draw_function(name) void name(graphics_topology_t topology, u32 vertex_count, u32 start_vertex)
 typedef graphics_draw_function(graphics_draw_f);
 
+
+// NOTE: 2D graphics functions for text drawing.
+
+typedef enum graphics_2d_text_alignment_t
+{
+      TEXT_ALIGNMENT_LEADING,
+      TEXT_ALIGNMENT_TRAILING,
+      TEXT_ALIGNMENT_CENTER,
+} graphics_2d_text_alignment_t;
+
+typedef struct graphics_2d_font_t
+{
+    u64 platform;
+} graphics_2d_font_t;
+
+typedef struct graphics_2d_font_color_t
+{
+    u64 platform;
+} graphics_2d_font_color_t;
+
+#define graphics_2d_create_font_function(name) graphics_2d_font_t name(const char* font_name, f32 font_size)
+typedef graphics_2d_create_font_function(graphics_2d_create_font_f);
+
+#define graphics_2d_create_font_color_function(name) graphics_2d_font_color_t name(f32 r, f32 g, f32 b, f32 a)
+typedef graphics_2d_create_font_color_function(graphics_2d_create_font_color_f);
+
+#define graphics_2d_begin_draw_function(name) void name(void)
+typedef graphics_2d_begin_draw_function(graphics_2d_begin_draw_f);
+
+#define graphics_2d_end_draw_function(name) void name(void)
+typedef graphics_2d_end_draw_function(graphics_2d_end_draw_f);
+
+#define graphics_2d_draw_text_function(name) void name(graphics_2d_font_t font, graphics_2d_font_color_t font_color, graphics_2d_text_alignment_t alignment, f32 x, f32 y, f32 width, f32 height, const char* text, size_t text_length)
+typedef graphics_2d_draw_text_function(graphics_2d_draw_text_f);
+
 typedef struct graphics_t
 {
     union
@@ -389,6 +424,20 @@ typedef struct graphics_t
         // IMPORTANT: As far as I remember function pointers are not guaranteed
         // to be the same size as data pointers but what can I do?
         void* functions[sizeof(struct functions) / sizeof(void*)];
+    };
+
+    union
+    {
+        struct functions_2d
+        {
+            graphics_2d_create_font_f* create_font;
+            graphics_2d_create_font_color_f* create_font_color;
+            graphics_2d_begin_draw_f* begin_draw;
+            graphics_2d_end_draw_f* end_draw;
+            graphics_2d_draw_text_f* draw_text;
+        };
+
+        void* functions_2d[sizeof(struct functions_2d) / sizeof(void*)];
     };
 } graphics_t;
 

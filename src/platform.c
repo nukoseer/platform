@@ -21,6 +21,7 @@
 #include "d3d11_gfx.c"
 #include "d2d1_gfx.c"
 #include "gfx.c"
+#include "gfx_2d.c"
 
 #pragma comment(lib, "user32")
 #pragma comment(lib, "kernel32")
@@ -288,12 +289,6 @@ static void resize_back_buffer(window_t* window)
             window->d3d11->rt_view = 0;
         }
 
-        if (window->d2d1->solid_color_brush)
-        {
-            ID2D1SolidColorBrush_Release(window->d2d1->solid_color_brush);
-            window->d2d1->solid_color_brush = 0;
-        }
-
         if (window->d2d1->render_target)
         {
             ID2D1RenderTarget_Release(window->d2d1->render_target);
@@ -318,42 +313,35 @@ static void resize_back_buffer(window_t* window)
             window->d3d11->width = window->width;
             window->d3d11->height = window->height;
 
-            // IDXGISurface* dxgi_surface = 0;
-            // result = ID3D11Texture2D_QueryInterface(back_buffer, &IID_IDXGISurface, (void**)&dxgi_surface);
-            // fatal_system(SUCCEEDED(result), "[DXGI] Failed to get surface.");
+            IDXGISurface* dxgi_surface = 0;
+            result = ID3D11Texture2D_QueryInterface(back_buffer, &IID_IDXGISurface, (void**)&dxgi_surface);
+            fatal_system(SUCCEEDED(result), "[DXGI] Failed to get surface.");
             
-            // D2D1_RENDER_TARGET_PROPERTIES d2d_render_target_props = 
-            // {
-            //     .type = D2D1_RENDER_TARGET_TYPE_DEFAULT,
-            //     .pixelFormat =
-            //     {
-            //         .format = DXGI_FORMAT_UNKNOWN,
-            //         .alphaMode = D2D1_ALPHA_MODE_IGNORE,
-            //     },
-            //     .dpiX = 0,
-            //     .dpiY = 0,
-            //     .usage = D2D1_RENDER_TARGET_USAGE_NONE,
-            //     .minLevel = D2D1_FEATURE_LEVEL_DEFAULT,
-            // };
-            // result = ID2D1Factory_CreateDxgiSurfaceRenderTarget(window->d2d1->factory,
-            //                                                     dxgi_surface,
-            //                                                     &d2d_render_target_props,
-            //                                                     &window->d2d1->render_target);
-            // fatal_system(SUCCEEDED(result), "[D2D1] Failed to create render target.");
+            D2D1_RENDER_TARGET_PROPERTIES d2d_render_target_props = 
+            {
+                .type = D2D1_RENDER_TARGET_TYPE_DEFAULT,
+                .pixelFormat =
+                {
+                    .format = DXGI_FORMAT_UNKNOWN,
+                    .alphaMode = D2D1_ALPHA_MODE_IGNORE,
+                },
+                .dpiX = 0,
+                .dpiY = 0,
+                .usage = D2D1_RENDER_TARGET_USAGE_NONE,
+                .minLevel = D2D1_FEATURE_LEVEL_DEFAULT,
+            };
+            result = ID2D1Factory_CreateDxgiSurfaceRenderTarget(window->d2d1->factory,
+                                                                dxgi_surface,
+                                                                &d2d_render_target_props,
+                                                                &window->d2d1->render_target);
+            fatal_system(SUCCEEDED(result), "[D2D1] Failed to create render target.");
 
-            // // NOTE: This looks like it works but I am not sure we really do anti-aliasing?
-            // ID2D1RenderTarget_SetTextAntialiasMode(window->d2d1->render_target, D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);
-            // D2D1_TEXT_ANTIALIAS_MODE text_antialias_mode = ID2D1RenderTarget_GetTextAntialiasMode(window->d2d1->render_target);
-            // fatal(text_antialias_mode == D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE, "[D2D1] Failed to set text anti-alias mode.");
+            // NOTE: This looks like it works but I am not sure we really do anti-aliasing?
+            ID2D1RenderTarget_SetTextAntialiasMode(window->d2d1->render_target, D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);
+            D2D1_TEXT_ANTIALIAS_MODE text_antialias_mode = ID2D1RenderTarget_GetTextAntialiasMode(window->d2d1->render_target);
+            fatal(text_antialias_mode == D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE, "[D2D1] Failed to set text anti-alias mode.");
 
-            // D2D1_COLOR_F d2d1_color = { 0.9098f, 0.6098f, 0.0f, 1.0f };
-            // result = ID2D1RenderTarget_CreateSolidColorBrush(window->d2d1->render_target,
-            //                                                  &d2d1_color,
-            //                                                  0,
-            //                                                  &window->d2d1->solid_color_brush);
-            // fatal_system(SUCCEEDED(result), "[D2D1] Failed to create solid color brush.");
-
-            // IDXGISurface_Release(dxgi_surface);
+            IDXGISurface_Release(dxgi_surface);
             ID3D11Texture2D_Release(back_buffer);
         }
 
@@ -518,6 +506,14 @@ static DWORD WINAPI main_thread(void* param)
         .begin_pass = gfx_begin_pass,
         .end_pass = gfx_end_pass,
         .draw = gfx_draw,
+
+        // NOTE: 2D functions for text rendering.
+
+        .create_font = gfx_2d_create_font,
+        .create_font_color = gfx_2d_create_font_color,
+        .begin_draw = gfx_2d_begin_draw,
+        .end_draw = gfx_2d_end_draw,
+        .draw_text = gfx_2d_draw_text,
     };
 
     platform_t platform =
@@ -534,6 +530,13 @@ static DWORD WINAPI main_thread(void* param)
         void* function = graphics.functions[function_index];
 
         fatal(function, "[PLATFORM] Unassigned graphics function.");
+    }
+
+    for (u32 function_index = 0; function_index < array_count(graphics.functions_2d); ++function_index)
+    {
+        void* function = graphics.functions_2d[function_index];
+
+        fatal(function, "[PLATFORM] Unassigned 2D graphics function.");
     }
 
     module_t module = load_module();
@@ -564,51 +567,6 @@ static DWORD WINAPI main_thread(void* param)
         module.update(&platform);
 
         module.render(&platform);
-
-        if (window->d3d11->rt_view)
-        {
-            // ID2D1RenderTarget_BeginDraw(window->d2d1->render_target);
-
-            // IDWriteTextLayout* text_layout = 0;
-            // WCHAR text[32] = { 0 };
-
-            // if (swprintf(text, sizeof(text), L"%.1f ms", platform.delta_time * 1000) > 0)
-            // {
-            //     // TODO: IDWriteFactory_CreateTextLayout should not be here I guess?
-            //     IDWriteFactory_CreateTextLayout(window->d2d1->dwrite->factory,
-            //                                     text,                                            
-            //                                     sizeof(text) / 2 - 1,
-            //                                     window->d2d1->dwrite->text_format,
-            //                                     (FLOAT)window->width,
-            //                                     (FLOAT)window->height,
-            //                                     &text_layout);
-            //     DWRITE_TEXT_METRICS text_metrics = { 0 };
-            //     IDWriteTextLayout_GetMetrics(text_layout, &text_metrics);
-
-            //     FLOAT left = (window->width) * 0.5f - (text_metrics.width * 0.5f);
-            //     // NOTE: Normalized device coordinates to pixels([1.0f, -1.0f] to [0.0f, 1.0f]) + padding
-            //     FLOAT top = ((window->height) * (1.0f - (-0.33f)) * 0.5f) + 8.0f;
-            //     D2D1_RECT_F layout =
-            //     {
-            //         .left = left,
-            //         .top = top,
-            //         .right = left + text_metrics.width,
-            //         .bottom = top + text_metrics.height
-            //     };
-            //     D2D1_ROUNDED_RECT rounded_rect = {
-            //         .rect = layout,
-            //         .radiusX = 2.0f, .radiusY = 2.0f,
-            //     };
-            //     ID2D1RenderTarget_DrawRoundedRectangle(window->d2d1->render_target, &rounded_rect, (ID2D1Brush*)window->d2d1->solid_color_brush, 1.0f, 0);
-            //     ID2D1RenderTarget_DrawText(window->d2d1->render_target, text, sizeof(text) / 2 - 1, window->d2d1->dwrite->text_format,
-            //                                &layout, (ID2D1Brush*)window->d2d1->solid_color_brush, D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT, DWRITE_MEASURING_MODE_NATURAL);
-            // }
-            
-            // ID2D1RenderTarget_EndDraw(window->d2d1->render_target, 0, 0);
-
-            // // TODO: IDWriteTextLayout_Release should not be here I guess?
-            // IDWriteTextLayout_Release(text_layout);
-        }
 
         BOOL vsync = 0;
         result = IDXGISwapChain1_Present(window->swap_chain, vsync ? 1 : 0, 0);
