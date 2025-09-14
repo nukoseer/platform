@@ -79,7 +79,7 @@ static u32 global_program_count;
 static u32 global_pipeline_count;
 static u32 global_pass_count;
 
-gfx_target_t global_backbuffer_target;
+static gfx_target_t global_backbuffer_target;
 
 #define next_index_function(name)                                                                                    \
 static inline u32 next_##name##_index(void)                                                                          \
@@ -95,7 +95,7 @@ static inline u32 next_##name##_index(void)                                     
     {                                                                                                                \
         name##_index = global_##name##_count++;                                                                      \
                                                                                                                      \
-        if (name##_index == 0 || name##_index >= GFX_MAX_RESOUCE)                                                    \
+        if (name##_index == 0 || name##_index >= array_count(global_##name##s))                                      \
         {                                                                                                            \
             assert(!"Max resource count exceeded.");                                                                 \
         }                                                                                                            \

@@ -513,6 +513,8 @@ static DWORD WINAPI main_thread(void* param)
 
         .create_font = gfx_2d_create_font,
         .create_font_color = gfx_2d_create_font_color,
+        .delete_font = gfx_2d_delete_font,
+        .delete_font_color = gfx_2d_delete_font_color,
         .begin_draw = gfx_2d_begin_draw,
         .end_draw = gfx_2d_end_draw,
         .draw_text = gfx_2d_draw_text,

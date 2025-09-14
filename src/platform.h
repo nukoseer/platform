@@ -382,6 +382,12 @@ typedef graphics_2d_create_font_function(graphics_2d_create_font_f);
 #define graphics_2d_create_font_color_function(name) graphics_2d_font_color_t name(f32 r, f32 g, f32 b, f32 a)
 typedef graphics_2d_create_font_color_function(graphics_2d_create_font_color_f);
 
+#define graphics_2d_delete_font_function(name) void name(graphics_2d_font_t font)
+typedef graphics_2d_delete_font_function(graphics_2d_delete_font_f);
+
+#define graphics_2d_delete_font_color_function(name) void name(graphics_2d_font_color_t font_color)
+typedef graphics_2d_delete_font_color_function(graphics_2d_delete_font_color_f);
+
 #define graphics_2d_begin_draw_function(name) void name(void)
 typedef graphics_2d_begin_draw_function(graphics_2d_begin_draw_f);
 
@@ -432,6 +438,8 @@ typedef struct graphics_t
         {
             graphics_2d_create_font_f* create_font;
             graphics_2d_create_font_color_f* create_font_color;
+            graphics_2d_delete_font_f* delete_font;
+            graphics_2d_delete_font_color_f* delete_font_color;
             graphics_2d_begin_draw_f* begin_draw;
             graphics_2d_end_draw_f* end_draw;
             graphics_2d_draw_text_f* draw_text;
