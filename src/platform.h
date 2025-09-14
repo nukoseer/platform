@@ -395,7 +395,7 @@ typedef struct graphics_t
 {
     union
     {
-        struct functions
+        struct graphics_functions
         {
             graphics_create_buffer_f* create_buffer;
             graphics_create_texture_2d_f* create_texture_2d;
@@ -423,12 +423,12 @@ typedef struct graphics_t
 
         // IMPORTANT: As far as I remember function pointers are not guaranteed
         // to be the same size as data pointers but what can I do?
-        void* functions[sizeof(struct functions) / sizeof(void*)];
+        void* functions[sizeof(struct graphics_functions) / sizeof(void*)];
     };
 
     union
     {
-        struct functions_2d
+        struct graphics_2d_functions
         {
             graphics_2d_create_font_f* create_font;
             graphics_2d_create_font_color_f* create_font_color;
@@ -437,15 +437,44 @@ typedef struct graphics_t
             graphics_2d_draw_text_f* draw_text;
         };
 
-        void* functions_2d[sizeof(struct functions_2d) / sizeof(void*)];
+        void* functions_2d[sizeof(struct graphics_2d_functions) / sizeof(void*)];
     };
 } graphics_t;
+
+// NOTE: IO functions.
+
+typedef struct io_file_read_result_t
+{
+    u8* data;
+    size_t size;
+} io_file_read_result_t;
+
+#define io_read_file_function(name) io_file_read_result_t name(const char* file_name)
+typedef io_read_file_function(io_read_file_f);
+
+#define io_release_file_memory_function(name) void name(u8* memory)
+typedef io_release_file_memory_function(io_release_file_memory_f);
+
+typedef struct io_t
+{
+    union
+    {
+        struct io_functions
+        {
+            io_read_file_f* read_file;
+            io_release_file_memory_f* release_file_memory;
+        };
+
+        void* functions[sizeof(struct io_functions) / sizeof(void*)];
+    };
+} io_t;
 
 typedef struct platform_t
 {
     memory_t* memory;
     input_t* input;
     graphics_t* graphics;
+    io_t* io;
 
     u32 width;
     u32 height;

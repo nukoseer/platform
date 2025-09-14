@@ -23,6 +23,8 @@
 #include "gfx.c"
 #include "gfx_2d.c"
 
+#include "io.c"
+
 #pragma comment(lib, "user32")
 #pragma comment(lib, "kernel32")
 #pragma comment(lib, "d3d11")
@@ -516,11 +518,18 @@ static DWORD WINAPI main_thread(void* param)
         .draw_text = gfx_2d_draw_text,
     };
 
+    io_t io =
+    {
+        .read_file = io_read_file,
+        .release_file_memory = io_release_file_memory,
+    };
+
     platform_t platform =
     {
         .memory = &memory,
         .input = new_input,
         .graphics = &graphics,
+        .io = &io,
         .width = window->width,
         .height = window->height,
     };
@@ -537,6 +546,13 @@ static DWORD WINAPI main_thread(void* param)
         void* function = graphics.functions_2d[function_index];
 
         fatal(function, "[PLATFORM] Unassigned 2D graphics function.");
+    }
+
+    for (u32 function_index = 0; function_index < array_count(io.functions); ++function_index)
+    {
+        void* function = io.functions[function_index];
+
+        fatal(function, "[PLATFORM] Unassigned io function.");
     }
 
     module_t module = load_module();

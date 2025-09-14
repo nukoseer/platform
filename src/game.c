@@ -87,6 +87,7 @@ init_function(init)
 {
     memory_t* memory = platform->memory;
     graphics_t* graphics = platform->graphics;
+    io_t* io = platform->io;
     game_t* game = (game_t*)memory->permanent;
 
     vertex_t vertex_data[] =
@@ -241,8 +242,10 @@ init_function(init)
         .address_w = TEXTURE_ADDRESS_WRAP,
     });
 
-    game->font = graphics->create_font("Georgia", 24);
+    game->font = graphics->create_font("Consolas", 24);
     game->font_color = graphics->create_font_color(0.9098f, 0.6098f, 0.0f, 1.0f);
+
+    io->release_file_memory(io->read_file("..\\src\\game.c").data);
 }
 
 update_function(update)
