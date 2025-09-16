@@ -2,6 +2,7 @@
 #include <string.h>
 #include "utils.h"
 #include "platform.h"
+#include "maths.h"
 
 #include "../shader/vertex_shader.h"
 #include "../shader/pixel_shader.h"
