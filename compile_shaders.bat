@@ -16,4 +16,7 @@ fxc.exe /nologo /T ps_5_0 /E ps /O3 /WX /Zpc /Ges /Fh blur_pixel_shader.h /Vn bl
 fxc.exe /nologo /T vs_5_0 /E vs /O3 /WX /Zpc /Ges /Fh post_vertex_shader.h /Vn post_vshader /Qstrip_reflect /Qstrip_debug /Qstrip_priv post_shader.hlsl
 fxc.exe /nologo /T ps_5_0 /E ps /O3 /WX /Zpc /Ges /Fh post_pixel_shader.h /Vn post_pshader /Qstrip_reflect /Qstrip_debug /Qstrip_priv post_shader.hlsl
 
+fxc.exe /nologo /T vs_5_0 /E vs /O3 /WX /Zpc /Ges /Fh vertex_shader_3d.h /Vn vshader_3d /Qstrip_reflect /Qstrip_debug /Qstrip_priv shader_3d.hlsl
+fxc.exe /nologo /T ps_5_0 /E ps /O3 /WX /Zpc /Ges /Fh pixel_shader_3d.h /Vn pshader_3d /Qstrip_reflect /Qstrip_debug /Qstrip_priv shader_3d.hlsl
+
 popd

@@ -610,6 +610,7 @@ static graphics_create_pipeline_function(gfx_create_pipeline)
     {
         .FillMode = pipeline_desc->wireframe ? D3D11_FILL_WIREFRAME : D3D11_FILL_SOLID,
         .CullMode = pipeline_desc->cull ? D3D11_CULL_BACK : D3D11_CULL_NONE,
+        .FrontCounterClockwise = TRUE,
         .DepthClipEnable = TRUE,
     };
 
