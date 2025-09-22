@@ -538,8 +538,8 @@ init_function(init)
         .address_w = TEXTURE_ADDRESS_WRAP,
     });
 
-    // game->font = graphics->create_font("Consolas", 24);
-    // game->font_color = graphics->create_font_color(0.9098f, 0.6098f, 0.0f, 1.0f);
+    game->font = graphics->create_font("Consolas", 24);
+    game->font_color = graphics->create_font_color(0.9098f, 0.6098f, 0.0f, 1.0f);
 
     io->release_file_memory(io->read_file("..\\src\\game.c").data);
 }
@@ -581,96 +581,7 @@ render_function(render)
     }
     graphics->end_pass();
 
-    // NOTE: Horizontal blur. glow_mask -> glow_a.
-    graphics->begin_pass(game->glow_a_target, &(graphics_pass_desc_t){ .clear_color = false });
-    {
-        game->glow_blur_setting = (glow_blur_setting_t)
-        {
-            .inverse_dst_size = { 1.0f / game->glow_a.width, 1.0f / game->glow_a.height },
-            .direction = { 1.0f, 0.0f }
-        };
-        graphics->update_buffer(game->blur_buffer, &game->glow_blur_setting, 0, sizeof(game->glow_blur_setting));
-        graphics->set_buffer(game->blur_buffer, STAGE_PIXEL_SHADER, 0, 0, 0);
-        graphics->set_program(game->blur_program);
-        graphics->set_pipeline(game->default_pipeline);
-        graphics->set_samplers(STAGE_PIXEL_SHADER, &game->linear_sampler, 1, 0);
-        graphics->set_srvs(STAGE_PIXEL_SHADER, &game->glow_mask, 1, 0);
-        graphics->draw(TOPOLOGY_TRIANGLE_LIST, 3, 0);
-    }
-    graphics->end_pass();
-
-    // NOTE: Vertical blur. glow_a -> glow_b.
-    graphics->begin_pass(game->glow_b_target, &(graphics_pass_desc_t){ .clear_color = false });
-    {
-        game->glow_blur_setting = (glow_blur_setting_t)
-        {
-            .inverse_dst_size = { 1.0f / game->glow_b.width, 1.0f / game->glow_b.height },
-            .direction = { 0.0f, 1.0f }
-        };
-        graphics->update_buffer(game->blur_buffer, &game->glow_blur_setting, 0, sizeof(game->glow_blur_setting));
-        graphics->set_buffer(game->blur_buffer, STAGE_PIXEL_SHADER, 0, 0, 0);
-        graphics->set_program(game->blur_program);
-        graphics->set_pipeline(game->default_pipeline);
-        graphics->set_samplers(STAGE_PIXEL_SHADER, &game->linear_sampler, 1, 0);
-        graphics->set_srvs(STAGE_PIXEL_SHADER, &game->glow_a, 1, 0);
-        graphics->draw(TOPOLOGY_TRIANGLE_LIST, 3, 0);
-    }
-    graphics->end_pass();
-
-    // NOTE: Post pass rendering to backbuffer.
-    graphics->begin_pass(graphics->get_backbuffer_target(), &(graphics_pass_desc_t){ .clear_color = false });
-    {
-        game->post_setting.inverse_dst_size[0] = 1.0f / platform->width;
-        game->post_setting.inverse_dst_size[1] = 1.0f / platform->height;
-        game->post_setting.inverse_src_size[0] = 1.0f / platform->width;
-        game->post_setting.inverse_src_size[1] = 1.0f / platform->height;
-        game->post_setting.aspect_ratio = (f32)platform->width / (f32)platform->height;
-        game->post_setting.vignette_soft = 0.45f;
-
-        if (platform->input->keys[KEY_I].action == KEY_ACTION_RELEASE)
-        {
-            game->post_setting.invert = game->post_setting.invert == 0.0f ? 1.0f : 0.0f;
-        }
-
-        if (platform->input->keys[KEY_V].action == KEY_ACTION_RELEASE)
-        {
-            game->post_setting.vignette = game->post_setting.vignette == 0.0f ? 1.0f : 0.0f;
-        }
-
-        if (platform->input->keys[KEY_G].action == KEY_ACTION_RELEASE)
-        {
-            game->post_setting.glow_intensity = game->post_setting.glow_intensity == 0.0f ? 1.0f : 0.0f;
-        }
-
-        graphics->update_buffer(game->post_buffer, &game->post_setting, 0, sizeof(game->post_setting));
-        graphics->set_buffer(game->post_buffer, STAGE_PIXEL_SHADER, 0, 0, 0);
-        graphics->set_program(game->post_program);
-        graphics->set_pipeline(game->default_pipeline);
-        graphics_sampler_t samplers[] = { game->point_sampler, game->linear_sampler };
-        graphics->set_samplers(STAGE_PIXEL_SHADER, samplers, 2, 0);
-        // NOTE: Offscreen scene, horizontal and vertical blur, unblurred version (for filtering core part and leaving the halo).
-        graphics_texture_t srvs[] = { game->offscreen_scene, game->glow_b, game->glow_mask };
-        graphics->set_srvs(STAGE_PIXEL_SHADER, srvs, 3, 0);
-        graphics->draw(TOPOLOGY_TRIANGLE_LIST, 3, 0);
-    }
-    graphics->end_pass();
-    
-    // graphics->begin_draw();
-    // {
-    //     char frame_ms_text[32] = { 0 };
-    //     size_t frame_ms_length = 0;
-
-    //     if ((frame_ms_length = snprintf(frame_ms_text, sizeof(frame_ms_text), "%.2f ms", platform->delta_time * 1000)) > 0)
-    //     {
-    //         graphics->draw_text(game->font, game->font_color, TEXT_ALIGNMENT_CENTER,
-    //                             0.0f, (platform->height * (1.0f - (-0.33f)) * 0.5f) + 8.0f, (f32)platform->width, (f32)platform->height,
-    //                             frame_ms_text, frame_ms_length);   
-    //     }
-        
-    // }
-    // graphics->end_draw();
 #else
-
     game->camera_position = rotation_y(0.1f, game->camera_position);
     game->camera_position = rotation_x(0.9f, game->camera_position);
     
@@ -689,7 +600,7 @@ render_function(render)
 
     // NOTE: Glow mask pass.
     graphics->begin_pass(game->glow_mask_target, &(graphics_pass_desc_t){ .clear_color = true, .clear_rgba = { 0.0f, 0.0f, 0.0f, 0.0f } });
-{
+    {
         graphics->set_buffer(game->setting_3d_buffer, STAGE_VERTEX_SHADER, 0, 0, 0);
         graphics->set_buffer(game->vertex_buffer_3d, STAGE_VERTEX_SHADER, 0, sizeof(vertex3d_t), 0);
         game->glow_mask_setting = (glow_mask_setting_t){ .glow_color = { 0.9964f, 0.8431f, 0.4941f, 0.0f } };
@@ -700,7 +611,8 @@ render_function(render)
         graphics->draw(TOPOLOGY_TRIANGLE_LIST, array_count(game->vertex_data_3d), 0);
     }
     graphics->end_pass();
-
+#endif
+    
     // NOTE: Horizontal blur. glow_mask -> glow_a.
     graphics->begin_pass(game->glow_a_target, &(graphics_pass_desc_t){ .clear_color = false });
     {
@@ -774,5 +686,19 @@ render_function(render)
         graphics->draw(TOPOLOGY_TRIANGLE_LIST, 3, 0);
     }
     graphics->end_pass();
-#endif
+    
+    graphics->begin_draw();
+    {
+        char frame_ms_text[32] = { 0 };
+        size_t frame_ms_length = 0;
+
+        if ((frame_ms_length = snprintf(frame_ms_text, sizeof(frame_ms_text), "%.2f ms", platform->delta_time * 1000)) > 0)
+        {
+            graphics->draw_text(game->font, game->font_color, TEXT_ALIGNMENT_CENTER,
+                                0.0f, (platform->height * (1.0f - (-0.33f)) * 0.5f) + 8.0f, (f32)platform->width, (f32)platform->height,
+                                frame_ms_text, frame_ms_length);   
+        }
+        
+    }
+    graphics->end_draw();
 }
