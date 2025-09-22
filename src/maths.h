@@ -1,5 +1,7 @@
 #pragma once
 
+#include <math.h>
+
 typedef union vec2
 {
     struct

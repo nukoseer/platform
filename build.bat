@@ -91,7 +91,7 @@ if /I "%compiler%"=="clang" (
   set asan_flags=-D_ASAN -fsanitize=address
   set debug_compiler_flags=-O0 -g -static -fno-omit-frame-pointer -D_DEBUG
   set release_compiler_flags=-O3
-  set common_compiler_flags=-pedantic -fdiagnostics-absolute-paths -fno-math-errno -fstrict-aliasing -x c -fshow-source-location -fno-stack-protector -fuse-ld=lld-link -Wall -Werror -Wno-unused-function -Wno-microsoft-anon-tag -Wno-extra-semi
+  set common_compiler_flags=-pedantic -fdiagnostics-absolute-paths -fno-math-errno -fstrict-aliasing -x c -fshow-source-location -fno-stack-protector -fuse-ld=lld-link -Wall -Werror -Wno-unused-function -Wno-microsoft-anon-tag -Wno-extra-semi -Wno-missing-braces
   rem -Wno-unknown-warning-option -Wno-inline -Wno-padded -Wno-unreachable-code -Wno-gnu-anonymous-struct  -Wno-microsoft-enum-forward-reference
 
   rem -E -dD outputs macro expansions do not link when used.
@@ -130,7 +130,8 @@ if /I "%debug%"=="yes" (
    set common_linker_flags_dll=%common_linker_flags_dll% %release_linker_flags_dll%
 )
 
-%compiler% %common_compiler_flags% ..\src\gaussian_kernel_1d.c %link_section% %common_linker_flags% %OUTPUT%gaussian_kernel_1d.exe
+rem %compiler% %common_compiler_flags% ..\src\gaussian_kernel_1d.c %link_section% %common_linker_flags% %OUTPUT%gaussian_kernel_1d.exe
+rem %compiler% %common_compiler_flags% ..\src\shape_parser.c %link_section% %common_linker_flags% %OUTPUT%shape_parser.exe
 %compiler% %common_compiler_flags% ..\src\platform.c %link_section% %common_linker_flags% %OUTPUT%platform.exe
 rem %compiler% %common_compiler_flags% ..\src\gfx.c -E -dD
 rem -MJ ../compile_commands.json
