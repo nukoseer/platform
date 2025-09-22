@@ -84,6 +84,104 @@ typedef struct game_t
     graphics_2d_font_color_t font_color;
 } game_t;
 
+static void resize_offscreen_buffer(graphics_t* graphics, game_t* game)
+{
+    bool is_valid = graphics->is_valid_target(game->offscreen_target);
+    bool resize = false;
+    u32 backbuffer_width = 0;
+    u32 backbuffer_height = 0;
+
+    graphics->get_target_size(graphics->get_backbuffer_target(), &backbuffer_width, &backbuffer_height);
+
+    if (is_valid)
+    {
+        u32 offscreen_width = game->offscreen_scene.width;
+        u32 offscreen_height = game->offscreen_scene.height;
+
+        if (offscreen_width != backbuffer_width || offscreen_height != backbuffer_height)
+        {
+            graphics->delete_target(game->offscreen_target);
+            graphics->delete_target(game->glow_mask_target);
+            graphics->delete_target(game->glow_a_target);
+            graphics->delete_target(game->glow_b_target);
+            graphics->delete_texture_2d(game->offscreen_scene);
+            graphics->delete_texture_2d(game->glow_mask);
+            graphics->delete_texture_2d(game->glow_a);
+            graphics->delete_texture_2d(game->glow_b);
+
+            resize = true;
+        }
+    }
+
+    if (!is_valid || resize)
+    {
+        game->offscreen_scene = graphics->create_texture_2d(&(graphics_texture_2d_desc_t)
+        {
+            .format = FORMAT_R8G8B8A8_UNORM_SRGB,
+            .bind = BIND_SHADER_RESOURCE | BIND_RENDER_TARGET,
+            .width = backbuffer_width,
+            .height = backbuffer_height,
+        }, 0, 0);
+
+        game->glow_mask = graphics->create_texture_2d(&(graphics_texture_2d_desc_t)
+        {
+            .format = FORMAT_R8G8B8A8_UNORM_SRGB,
+            .bind = BIND_SHADER_RESOURCE | BIND_RENDER_TARGET,
+            .width = (u32)(backbuffer_width * 0.5f),
+            .height = (u32)(backbuffer_height * 0.5f),
+        }, 0, 0);
+
+        game->glow_a = graphics->create_texture_2d(&(graphics_texture_2d_desc_t)
+        {
+            .format = FORMAT_R8G8B8A8_UNORM_SRGB,
+            .bind = BIND_SHADER_RESOURCE | BIND_RENDER_TARGET,
+            .width = (u32)(backbuffer_width * 0.5f),
+            .height = (u32)(backbuffer_height * 0.5f),
+        }, 0, 0);
+
+        game->glow_b = graphics->create_texture_2d(&(graphics_texture_2d_desc_t)
+        {
+            .format = FORMAT_R8G8B8A8_UNORM_SRGB,
+            .bind = BIND_SHADER_RESOURCE | BIND_RENDER_TARGET,
+            .width = (u32)(backbuffer_width * 0.5f),
+            .height = (u32)(backbuffer_height * 0.5f),
+        }, 0, 0);
+
+        // NOTE: Create RenderTargetView for offscreen_scene to render.
+        game->offscreen_target = graphics->create_target(game->offscreen_scene);
+        game->glow_mask_target = graphics->create_target(game->glow_mask);
+        game->glow_a_target = graphics->create_target(game->glow_a);
+        game->glow_b_target = graphics->create_target(game->glow_b);
+    }
+}
+
+// NOTE: View matrix, right-handed, -z
+static inline mat4x4 view_matrix(vec3 reference_up, vec3 from, vec3 to)
+{
+    vec3 forward = v3_normalize(v3_sub(to, from));
+    vec3 right = v3_normalize(v3_cross(forward, reference_up));
+    vec3 up = v3_cross(right, forward);
+    vec3 forward_neg = v3_neg(forward);
+
+    mat4x4 result =
+    {
+        .columns =
+        {
+            [0] = v4v(right, 0.0f),
+            [1] = v4v(up, 0.0f),
+            [2] = v4v(forward_neg, 0.0f),
+            [3] = v4(0.0f, 0.0f, 0.0f, 1.0f),
+        },
+    };
+
+    result.columns[3].x = -v3_dot(right, from);
+    result.columns[3].y = -v3_dot(up, from);
+    result.columns[3].z = -v3_dot(forward_neg, from);
+    result.columns[3].w = 1.0f;
+
+    return result;
+}
+
 init_function(init)
 {
     memory_t* memory = platform->memory;
@@ -247,82 +345,14 @@ init_function(init)
     game->font_color = graphics->create_font_color(0.9098f, 0.6098f, 0.0f, 1.0f);
 
     io->release_file_memory(io->read_file("..\\src\\game.c").data);
+
+    mat4x4 view = view_matrix(v3(0.0f, 1.0f, 0.0f), v3(0.0f, 0.0f, 1.0f), v3(0.0f, 0.0f, 0.0f));
+    (void)view;
 }
 
 update_function(update)
 {
 
-}
-
-static void resize_offscreen_buffer(graphics_t* graphics, game_t* game)
-{
-    bool is_valid = graphics->is_valid_target(game->offscreen_target);
-    bool resize = false;
-    u32 backbuffer_width = 0;
-    u32 backbuffer_height = 0;
-
-    graphics->get_target_size(graphics->get_backbuffer_target(), &backbuffer_width, &backbuffer_height);
-
-    if (is_valid)
-    {
-        u32 offscreen_width = game->offscreen_scene.width;
-        u32 offscreen_height = game->offscreen_scene.height;
-
-        if (offscreen_width != backbuffer_width || offscreen_height != backbuffer_height)
-        {
-            graphics->delete_target(game->offscreen_target);
-            graphics->delete_target(game->glow_mask_target);
-            graphics->delete_target(game->glow_a_target);
-            graphics->delete_target(game->glow_b_target);
-            graphics->delete_texture_2d(game->offscreen_scene);
-            graphics->delete_texture_2d(game->glow_mask);
-            graphics->delete_texture_2d(game->glow_a);
-            graphics->delete_texture_2d(game->glow_b);
-
-            resize = true;
-        }
-    }
-
-    if (!is_valid || resize)
-    {
-        game->offscreen_scene = graphics->create_texture_2d(&(graphics_texture_2d_desc_t)
-        {
-            .format = FORMAT_R8G8B8A8_UNORM_SRGB,
-            .bind = BIND_SHADER_RESOURCE | BIND_RENDER_TARGET,
-            .width = backbuffer_width,
-            .height = backbuffer_height,
-        }, 0, 0);
-
-        game->glow_mask = graphics->create_texture_2d(&(graphics_texture_2d_desc_t)
-        {
-            .format = FORMAT_R8G8B8A8_UNORM_SRGB,
-            .bind = BIND_SHADER_RESOURCE | BIND_RENDER_TARGET,
-            .width = (u32)(backbuffer_width * 0.5f),
-            .height = (u32)(backbuffer_height * 0.5f),
-        }, 0, 0);
-
-        game->glow_a = graphics->create_texture_2d(&(graphics_texture_2d_desc_t)
-        {
-            .format = FORMAT_R8G8B8A8_UNORM_SRGB,
-            .bind = BIND_SHADER_RESOURCE | BIND_RENDER_TARGET,
-            .width = (u32)(backbuffer_width * 0.5f),
-            .height = (u32)(backbuffer_height * 0.5f),
-        }, 0, 0);
-
-        game->glow_b = graphics->create_texture_2d(&(graphics_texture_2d_desc_t)
-        {
-            .format = FORMAT_R8G8B8A8_UNORM_SRGB,
-            .bind = BIND_SHADER_RESOURCE | BIND_RENDER_TARGET,
-            .width = (u32)(backbuffer_width * 0.5f),
-            .height = (u32)(backbuffer_height * 0.5f),
-        }, 0, 0);
-
-        // NOTE: Create RenderTargetView for offscreen_scene to render.
-        game->offscreen_target = graphics->create_target(game->offscreen_scene);
-        game->glow_mask_target = graphics->create_target(game->glow_mask);
-        game->glow_a_target = graphics->create_target(game->glow_a);
-        game->glow_b_target = graphics->create_target(game->glow_b);
-    }
 }
 
 render_function(render)

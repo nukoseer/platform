@@ -125,6 +125,12 @@ typedef union vec4
     f32 values[4];
 } vec4;
 
+typedef union mat4x4
+{
+    f32 values[4][4];
+    vec4 columns[4];
+} mat4x4;
+
 // NOTE: Vector initialization.
 
 static inline vec2 v2(f32 x, f32 y)
@@ -166,6 +172,41 @@ static inline vec4 v4v(vec3 xyz, f32 w)
 
     result.xyz = xyz;
     result.w = w;
+
+    return result;
+}
+
+// NOTE: Vector unary operations.
+
+static inline vec2 v2_neg(vec2 v)
+{
+    vec2 result;
+
+    result.x = -v.x;
+    result.y = -v.y;
+
+    return result;
+}
+
+static inline vec3 v3_neg(vec3 v)
+{
+    vec3 result;
+
+    result.x = -v.x;
+    result.y = -v.y;
+    result.z = -v.z;
+
+    return result;
+}
+
+static inline vec4 v4_neg(vec4 v)
+{
+    vec4 result;
+
+    result.x = -v.x;
+    result.y = -v.y;
+    result.z = -v.z;
+    result.w = -v.w;
 
     return result;
 }
@@ -424,9 +465,9 @@ static inline f32 v4_dot(vec4 left, vec4 right)
     return result;
 }
 
-static inline vec4 v3_cross(vec3 left, vec3 right)
+static inline vec3 v3_cross(vec3 left, vec3 right)
 {
-    vec4 result;
+    vec3 result;
 
     result.x = (left.y * right.z) - (left.z * right.y);
     result.y = (left.z * right.x) - (left.x * right.z);
@@ -496,6 +537,75 @@ static inline vec3 v3_normalize(vec3 v)
 static inline vec4 v4_normalize(vec4 v)
 {
     vec4 result = v4_mulf(v, 1.0f / sqrtf(v4_dot(v, v)));
+
+    return result;
+}
+
+// NOTE: 4x4 matrix
+
+static inline mat4x4 m4x4(void)
+{
+    mat4x4 result = { 0 };
+
+    return result;
+}
+
+static inline mat4x4 m4x4d(f32 diagonal)
+{
+    mat4x4 result = { 0 };
+
+    result.values[0][0] = diagonal;
+    result.values[1][1] = diagonal;
+    result.values[2][2] = diagonal;
+    result.values[3][3] = diagonal;
+
+    return result;
+}
+
+static inline mat4x4 m4x4_transpose(mat4x4 m)
+{
+    mat4x4 result;
+
+    result.values[0][0] = result.values[0][0];
+    result.values[0][1] = result.values[1][0];
+    result.values[0][2] = result.values[2][0];
+    result.values[0][3] = result.values[3][0];
+    result.values[1][0] = result.values[0][1];
+    result.values[1][1] = result.values[1][1];
+    result.values[1][2] = result.values[2][1];
+    result.values[1][3] = result.values[3][1];
+    result.values[2][0] = result.values[0][2];
+    result.values[2][1] = result.values[1][2];
+    result.values[2][2] = result.values[2][2];
+    result.values[2][3] = result.values[3][2];
+    result.values[3][0] = result.values[0][3];
+    result.values[3][1] = result.values[1][3];
+    result.values[3][2] = result.values[2][3];
+    result.values[3][3] = result.values[3][3];
+    
+    return result;
+}
+
+static inline mat4x4 m4x4_add(mat4x4 left, mat4x4 right)
+{
+    mat4x4 result;
+
+    result.columns[0] = v4_add(left.columns[0], right.columns[0]);
+    result.columns[1] = v4_add(left.columns[1], right.columns[1]);
+    result.columns[2] = v4_add(left.columns[2], right.columns[2]);
+    result.columns[3] = v4_add(left.columns[3], right.columns[3]);
+
+    return result;
+}
+
+static inline mat4x4 m4x4_sub(mat4x4 left, mat4x4 right)
+{
+    mat4x4 result;
+
+    result.columns[0] = v4_sub(left.columns[0], right.columns[0]);
+    result.columns[1] = v4_sub(left.columns[1], right.columns[1]);
+    result.columns[2] = v4_sub(left.columns[2], right.columns[2]);
+    result.columns[3] = v4_sub(left.columns[3], right.columns[3]);
 
     return result;
 }
