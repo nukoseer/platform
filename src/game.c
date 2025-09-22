@@ -15,6 +15,9 @@
 #include "../shader/vertex_shader_3d.h"
 #include "../shader/pixel_shader_3d.h"
 
+#define PI      3.14159265358979323846
+#define DEG2RAD (PI / 180.0)
+
 typedef struct vertex_t
 {
     vec2 position;
@@ -24,6 +27,7 @@ typedef struct vertex_t
 typedef struct vertex3d_t
 {
     vec3 position;
+    vec3 color;
 } vertex3d_t;
 
 typedef struct setting_3d_t
@@ -70,6 +74,16 @@ typedef struct game_t
     graphics_program_t program;
     graphics_pipeline_t default_pipeline;
 
+    vec3 camera_position;
+    setting_3d_t setting_3d;
+    vertex3d_t vertex_data_3d[36];
+    graphics_buffer_t vertex_buffer_3d;
+    graphics_buffer_t setting_3d_buffer;
+    graphics_shader_t vertex_shader_3d;
+    graphics_shader_t pixel_shader_3d;
+    graphics_program_t program_3d;
+    graphics_pipeline_t pipeline_3d;
+
     glow_mask_setting_t glow_mask_setting;
     graphics_sampler_t linear_sampler;
     graphics_buffer_t glow_buffer;
@@ -81,6 +95,7 @@ typedef struct game_t
     graphics_target_t glow_b_target;
     graphics_shader_t glow_pixel_shader;
     graphics_program_t glow_program;
+    graphics_program_t glow_program_3d;
 
     glow_blur_setting_t glow_blur_setting;
     graphics_buffer_t blur_buffer;
@@ -97,15 +112,6 @@ typedef struct game_t
 
     graphics_2d_font_t font;
     graphics_2d_font_color_t font_color;
-
-    setting_3d_t setting_3d;
-    vertex3d_t vertex_data_3d[36];
-    graphics_buffer_t vertex_buffer_3d;
-    graphics_buffer_t setting_3d_buffer;
-    graphics_shader_t vertex_shader_3d;
-    graphics_shader_t pixel_shader_3d;
-    graphics_program_t program_3d;
-    graphics_pipeline_t pipeline_3d;
 } game_t;
 
 static void resize_offscreen_buffer(graphics_t* graphics, game_t* game)
@@ -179,13 +185,36 @@ static void resize_offscreen_buffer(graphics_t* graphics, game_t* game)
     }
 }
 
+static inline vec3 rotation_x(f32 angle, vec3 position)
+{
+    vec3 result = { 0 };
+    f32 rad = angle * (f32)DEG2RAD;
+
+    result.x = position.x;
+    result.y = cosf(rad) * position.y - sinf(rad) * position.z;
+    result.z = sinf(rad) * position.y + cosf(rad) * position.z;
+
+    return result;
+}
+
+static inline vec3 rotation_y(f32 angle, vec3 position)
+{
+    vec3 result = { 0 };
+    f32 rad = angle * (f32)DEG2RAD;
+
+    result.x = cosf(rad) * position.x - sinf(rad) * position.z;
+    result.y = position.y;
+    result.z = sinf(rad) * position.x + cosf(rad) * position.z;
+
+    return result;
+}
+
 // NOTE: View matrix, right-handed, -z
 static inline mat4x4 view_matrix(vec3 reference_up, vec3 from, vec3 to)
 {
-    vec3 forward = v3_normalize(v3_sub(to, from));
-    vec3 right = v3_normalize(v3_cross(forward, reference_up));
-    vec3 up = v3_cross(right, forward);
-    vec3 forward_neg = v3_neg(forward);
+    vec3 forward = v3_normalize(v3_sub(from, to));
+    vec3 right = v3_normalize(v3_cross(reference_up, forward));
+    vec3 up = v3_cross(forward, right);
 
     mat4x4 result =
     {
@@ -193,19 +222,24 @@ static inline mat4x4 view_matrix(vec3 reference_up, vec3 from, vec3 to)
         {
             [0] = v4v(right, 0.0f),
             [1] = v4v(up, 0.0f),
-            [2] = v4v(forward_neg, 0.0f),
+            [2] = v4v(forward, 0.0f),
             [3] = v4(0.0f, 0.0f, 0.0f, 1.0f),
         },
     };
 
     result.columns[3].x = -v3_dot(right, from);
     result.columns[3].y = -v3_dot(up, from);
-    result.columns[3].z = -v3_dot(forward_neg, from);
+    result.columns[3].z = -v3_dot(forward, from);
     result.columns[3].w = 1.0f;
 
     return result;
 }
 
+// NOTE: Camera space to clip space (no perspective division)
+// xc: -wc <= xc <= wc
+// yc: -wc <= yc <= wc
+// zc:   0 <= zc <= wc -> D3D/Vulkan
+// wc:  wc
 static inline mat4x4 projection_matrix(f32 left, f32 right, f32 bottom, f32 top, f32 near, f32 far)
 {
     mat4x4 result =
@@ -214,8 +248,8 @@ static inline mat4x4 projection_matrix(f32 left, f32 right, f32 bottom, f32 top,
         {
             [0] = v4(2.0f * near / (right - left), 0.0f, 0.0f, 0.0f),
             [1] = v4(0.0f, 2.0f * near / (top - bottom), 0.0f, 0.0f),
-            [2] = v4((right + left) / (right - left), (top + bottom) / (top - bottom), -(far + near) / (far - near), -1.0f),
-            [3] = v4(0.0f, 0.0f, -2.0f * far * near / (far - near), 0.0f),
+            [2] = v4((right + left) / (right - left), (top + bottom) / (top - bottom), -far / (far - near), -1.0f),
+            [3] = v4(0.0f, 0.0f, -(far * near) / (far - near), 0.0f),
         },
     };
     
@@ -278,6 +312,117 @@ init_function(init)
         .wireframe = false,
     });
 
+    game->camera_position = v3(0.0f, 0.0f, 1.0f);
+    game->setting_3d.world = m4x4d(1.0f);
+    game->setting_3d.view = view_matrix(v3(0.0f, 1.0f, 0.0f), game->camera_position, v3(0.0f, 0.0f, 0.0f));
+    game->setting_3d.projection = projection_matrix(-1.0f, +1.0f, -1.0f, +1.0f, 0.1f, 100.0f);
+
+    vertex3d_t unit_cube[] =
+    {
+        // NOTE: Front
+        { { +0.5f, +0.5f, +0.5f }, { 0.0f, 0.0f, 1.0f }, },
+        { { -0.5f, +0.5f, +0.5f }, { 0.0f, 0.0f, 1.0f }, },
+        { { -0.5f, -0.5f, +0.5f }, { 0.0f, 0.0f, 1.0f }, },
+
+        { { +0.5f, +0.5f, +0.5f }, { 0.0f, 0.0f, 1.0f }, },
+        { { -0.5f, -0.5f, +0.5f }, { 0.0f, 0.0f, 1.0f }, },
+        { { +0.5f, -0.5f, +0.5f }, { 0.0f, 0.0f, 1.0f }, },
+
+        // NOTE: Back
+        { { +0.5f, -0.5f, -0.5f }, { 0.0f, 0.0f, 1.0f }, },
+        { { -0.5f, -0.5f, -0.5f }, { 0.0f, 0.0f, 1.0f }, },
+        { { -0.5f, +0.5f, -0.5f }, { 0.0f, 0.0f, 1.0f }, },
+
+        { { +0.5f, -0.5f, -0.5f }, { 0.0f, 0.0f, 1.0f }, },
+        { { -0.5f, +0.5f, -0.5f }, { 0.0f, 0.0f, 1.0f }, },
+        { { +0.5f, +0.5f, -0.5f }, { 0.0f, 0.0f, 1.0f }, },
+
+        // NOTE: Right
+        { { +0.5f, -0.5f, -0.5f }, { 1.0f, 0.0f, 0.0f }, },
+        { { +0.5f, +0.5f, +0.5f }, { 1.0f, 0.0f, 0.0f }, },
+        { { +0.5f, -0.5f, +0.5f }, { 1.0f, 0.0f, 0.0f }, },
+
+        { { +0.5f, -0.5f, -0.5f }, { 1.0f, 0.0f, 0.0f }, },
+        { { +0.5f, +0.5f, -0.5f }, { 1.0f, 0.0f, 0.0f }, },
+        { { +0.5f, +0.5f, +0.5f }, { 1.0f, 0.0f, 0.0f }, },
+
+        // NOTE: Left
+        { { -0.5f, -0.5f, -0.5f }, { 1.0f, 0.0f, 0.0f }, },
+        { { -0.5f, +0.5f, +0.5f }, { 1.0f, 0.0f, 0.0f }, },
+        { { -0.5f, +0.5f, -0.5f }, { 1.0f, 0.0f, 0.0f }, },
+
+        { { -0.5f, -0.5f, -0.5f }, { 1.0f, 0.0f, 0.0f }, },
+        { { -0.5f, -0.5f, +0.5f }, { 1.0f, 0.0f, 0.0f }, },
+        { { -0.5f, +0.5f, +0.5f }, { 1.0f, 0.0f, 0.0f }, },
+
+        // NOTE: Top
+        { { +0.5f, +0.5f, +0.5f }, { 0.0f, 1.0f, 0.0f, }, },
+        { { +0.5f, +0.5f, -0.5f }, { 0.0f, 1.0f, 0.0f, }, },
+        { { -0.5f, +0.5f, -0.5f }, { 0.0f, 1.0f, 0.0f, }, },
+
+        { { +0.5f, +0.5f, +0.5f }, { 0.0f, 1.0f, 0.0f, }, },
+        { { -0.5f, +0.5f, -0.5f }, { 0.0f, 1.0f, 0.0f, }, },
+        { { -0.5f, +0.5f, +0.5f }, { 0.0f, 1.0f, 0.0f, }, },
+
+        // NOTE: Bottom
+        { { -0.5f, -0.5f, -0.5f }, { 0.0f, 1.0f, 0.0f, }, },
+        { { +0.5f, -0.5f, -0.5f }, { 0.0f, 1.0f, 0.0f, }, },
+        { { +0.5f, -0.5f, +0.5f }, { 0.0f, 1.0f, 0.0f, }, },
+
+        { { -0.5f, -0.5f, -0.5f }, { 0.0f, 1.0f, 0.0f, }, },
+        { { +0.5f, -0.5f, +0.5f }, { 0.0f, 1.0f, 0.0f, }, },
+        { { -0.5f, -0.5f, +0.5f }, { 0.0f, 1.0f, 0.0f, }, },
+    };
+
+    memcpy(game->vertex_data_3d, unit_cube, sizeof(unit_cube));
+
+    game->vertex_buffer_3d = graphics->create_buffer(&(graphics_buffer_desc_t)
+    {
+        .data = unit_cube,
+        .size = sizeof(unit_cube),
+        .usage = USAGE_IMMUTABLE,
+        .bind = BIND_VERTEX_BUFFER,
+    });
+
+    game->setting_3d_buffer = graphics->create_buffer(&(graphics_buffer_desc_t)
+    {
+        .size = sizeof(setting_3d_t),
+        .usage = USAGE_DYNAMIC,
+        .bind = BIND_CONSTANT_BUFFER,
+    });
+
+    game->vertex_shader_3d = graphics->create_shader(&(graphics_shader_desc_t)
+    {
+        .bytecode = vshader_3d,
+        .bytecode_size = sizeof(vshader_3d),
+        .stage = STAGE_VERTEX_SHADER,
+    });
+
+    game->pixel_shader_3d = graphics->create_shader(&(graphics_shader_desc_t)
+    {
+        .bytecode = pshader_3d,
+        .bytecode_size = sizeof(pshader_3d),
+        .stage = STAGE_PIXEL_SHADER,
+    });
+
+    game->program_3d = graphics->create_program(&(graphics_program_desc_t)
+    {
+        .vertex_shader = game->vertex_shader_3d,
+        .pixel_shader = game->pixel_shader_3d,
+        .attributes = (graphics_vertex_attribute_t[])
+        {
+            { "POSITION", FORMAT_R32G32B32_FLOAT, offsetof(vertex3d_t, position), 0, 0, 0, 0 },
+            { "COLOR", FORMAT_R32G32B32_FLOAT, offsetof(vertex3d_t, color), 0, 0, 0, 0 },
+        },
+        .attribute_count = 2,
+    });
+
+    game->pipeline_3d = graphics->create_pipeline(&(graphics_pipeline_desc_t)
+    {
+        .cull = true,
+        .wireframe = false,
+    });
+
     game->linear_sampler = graphics->create_sampler(&(graphics_sampler_desc_t)
     {
         .filter = FILTER_MIN_MAG_MIP_LINEAR,
@@ -308,6 +453,18 @@ init_function(init)
         {
             { "POSITION", FORMAT_R32G32_FLOAT,    offsetof(vertex_t, position), 0, 0, 0, 0 },
             { "COLOR",    FORMAT_R32G32B32_FLOAT, offsetof(vertex_t, color),    0, 0, 0, 0 },
+        },
+        .attribute_count = 2,
+    });
+
+    game->glow_program_3d = graphics->create_program(&(graphics_program_desc_t)
+    {
+        .vertex_shader = game->vertex_shader_3d,
+        .pixel_shader = game->glow_pixel_shader,
+        .attributes = (graphics_vertex_attribute_t[])
+        {
+            { "POSITION", FORMAT_R32G32B32_FLOAT, offsetof(vertex3d_t, position), 0, 0, 0, 0 },
+            { "COLOR",    FORMAT_R32G32B32_FLOAT, offsetof(vertex3d_t, color),    0, 0, 0, 0 },
         },
         .attribute_count = 2,
     });
@@ -385,115 +542,6 @@ init_function(init)
     // game->font_color = graphics->create_font_color(0.9098f, 0.6098f, 0.0f, 1.0f);
 
     io->release_file_memory(io->read_file("..\\src\\game.c").data);
-
-    game->setting_3d.world = m4x4d(1.0f);
-    game->setting_3d.view = view_matrix(v3(0.0f, 1.0f, 0.0f), v3(-0.5f, 0.0f, 1.0f), v3(0.0f, 0.0f, 0.0f));
-    game->setting_3d.projection = projection_matrix(-1.0f, +1.0f, -1.0f, +1.0f, 0.1f, 100.0f);
-
-    vertex3d_t unit_cube[] =
-    {
-        // NOTE: Front
-        { { +0.5f, +0.5f, +0.5f }, },
-        { { -0.5f, +0.5f, +0.5f }, },
-        { { -0.5f, -0.5f, +0.5f }, },
-
-        { { +0.5f, +0.5f, +0.5f }, },
-        { { -0.5f, -0.5f, +0.5f }, },
-        { { +0.5f, -0.5f, +0.5f }, },
-
-        // NOTE: Back
-        { { +0.5f, -0.5f, -0.5f }, },
-        { { -0.5f, -0.5f, -0.5f }, },
-        { { -0.5f, +0.5f, -0.5f }, },
-
-        { { +0.5f, -0.5f, -0.5f }, },
-        { { -0.5f, +0.5f, -0.5f }, },
-        { { +0.5f, +0.5f, -0.5f }, },
-
-        // NOTE: Right
-        { { +0.5f, -0.5f, -0.5f }, },
-        { { +0.5f, +0.5f, +0.5f }, },
-        { { +0.5f, -0.5f, +0.5f }, },
-
-        { { +0.5f, -0.5f, -0.5f }, },
-        { { +0.5f, +0.5f, -0.5f }, },
-        { { +0.5f, +0.5f, +0.5f }, },
-
-        // NOTE: Left
-        { { -0.5f, -0.5f, -0.5f }, },
-        { { -0.5f, +0.5f, +0.5f }, },
-        { { -0.5f, +0.5f, -0.5f }, },
-
-        { { -0.5f, -0.5f, -0.5f }, },
-        { { -0.5f, -0.5f, +0.5f }, },
-        { { -0.5f, +0.5f, +0.5f }, },
-
-        // NOTE: Top
-        { { +0.5f, +0.5f, +0.5f }, },
-        { { +0.5f, +0.5f, -0.5f }, },
-        { { -0.5f, +0.5f, -0.5f }, },
-
-        { { +0.5f, +0.5f, +0.5f }, },
-        { { -0.5f, +0.5f, -0.5f }, },
-        { { -0.5f, +0.5f, +0.5f }, },
-
-        // NOTE: Bottom
-        { { -0.5f, -0.5f, -0.5f }, },
-        { { +0.5f, -0.5f, -0.5f }, },
-        { { +0.5f, -0.5f, +0.5f }, },
-
-        { { -0.5f, -0.5f, -0.5f }, },
-        { { +0.5f, -0.5f, +0.5f }, },
-        { { -0.5f, -0.5f, +0.5f }, },
-    };
-
-    memcpy(game->vertex_data_3d, unit_cube, sizeof(unit_cube));
-
-    game->vertex_buffer_3d = graphics->create_buffer(&(graphics_buffer_desc_t)
-    {
-        .data = unit_cube,
-        .size = sizeof(unit_cube),
-        .usage = USAGE_IMMUTABLE,
-        .bind = BIND_VERTEX_BUFFER,
-    });
-
-    game->setting_3d_buffer = graphics->create_buffer(&(graphics_buffer_desc_t)
-    {
-        .size = sizeof(setting_3d_t),
-        .usage = USAGE_DYNAMIC,
-        .bind = BIND_CONSTANT_BUFFER,
-    });
-
-    game->vertex_shader_3d = graphics->create_shader(&(graphics_shader_desc_t)
-    {
-        .bytecode = vshader_3d,
-        .bytecode_size = sizeof(vshader_3d),
-        .stage = STAGE_VERTEX_SHADER,
-    });
-
-    game->pixel_shader_3d = graphics->create_shader(&(graphics_shader_desc_t)
-    {
-        .bytecode = pshader_3d,
-        .bytecode_size = sizeof(pshader_3d),
-        .stage = STAGE_PIXEL_SHADER,
-    });
-
-    game->program_3d = graphics->create_program(&(graphics_program_desc_t)
-    {
-        .vertex_shader = game->vertex_shader_3d,
-        .pixel_shader = game->pixel_shader_3d,
-        .attributes = (graphics_vertex_attribute_t[])
-        {
-            { "POSITION", FORMAT_R32G32B32_FLOAT, offsetof(vertex3d_t, position), 0, 0, 0, 0 },
-        },
-        .attribute_count = 1,
-    });
-
-    game->pipeline_3d = graphics->create_pipeline(&(graphics_pipeline_desc_t)
-    {
-        .cull = true,
-        .wireframe = true,
-    });
 }
 
 update_function(update)
@@ -607,31 +655,85 @@ render_function(render)
     }
     graphics->end_pass();
     
-    graphics->begin_draw();
-    {
-        char frame_ms_text[32] = { 0 };
-        size_t frame_ms_length = 0;
+    // graphics->begin_draw();
+    // {
+    //     char frame_ms_text[32] = { 0 };
+    //     size_t frame_ms_length = 0;
 
-        if ((frame_ms_length = snprintf(frame_ms_text, sizeof(frame_ms_text), "%.2f ms", platform->delta_time * 1000)) > 0)
-        {
-            graphics->draw_text(game->font, game->font_color, TEXT_ALIGNMENT_CENTER,
-                                0.0f, (platform->height * (1.0f - (-0.33f)) * 0.5f) + 8.0f, (f32)platform->width, (f32)platform->height,
-                                frame_ms_text, frame_ms_length);   
-        }
+    //     if ((frame_ms_length = snprintf(frame_ms_text, sizeof(frame_ms_text), "%.2f ms", platform->delta_time * 1000)) > 0)
+    //     {
+    //         graphics->draw_text(game->font, game->font_color, TEXT_ALIGNMENT_CENTER,
+    //                             0.0f, (platform->height * (1.0f - (-0.33f)) * 0.5f) + 8.0f, (f32)platform->width, (f32)platform->height,
+    //                             frame_ms_text, frame_ms_length);   
+    //     }
         
-    }
-    graphics->end_draw();
+    // }
+    // graphics->end_draw();
 #else
 
+    game->camera_position = rotation_y(0.1f, game->camera_position);
+    game->camera_position = rotation_x(0.9f, game->camera_position);
+    
     // NOTE: Offscreen rendering pass.
     graphics->begin_pass(game->offscreen_target, &(graphics_pass_desc_t){ .clear_color = true, .clear_rgba = { 0.005f, 0.005f, 0.005f, 0.0f }});
     {
+        game->setting_3d.view = view_matrix(v3(0.0f, 1.0f, 0.0f), game->camera_position, v3(0.0f, 0.0f, 0.0f));
         graphics->update_buffer(game->setting_3d_buffer, &game->setting_3d, 0, sizeof(game->setting_3d));
         graphics->set_buffer(game->setting_3d_buffer, STAGE_VERTEX_SHADER, 0, 0, 0);
         graphics->set_buffer(game->vertex_buffer_3d, STAGE_VERTEX_SHADER, 0, sizeof(vertex3d_t), 0);
         graphics->set_program(game->program_3d);
         graphics->set_pipeline(game->pipeline_3d);
         graphics->draw(TOPOLOGY_TRIANGLE_LIST, array_count(game->vertex_data_3d), 0);
+    }
+    graphics->end_pass();
+
+    // NOTE: Glow mask pass.
+    graphics->begin_pass(game->glow_mask_target, &(graphics_pass_desc_t){ .clear_color = true, .clear_rgba = { 0.0f, 0.0f, 0.0f, 0.0f } });
+{
+        graphics->set_buffer(game->setting_3d_buffer, STAGE_VERTEX_SHADER, 0, 0, 0);
+        graphics->set_buffer(game->vertex_buffer_3d, STAGE_VERTEX_SHADER, 0, sizeof(vertex3d_t), 0);
+        game->glow_mask_setting = (glow_mask_setting_t){ .glow_color = { 0.9964f, 0.8431f, 0.4941f, 0.0f } };
+        graphics->update_buffer(game->glow_buffer, &game->glow_mask_setting, 0, sizeof(game->glow_mask_setting));
+        graphics->set_buffer(game->glow_buffer, STAGE_PIXEL_SHADER, 0, 0, 0);
+        graphics->set_program(game->glow_program_3d);
+        graphics->set_pipeline(game->pipeline_3d);
+        graphics->draw(TOPOLOGY_TRIANGLE_LIST, array_count(game->vertex_data_3d), 0);
+    }
+    graphics->end_pass();
+
+    // NOTE: Horizontal blur. glow_mask -> glow_a.
+    graphics->begin_pass(game->glow_a_target, &(graphics_pass_desc_t){ .clear_color = false });
+    {
+        game->glow_blur_setting = (glow_blur_setting_t)
+        {
+            .inverse_dst_size = { 1.0f / game->glow_a.width, 1.0f / game->glow_a.height },
+            .direction = { 1.0f, 0.0f }
+        };
+        graphics->update_buffer(game->blur_buffer, &game->glow_blur_setting, 0, sizeof(game->glow_blur_setting));
+        graphics->set_buffer(game->blur_buffer, STAGE_PIXEL_SHADER, 0, 0, 0);
+        graphics->set_program(game->blur_program);
+        graphics->set_pipeline(game->default_pipeline);
+        graphics->set_samplers(STAGE_PIXEL_SHADER, &game->linear_sampler, 1, 0);
+        graphics->set_srvs(STAGE_PIXEL_SHADER, &game->glow_mask, 1, 0);
+        graphics->draw(TOPOLOGY_TRIANGLE_LIST, 3, 0);
+    }
+    graphics->end_pass();
+
+    // NOTE: Vertical blur. glow_a -> glow_b.
+    graphics->begin_pass(game->glow_b_target, &(graphics_pass_desc_t){ .clear_color = false });
+    {
+        game->glow_blur_setting = (glow_blur_setting_t)
+        {
+            .inverse_dst_size = { 1.0f / game->glow_b.width, 1.0f / game->glow_b.height },
+            .direction = { 0.0f, 1.0f }
+        };
+        graphics->update_buffer(game->blur_buffer, &game->glow_blur_setting, 0, sizeof(game->glow_blur_setting));
+        graphics->set_buffer(game->blur_buffer, STAGE_PIXEL_SHADER, 0, 0, 0);
+        graphics->set_program(game->blur_program);
+        graphics->set_pipeline(game->default_pipeline);
+        graphics->set_samplers(STAGE_PIXEL_SHADER, &game->linear_sampler, 1, 0);
+        graphics->set_srvs(STAGE_PIXEL_SHADER, &game->glow_a, 1, 0);
+        graphics->draw(TOPOLOGY_TRIANGLE_LIST, 3, 0);
     }
     graphics->end_pass();
 
@@ -667,8 +769,8 @@ render_function(render)
         graphics_sampler_t samplers[] = { game->point_sampler, game->linear_sampler };
         graphics->set_samplers(STAGE_PIXEL_SHADER, samplers, 2, 0);
         // NOTE: Offscreen scene, horizontal and vertical blur, unblurred version (for filtering core part and leaving the halo).
-        graphics_texture_t srvs[] = { game->offscreen_scene };
-        graphics->set_srvs(STAGE_PIXEL_SHADER, srvs, 1, 0);
+        graphics_texture_t srvs[] = { game->offscreen_scene, game->glow_b, game->glow_mask };
+        graphics->set_srvs(STAGE_PIXEL_SHADER, srvs, 3, 0);
         graphics->draw(TOPOLOGY_TRIANGLE_LIST, 3, 0);
     }
     graphics->end_pass();

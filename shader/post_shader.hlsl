@@ -3,9 +3,9 @@ struct PS_INPUT
     float4 position : SV_POSITION;
 };
 
-Texture2D    global_scene    : register(t0);   // Offscreen single-sample texture
-Texture2D    global_glow     : register(t1);   // Glow texture
-Texture2D    global_glow_mask: register(t2);   // Glow mask texture
+Texture2D    global_scene          : register(t0);   // Offscreen single-sample texture
+Texture2D    global_glow           : register(t1);   // Glow texture
+Texture2D    global_glow_mask      : register(t2);   // Glow mask texture
 SamplerState global_point_sampler  : register(s0);
 SamplerState global_linear_sampler : register(s1);
 

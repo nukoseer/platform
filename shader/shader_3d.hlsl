@@ -1,11 +1,13 @@
 struct VS_INPUT
 {
     float3 position : POSITION;
+    float3 color    : COLOR;
 };
 
 struct PS_INPUT
 {
-    float4 position   : SV_POSITION;
+    float4 position : SV_POSITION;
+    float4 color    : COLOR;
 };
 
 cbuffer global_settings : register(b0)
@@ -25,11 +27,12 @@ PS_INPUT vs(VS_INPUT input)
     position = mul(projection_matrix, position);
 
     output.position = position;
+    output.color = float4(input.color, 1.0);
 
     return output;
 }
 
 float4 ps(PS_INPUT input) : SV_TARGET
 {
-    return float4(1.0, 1.0, 1.0, 1.0);;
+    return input.color;
 }

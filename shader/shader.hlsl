@@ -1,13 +1,13 @@
 struct VS_INPUT
 {
-     float2 pos   : POSITION;                               // these names must match D3D11_INPUT_ELEMENT_DESC array
-     float3 color : COLOR;
+    float2 pos   : POSITION;                               // these names must match D3D11_INPUT_ELEMENT_DESC array
+    float3 color : COLOR;
 };
 
 struct PS_INPUT
 {
-  float4 pos   : SV_POSITION;                               // these names do not matter, except SV_... ones
-  float4 color : COLOR;
+    float4 pos   : SV_POSITION;                               // these names do not matter, except SV_... ones
+    float4 color : COLOR;
 };
 
 PS_INPUT vs(VS_INPUT input)
