@@ -15,9 +15,6 @@
 #include "../shader/vertex_shader_3d.h"
 #include "../shader/pixel_shader_3d.h"
 
-#define PI      3.14159265358979323846
-#define DEG2RAD (PI / 180.0)
-
 typedef struct vertex_t
 {
     vec2 position;
@@ -209,6 +206,18 @@ static inline vec3 rotation_y(f32 angle, vec3 position)
     return result;
 }
 
+static inline vec3 rotation_z(f32 angle, vec3 position)
+{
+    vec3 result = { 0 };
+    f32 rad = angle * (f32)DEG2RAD;
+
+    result.x = cosf(rad) * position.x - sinf(rad) * position.y;
+    result.y = sinf(rad) * position.x + cosf(rad) * position.y;
+    result.z = position.z;
+
+    return result;
+}
+
 // NOTE: View matrix, right-handed, -z
 static inline mat4x4 view_matrix(vec3 reference_up, vec3 from, vec3 to)
 {
@@ -249,6 +258,26 @@ static inline mat4x4 projection_matrix(f32 left, f32 right, f32 bottom, f32 top,
             [0] = v4(2.0f * near / (right - left), 0.0f, 0.0f, 0.0f),
             [1] = v4(0.0f, 2.0f * near / (top - bottom), 0.0f, 0.0f),
             [2] = v4((right + left) / (right - left), (top + bottom) / (top - bottom), -far / (far - near), -1.0f),
+            [3] = v4(0.0f, 0.0f, -(far * near) / (far - near), 0.0f),
+        },
+    };
+    
+    return result;
+}
+
+static inline mat4x4 projection_matrix_fov_y(f32 fov_y, f32 aspect_ratio, f32 near, f32 far)
+{
+    f32 tangent = tanf(fov_y * 0.5f * (f32)DEG2RAD);
+    f32 top = near * tangent;
+    f32 right = top * aspect_ratio;
+
+    mat4x4 result =
+    {
+        .columns =
+        {
+            [0] = v4(near / right, 0.0f, 0.0f, 0.0f),
+            [1] = v4(0.0f, near / top, 0.0f, 0.0f),
+            [2] = v4(0.0f, 0.0f, -far / (far - near), -1.0f),
             [3] = v4(0.0f, 0.0f, -(far * near) / (far - near), 0.0f),
         },
     };
@@ -315,63 +344,64 @@ init_function(init)
     game->camera_position = v3(0.0f, 0.0f, 1.0f);
     game->setting_3d.world = m4x4d(1.0f);
     game->setting_3d.view = view_matrix(v3(0.0f, 1.0f, 0.0f), game->camera_position, v3(0.0f, 0.0f, 0.0f));
-    game->setting_3d.projection = projection_matrix(-1.0f, +1.0f, -1.0f, +1.0f, 0.1f, 100.0f);
+    // game->setting_3d.projection = projection_matrix(-1.0f, +1.0f, -1.0f, +1.0f, 0.1f, 100.0f);
+    game->setting_3d.projection = projection_matrix_fov_y(60.0f, (f32)platform->width / (f32)platform->height, 0.1f, 100.0f);
 
     vertex3d_t unit_cube[] =
     {
         // NOTE: Front
-        { { +0.5f, +0.5f, +0.5f }, { 0.0f, 0.0f, 1.0f }, },
-        { { -0.5f, +0.5f, +0.5f }, { 0.0f, 0.0f, 1.0f }, },
-        { { -0.5f, -0.5f, +0.5f }, { 0.0f, 0.0f, 1.0f }, },
+        { { +0.1f, +0.1f, +0.1f }, { 0.0f, 0.0f, 1.0f }, },
+        { { -0.1f, +0.1f, +0.1f }, { 0.0f, 0.0f, 1.0f }, },
+        { { -0.1f, -0.1f, +0.1f }, { 0.0f, 0.0f, 1.0f }, },
 
-        { { +0.5f, +0.5f, +0.5f }, { 0.0f, 0.0f, 1.0f }, },
-        { { -0.5f, -0.5f, +0.5f }, { 0.0f, 0.0f, 1.0f }, },
-        { { +0.5f, -0.5f, +0.5f }, { 0.0f, 0.0f, 1.0f }, },
+        { { +0.1f, +0.1f, +0.1f }, { 0.0f, 0.0f, 1.0f }, },
+        { { -0.1f, -0.1f, +0.1f }, { 0.0f, 0.0f, 1.0f }, },
+        { { +0.1f, -0.1f, +0.1f }, { 0.0f, 0.0f, 1.0f }, },
 
         // NOTE: Back
-        { { +0.5f, -0.5f, -0.5f }, { 0.0f, 0.0f, 1.0f }, },
-        { { -0.5f, -0.5f, -0.5f }, { 0.0f, 0.0f, 1.0f }, },
-        { { -0.5f, +0.5f, -0.5f }, { 0.0f, 0.0f, 1.0f }, },
+        { { +0.1f, -0.1f, -0.1f }, { 0.0f, 0.0f, 1.0f }, },
+        { { -0.1f, -0.1f, -0.1f }, { 0.0f, 0.0f, 1.0f }, },
+        { { -0.1f, +0.1f, -0.1f }, { 0.0f, 0.0f, 1.0f }, },
 
-        { { +0.5f, -0.5f, -0.5f }, { 0.0f, 0.0f, 1.0f }, },
-        { { -0.5f, +0.5f, -0.5f }, { 0.0f, 0.0f, 1.0f }, },
-        { { +0.5f, +0.5f, -0.5f }, { 0.0f, 0.0f, 1.0f }, },
+        { { +0.1f, -0.1f, -0.1f }, { 0.0f, 0.0f, 1.0f }, },
+        { { -0.1f, +0.1f, -0.1f }, { 0.0f, 0.0f, 1.0f }, },
+        { { +0.1f, +0.1f, -0.1f }, { 0.0f, 0.0f, 1.0f }, },
 
         // NOTE: Right
-        { { +0.5f, -0.5f, -0.5f }, { 1.0f, 0.0f, 0.0f }, },
-        { { +0.5f, +0.5f, +0.5f }, { 1.0f, 0.0f, 0.0f }, },
-        { { +0.5f, -0.5f, +0.5f }, { 1.0f, 0.0f, 0.0f }, },
+        { { +0.1f, -0.1f, -0.1f }, { 1.0f, 0.0f, 0.0f }, },
+        { { +0.1f, +0.1f, +0.1f }, { 1.0f, 0.0f, 0.0f }, },
+        { { +0.1f, -0.1f, +0.1f }, { 1.0f, 0.0f, 0.0f }, },
 
-        { { +0.5f, -0.5f, -0.5f }, { 1.0f, 0.0f, 0.0f }, },
-        { { +0.5f, +0.5f, -0.5f }, { 1.0f, 0.0f, 0.0f }, },
-        { { +0.5f, +0.5f, +0.5f }, { 1.0f, 0.0f, 0.0f }, },
+        { { +0.1f, -0.1f, -0.1f }, { 1.0f, 0.0f, 0.0f }, },
+        { { +0.1f, +0.1f, -0.1f }, { 1.0f, 0.0f, 0.0f }, },
+        { { +0.1f, +0.1f, +0.1f }, { 1.0f, 0.0f, 0.0f }, },
 
         // NOTE: Left
-        { { -0.5f, -0.5f, -0.5f }, { 1.0f, 0.0f, 0.0f }, },
-        { { -0.5f, +0.5f, +0.5f }, { 1.0f, 0.0f, 0.0f }, },
-        { { -0.5f, +0.5f, -0.5f }, { 1.0f, 0.0f, 0.0f }, },
+        { { -0.1f, -0.1f, -0.1f }, { 1.0f, 0.0f, 0.0f }, },
+        { { -0.1f, +0.1f, +0.1f }, { 1.0f, 0.0f, 0.0f }, },
+        { { -0.1f, +0.1f, -0.1f }, { 1.0f, 0.0f, 0.0f }, },
 
-        { { -0.5f, -0.5f, -0.5f }, { 1.0f, 0.0f, 0.0f }, },
-        { { -0.5f, -0.5f, +0.5f }, { 1.0f, 0.0f, 0.0f }, },
-        { { -0.5f, +0.5f, +0.5f }, { 1.0f, 0.0f, 0.0f }, },
+        { { -0.1f, -0.1f, -0.1f }, { 1.0f, 0.0f, 0.0f }, },
+        { { -0.1f, -0.1f, +0.1f }, { 1.0f, 0.0f, 0.0f }, },
+        { { -0.1f, +0.1f, +0.1f }, { 1.0f, 0.0f, 0.0f }, },
 
         // NOTE: Top
-        { { +0.5f, +0.5f, +0.5f }, { 0.0f, 1.0f, 0.0f, }, },
-        { { +0.5f, +0.5f, -0.5f }, { 0.0f, 1.0f, 0.0f, }, },
-        { { -0.5f, +0.5f, -0.5f }, { 0.0f, 1.0f, 0.0f, }, },
+        { { +0.1f, +0.1f, +0.1f }, { 0.0f, 1.0f, 0.0f, }, },
+        { { +0.1f, +0.1f, -0.1f }, { 0.0f, 1.0f, 0.0f, }, },
+        { { -0.1f, +0.1f, -0.1f }, { 0.0f, 1.0f, 0.0f, }, },
 
-        { { +0.5f, +0.5f, +0.5f }, { 0.0f, 1.0f, 0.0f, }, },
-        { { -0.5f, +0.5f, -0.5f }, { 0.0f, 1.0f, 0.0f, }, },
-        { { -0.5f, +0.5f, +0.5f }, { 0.0f, 1.0f, 0.0f, }, },
+        { { +0.1f, +0.1f, +0.1f }, { 0.0f, 1.0f, 0.0f, }, },
+        { { -0.1f, +0.1f, -0.1f }, { 0.0f, 1.0f, 0.0f, }, },
+        { { -0.1f, +0.1f, +0.1f }, { 0.0f, 1.0f, 0.0f, }, },
 
         // NOTE: Bottom
-        { { -0.5f, -0.5f, -0.5f }, { 0.0f, 1.0f, 0.0f, }, },
-        { { +0.5f, -0.5f, -0.5f }, { 0.0f, 1.0f, 0.0f, }, },
-        { { +0.5f, -0.5f, +0.5f }, { 0.0f, 1.0f, 0.0f, }, },
+        { { -0.1f, -0.1f, -0.1f }, { 0.0f, 1.0f, 0.0f, }, },
+        { { +0.1f, -0.1f, -0.1f }, { 0.0f, 1.0f, 0.0f, }, },
+        { { +0.1f, -0.1f, +0.1f }, { 0.0f, 1.0f, 0.0f, }, },
 
-        { { -0.5f, -0.5f, -0.5f }, { 0.0f, 1.0f, 0.0f, }, },
-        { { +0.5f, -0.5f, +0.5f }, { 0.0f, 1.0f, 0.0f, }, },
-        { { -0.5f, -0.5f, +0.5f }, { 0.0f, 1.0f, 0.0f, }, },
+        { { -0.1f, -0.1f, -0.1f }, { 0.0f, 1.0f, 0.0f, }, },
+        { { +0.1f, -0.1f, +0.1f }, { 0.0f, 1.0f, 0.0f, }, },
+        { { -0.1f, -0.1f, +0.1f }, { 0.0f, 1.0f, 0.0f, }, },
     };
 
     memcpy(game->vertex_data_3d, unit_cube, sizeof(unit_cube));
@@ -539,7 +569,7 @@ init_function(init)
     });
 
     game->font = graphics->create_font("Consolas", 24);
-    game->font_color = graphics->create_font_color(0.9098f, 0.6098f, 0.0f, 1.0f);
+    game->font_color = graphics->create_font_color(0.8313f, 0.0f, 0.4705f, 1.0f);
 
     io->release_file_memory(io->read_file("..\\src\\game.c").data);
 }
@@ -582,13 +612,14 @@ render_function(render)
     graphics->end_pass();
 
 #else
-    game->camera_position = rotation_y(0.1f, game->camera_position);
+    game->camera_position = rotation_y(0.45f, game->camera_position);
     game->camera_position = rotation_x(0.9f, game->camera_position);
-    
+
     // NOTE: Offscreen rendering pass.
     graphics->begin_pass(game->offscreen_target, &(graphics_pass_desc_t){ .clear_color = true, .clear_rgba = { 0.005f, 0.005f, 0.005f, 0.0f }});
     {
         game->setting_3d.view = view_matrix(v3(0.0f, 1.0f, 0.0f), game->camera_position, v3(0.0f, 0.0f, 0.0f));
+        game->setting_3d.projection = projection_matrix_fov_y(60.0f, (f32)platform->width / (f32)platform->height, 0.1f, 100.0f);
         graphics->update_buffer(game->setting_3d_buffer, &game->setting_3d, 0, sizeof(game->setting_3d));
         graphics->set_buffer(game->setting_3d_buffer, STAGE_VERTEX_SHADER, 0, 0, 0);
         graphics->set_buffer(game->vertex_buffer_3d, STAGE_VERTEX_SHADER, 0, sizeof(vertex3d_t), 0);
@@ -694,8 +725,8 @@ render_function(render)
 
         if ((frame_ms_length = snprintf(frame_ms_text, sizeof(frame_ms_text), "%.2f ms", platform->delta_time * 1000)) > 0)
         {
-            graphics->draw_text(game->font, game->font_color, TEXT_ALIGNMENT_CENTER,
-                                0.0f, (platform->height * (1.0f - (-0.33f)) * 0.5f) + 8.0f, (f32)platform->width, (f32)platform->height,
+            graphics->draw_text(game->font, game->font_color, TEXT_ALIGNMENT_TRAILING,
+                                0.0f - 8.0f, 0.0f + 8.0f, (f32)platform->width, (f32)platform->height,
                                 frame_ms_text, frame_ms_length);   
         }
         
