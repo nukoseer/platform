@@ -496,6 +496,7 @@ static DWORD WINAPI main_thread(void* param)
         .update_buffer = gfx_update_buffer,
         .is_valid_texture_2d = gfx_is_valid_texture_2d,
         .is_valid_target = gfx_is_valid_target,
+        .delete_buffer = gfx_delete_buffer,
         .delete_texture_2d = gfx_delete_texture_2d,
         .delete_target = gfx_delete_target,
         .set_buffer = gfx_set_buffer,
@@ -508,6 +509,7 @@ static DWORD WINAPI main_thread(void* param)
         .begin_pass = gfx_begin_pass,
         .end_pass = gfx_end_pass,
         .draw = gfx_draw,
+        .draw_indexed = gfx_draw_indexed,
 
         // NOTE: 2D functions for text rendering.
 

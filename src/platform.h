@@ -127,6 +127,8 @@ typedef enum graphics_format_t
     FORMAT_R8G8B8A8_UNORM_SRGB,
     FORMAT_R32G32_FLOAT,
     FORMAT_R32G32B32_FLOAT,
+    FORMAT_R16_UINT,
+    FORMAT_R32_UINT,
 } graphics_format_t;
 
 typedef enum graphics_usage_t
@@ -174,10 +176,11 @@ typedef enum graphics_texture_address_t
 
 typedef struct graphics_buffer_desc_t
 {
-    void* data;
+    const void* data;
     usize size;
     graphics_usage_t usage;
     graphics_bind_t bind;
+    graphics_format_t index_format;
 } graphics_buffer_desc_t;
 
 typedef struct graphics_buffer_t
@@ -320,6 +323,9 @@ typedef graphics_is_valid_texture_2d_function(graphics_is_valid_texture_2d_f);
 #define graphics_is_valid_target_function(name) bool name(graphics_target_t target)
 typedef graphics_is_valid_target_function(graphics_is_valid_target_f);
 
+#define graphics_delete_buffer_function(name) void name(graphics_buffer_t buffer)
+typedef graphics_delete_buffer_function(graphics_delete_buffer_f);
+
 #define graphics_delete_texture_2d_function(name) void name(graphics_texture_t texture)
 typedef graphics_delete_texture_2d_function(graphics_delete_texture_2d_f);
 
@@ -355,6 +361,9 @@ typedef graphics_end_pass_function(graphics_end_pass_f);
 
 #define graphics_draw_function(name) void name(graphics_topology_t topology, u32 vertex_count, u32 start_vertex)
 typedef graphics_draw_function(graphics_draw_f);
+
+#define graphics_draw_indexed_function(name) void name(graphics_topology_t topology, u32 index_count, u32 start_index, u32 base_vertex)
+typedef graphics_draw_indexed_function(graphics_draw_indexed_f);
 
 
 // NOTE: 2D graphics functions for text drawing.
@@ -413,6 +422,7 @@ typedef struct graphics_t
             graphics_update_buffer_f* update_buffer;
             graphics_is_valid_texture_2d_f* is_valid_texture_2d;
             graphics_is_valid_target_f* is_valid_target;
+            graphics_delete_buffer_f* delete_buffer;
             graphics_delete_texture_2d_f* delete_texture_2d;
             graphics_delete_target_f* delete_target;
             graphics_set_buffer_f* set_buffer;
@@ -425,6 +435,7 @@ typedef struct graphics_t
             graphics_begin_pass_f* begin_pass;
             graphics_end_pass_f* end_pass;
             graphics_draw_f* draw;
+            graphics_draw_indexed_f* draw_indexed;
         };
 
         // IMPORTANT: As far as I remember function pointers are not guaranteed

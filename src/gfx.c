@@ -12,6 +12,7 @@ typedef struct gfx_buffer_t
     usize size;
     D3D11_USAGE usage;
     D3D11_BIND_FLAG bind;
+    DXGI_FORMAT index_format; // NOTE: For index buffer.
     u32 next_free_index;
 } gfx_buffer_t;
 
@@ -163,6 +164,16 @@ static DXGI_FORMAT map_dxgi_format(graphics_format_t format)
         case FORMAT_R32G32B32_FLOAT:
         {
             dxgi_format = DXGI_FORMAT_R32G32B32_FLOAT;
+        } break;
+
+        case FORMAT_R16_UINT:
+        {
+            dxgi_format = DXGI_FORMAT_R16_UINT;
+        } break;
+
+        case FORMAT_R32_UINT:
+        {
+            dxgi_format = DXGI_FORMAT_R32_UINT;
         } break;
 
         default:
@@ -358,10 +369,25 @@ static graphics_create_buffer_function(gfx_create_buffer)
     graphics_buffer_t graphics_buffer = { 0 };
     D3D11_USAGE usage = map_usage(buffer_desc->usage);
     D3D11_BIND_FLAG bind = map_bind(buffer_desc->bind);
-
+    usize size = 0;
+    DXGI_FORMAT index_format = 0;
+    
+    if (bind == D3D11_BIND_INDEX_BUFFER)
+    {
+        index_format = map_dxgi_format(buffer_desc->index_format);
+        assert(index_format != DXGI_FORMAT_UNKNOWN && "[GFX] Invalid index format.");
+        u32 stride = index_format == DXGI_FORMAT_R16_UINT ? 2u : 4u;
+        // NOTE: If index buffer buffer_desc->size is index count.
+        size = buffer_desc->size * stride;
+    }
+    else
+    {
+        size = buffer_desc->size;
+    }
+    
     D3D11_BUFFER_DESC desc =
     {
-        .ByteWidth = (UINT)buffer_desc->size,
+        .ByteWidth = (UINT)size,
         .Usage = usage,
         .BindFlags = bind,
         .CPUAccessFlags = (usage == D3D11_USAGE_DYNAMIC) ? D3D11_CPU_ACCESS_WRITE : 0,
@@ -370,6 +396,7 @@ static graphics_create_buffer_function(gfx_create_buffer)
     D3D11_SUBRESOURCE_DATA initial = { 0 };
     D3D11_SUBRESOURCE_DATA* ptr_initial = 0;
 
+    // NOTE: buffer_desc->data cannot be null if buffer is created as immutable.
     if (buffer_desc->data)
     {
         initial.pSysMem = buffer_desc->data;
@@ -388,9 +415,10 @@ static graphics_create_buffer_function(gfx_create_buffer)
     {
         .generation = buffer_generation,
         .buffer = buffer,
-        .size = buffer_desc->size,
+        .size = size,
         .usage = usage,
         .bind = bind,
+        .index_format = index_format,
     };
     
     graphics_buffer.platform = pack_generation_index(buffer_generation, buffer_index);
@@ -661,6 +689,27 @@ static graphics_is_valid_target_function(gfx_is_valid_target)
     return is_valid;
 }
 
+static graphics_delete_buffer_function(gfx_delete_buffer)
+{
+    u32 buffer_generation = get_generation(buffer.platform);
+    u32 buffer_index = get_index(buffer.platform);
+    gfx_buffer_t* gfx_buffer = global_buffers + buffer_index;
+
+    if (gfx_buffer->generation != buffer_generation)
+    {
+        // TODO: Can we just silently skip?
+        assert(!"[GFX] Buffer generation does not match.");
+        return;
+    }
+
+    ID3D11Buffer_Release(gfx_buffer->buffer);
+
+    *gfx_buffer = (gfx_buffer_t){ 0 };
+    gfx_buffer->generation = buffer_generation + 1;
+
+    free_buffer_index(buffer_index);
+}
+
 // TODO: We need some kind of generation counter to handle deleted objects.
 static graphics_delete_texture_2d_function(gfx_delete_texture_2d)
 {
@@ -715,6 +764,11 @@ static graphics_set_buffer_function(gfx_set_buffer)
         case D3D11_BIND_VERTEX_BUFFER:
         {
             ID3D11DeviceContext_IASetVertexBuffers(global_d3d11.context, slot, 1, &gfx_buffer->buffer, &stride, &offset);
+        } break;
+
+        case D3D11_BIND_INDEX_BUFFER:
+        {
+            ID3D11DeviceContext_IASetIndexBuffer(global_d3d11.context, gfx_buffer->buffer, gfx_buffer->index_format, offset);
         } break;
 
         case D3D11_BIND_CONSTANT_BUFFER:
@@ -938,4 +992,10 @@ static graphics_draw_function(gfx_draw)
 {
     ID3D11DeviceContext_IASetPrimitiveTopology(global_d3d11.context, map_primitive_topology(topology));
     ID3D11DeviceContext_Draw(global_d3d11.context, vertex_count, start_vertex);
+}
+
+static graphics_draw_indexed_function(gfx_draw_indexed)
+{
+    ID3D11DeviceContext_IASetPrimitiveTopology(global_d3d11.context, map_primitive_topology(topology));
+    ID3D11DeviceContext_DrawIndexed(global_d3d11.context, index_count, start_index, base_vertex);
 }
