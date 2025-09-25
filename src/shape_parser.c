@@ -197,9 +197,13 @@ int main(int argc, char* argv[])
                         f32 lat_rad = lat * (f32)DEG2RAD;
                         f32 lon_rad = lon * (f32)DEG2RAD;
 
+                        // f32 x = cosf(lat_rad) * cosf(lon_rad) /* * radius */;
+                        // f32 y = cosf(lat_rad) * sinf(lon_rad) /* * radius */;
+                        // f32 z = sinf(lat_rad) /* * radius */;
+
                         f32 x = cosf(lat_rad) * cosf(lon_rad) /* * radius */;
-                        f32 y = cosf(lat_rad) * sinf(lon_rad) /* * radius */;
-                        f32 z = sinf(lat_rad) /* * radius */;
+                        f32 y = sinf(lat_rad) /* * radius */;
+                        f32 z = cosf(lat_rad) * sinf(lon_rad) /* * radius */;
 
                         printf("{ %+3.12ff, %+3.12ff, %+3.12ff }, ", x, y, z);
                     }
@@ -229,6 +233,18 @@ int main(int argc, char* argv[])
     //     printf("\npoint_count: %u", shape_content->point_count);
     // }
 
+    f32 lon = 32.866287f;
+    f32 lat = 39.925533f;
+    
+    f32 lat_rad = lat * (f32)DEG2RAD;
+    f32 lon_rad = lon * (f32)DEG2RAD;
+
+    f32 x = cosf(lat_rad) * cosf(lon_rad) /* * radius */;
+    f32 y = sinf(lat_rad) /* * radius */;
+    f32 z = cosf(lat_rad) * sinf(lon_rad) /* * radius */;
+
+    printf("\n{ %+3.12ff, %+3.12ff, %+3.12ff }\n", x, y, z);
+     
     free(shape_file_buffer);
     fclose(shape_file);
 
