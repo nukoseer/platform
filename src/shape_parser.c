@@ -243,7 +243,7 @@ int main(int argc, char* argv[])
     f32 y = sinf(lat_rad) /* * radius */;
     f32 z = cosf(lat_rad) * sinf(lon_rad) /* * radius */;
 
-    printf("\n{ %+3.12ff, %+3.12ff, %+3.12ff }\n", x, y, z);
+    fprintf(stderr, "\n{ %+3.12ff, %+3.12ff, %+3.12ff }\n", x, y, z);
      
     free(shape_file_buffer);
     fclose(shape_file);
