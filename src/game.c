@@ -15,8 +15,16 @@
 #include "../shader/vertex_shader_3d.h"
 #include "../shader/pixel_shader_3d.h"
 
+#include "../shader/vertex_shader_globe.h"
+#include "../shader/pixel_shader_globe.h"
+
+#include "../shader/vertex_shader_sphere.h"
+#include "../shader/pixel_shader_sphere.h"
+
 #include "shape_data.inl"
 // #include "shape_data_detailed.inl"
+
+#include "sphere_data.inl"
 
 typedef struct vertex_t
 {
@@ -29,6 +37,12 @@ typedef struct vertex3d_t
     vec3 position;
     vec3 color;
 } vertex3d_t;
+
+typedef struct sphere_vertex_t
+{
+    vec3 position;
+    vec3 normal;
+} sphere_vertex_t;
 
 typedef struct setting_3d_t
 {
@@ -84,8 +98,17 @@ typedef struct game_t
     graphics_program_t program_3d;
     graphics_pipeline_t pipeline_3d;
 
-    graphics_buffer_t shape_vertex_buffer;
-    graphics_buffer_t shape_index_buffer;
+    graphics_buffer_t sphere_vertex_buffer;
+    graphics_buffer_t sphere_index_buffer;
+    graphics_shader_t vertex_shader_sphere;
+    graphics_shader_t pixel_shader_sphere;
+    graphics_program_t program_sphere;
+
+    graphics_buffer_t globe_vertex_buffer;
+    graphics_buffer_t globe_index_buffer;
+    graphics_shader_t vertex_shader_globe;
+    graphics_shader_t pixel_shader_globe;
+    graphics_program_t program_globe;
 
     glow_mask_setting_t glow_mask_setting;
     graphics_sampler_t linear_sampler;
@@ -420,23 +443,6 @@ init_function(init)
         .bind = BIND_VERTEX_BUFFER,
     });
 
-    game->shape_vertex_buffer = graphics->create_buffer(&(graphics_buffer_desc_t)
-    {
-        .data = global_shape_vectors,
-        .size = sizeof(global_shape_vectors),
-        .usage = USAGE_IMMUTABLE,
-        .bind = BIND_VERTEX_BUFFER,
-    });
-
-    game->shape_index_buffer = graphics->create_buffer(&(graphics_buffer_desc_t)
-    {
-        .data = global_shape_part_indices,
-        .size = array_count(global_shape_part_indices),
-        .usage = USAGE_DYNAMIC,
-        .bind = BIND_INDEX_BUFFER,
-        .index_format = array_count(global_shape_part_indices) > 0xFFFF ? FORMAT_R32_UINT : FORMAT_R16_UINT,
-    });
-
     game->setting_buffer_3d = graphics->create_buffer(&(graphics_buffer_desc_t)
     {
         .size = sizeof(setting_3d_t),
@@ -474,6 +480,91 @@ init_function(init)
     {
         .cull = true,
         .wireframe = false,
+    });
+
+    game->sphere_vertex_buffer = graphics->create_buffer(&(graphics_buffer_desc_t)
+    {
+        .data = global_sphere_vertices,
+        .size = sizeof(global_sphere_vertices),
+        .usage = USAGE_IMMUTABLE,
+        .bind = BIND_VERTEX_BUFFER,
+    });
+
+    game->sphere_index_buffer = graphics->create_buffer(&(graphics_buffer_desc_t)
+    {
+        .data = global_sphere_indices,
+        .size = array_count(global_sphere_indices),
+        .usage = USAGE_DYNAMIC,
+        .bind = BIND_INDEX_BUFFER,
+        .index_format = array_count(global_sphere_indices) > 0xFFFF ? FORMAT_R32_UINT : FORMAT_R16_UINT,
+    });
+
+    game->vertex_shader_sphere = graphics->create_shader(&(graphics_shader_desc_t)
+    {
+        .bytecode = vshader_sphere,
+        .bytecode_size = sizeof(vshader_sphere),
+        .stage = STAGE_VERTEX_SHADER,
+    });
+
+    game->pixel_shader_sphere = graphics->create_shader(&(graphics_shader_desc_t)
+    {
+        .bytecode = pshader_sphere,
+        .bytecode_size = sizeof(pshader_sphere),
+        .stage = STAGE_PIXEL_SHADER,
+    });
+
+    game->program_sphere = graphics->create_program(&(graphics_program_desc_t)
+    {
+        .vertex_shader = game->vertex_shader_sphere,
+        .pixel_shader = game->pixel_shader_sphere,
+        .attributes = (graphics_vertex_attribute_t[])
+        {
+            { "POSITION", FORMAT_R32G32B32_FLOAT, offsetof(sphere_vertex_t, position), 0, 0, 0, 0 },
+            { "NORMAL", FORMAT_R32G32B32_FLOAT, offsetof(sphere_vertex_t, normal), 0, 0, 0, 0 },
+        },
+        .attribute_count = 2,
+    });
+
+    game->globe_vertex_buffer = graphics->create_buffer(&(graphics_buffer_desc_t)
+    {
+        .data = global_globe_vectors,
+        .size = sizeof(global_globe_vectors),
+        .usage = USAGE_IMMUTABLE,
+        .bind = BIND_VERTEX_BUFFER,
+    });
+
+    game->globe_index_buffer = graphics->create_buffer(&(graphics_buffer_desc_t)
+    {
+        .data = global_globe_part_indices,
+        .size = array_count(global_globe_part_indices),
+        .usage = USAGE_DYNAMIC,
+        .bind = BIND_INDEX_BUFFER,
+        .index_format = array_count(global_globe_part_indices) > 0xFFFF ? FORMAT_R32_UINT : FORMAT_R16_UINT,
+    });
+
+    game->vertex_shader_globe = graphics->create_shader(&(graphics_shader_desc_t)
+    {
+        .bytecode = vshader_globe,
+        .bytecode_size = sizeof(vshader_globe),
+        .stage = STAGE_VERTEX_SHADER,
+    });
+
+    game->pixel_shader_globe = graphics->create_shader(&(graphics_shader_desc_t)
+    {
+        .bytecode = pshader_globe,
+        .bytecode_size = sizeof(pshader_globe),
+        .stage = STAGE_PIXEL_SHADER,
+    });
+
+    game->program_globe = graphics->create_program(&(graphics_program_desc_t)
+    {
+        .vertex_shader = game->vertex_shader_globe,
+        .pixel_shader = game->pixel_shader_globe,
+        .attributes = (graphics_vertex_attribute_t[])
+        {
+            { "POSITION", FORMAT_R32G32B32_FLOAT, 0, 0, 0, 0, 0 },
+        },
+        .attribute_count = 1,
     });
 
     game->linear_sampler = graphics->create_sampler(&(graphics_sampler_desc_t)
@@ -635,7 +726,7 @@ render_function(render)
     graphics->end_pass();
 
 #else
-    game->camera_position = rotation_y(0.45f, game->camera_position);
+    game->camera_position = rotation_y(0.3f, game->camera_position);
     // game->camera_position = rotation_x(0.9f, game->camera_position);
 
     // NOTE: Offscreen rendering pass.
@@ -672,26 +763,40 @@ render_function(render)
         game->setting_3d.projection = projection_matrix_fov_y(60.0f, (f32)platform->width / (f32)platform->height, 0.1f, 100.0f);
         graphics->update_buffer(game->setting_buffer_3d, &game->setting_3d, 0, sizeof(game->setting_3d));
         graphics->set_buffer(game->setting_buffer_3d, STAGE_VERTEX_SHADER, 0, 0, 0);
-        graphics->set_buffer(game->shape_vertex_buffer, STAGE_VERTEX_SHADER, 0, sizeof(vec3), 0);
-        graphics->set_buffer(game->shape_index_buffer, STAGE_VERTEX_SHADER, 0, 0, 0);
-        graphics->set_program(game->program_3d);
+        graphics->set_buffer(game->sphere_vertex_buffer, STAGE_VERTEX_SHADER, 0, sizeof(sphere_vertex_t), 0);
+        graphics->set_buffer(game->sphere_index_buffer, STAGE_VERTEX_SHADER, 0, 0, 0);
+        graphics->set_program(game->program_sphere);
         graphics->set_pipeline(game->pipeline_3d);
-        // graphics->draw(TOPOLOGY_LINE_LIST, array_count(global_shape_vectors), 0);
-        graphics->draw_indexed(TOPOLOGY_LINE_LIST, array_count(global_shape_part_indices), 0, 0);
+        graphics->draw_indexed(TOPOLOGY_TRIANGLE_LIST, array_count(global_sphere_indices), 0, 0);
+    }
+    graphics->end_pass();
+    
+    graphics->begin_pass(game->offscreen_target, &(graphics_pass_desc_t){ .clear_color = false });
+    {
+        game->setting_3d.view = view_matrix(v3(0.0f, 1.0f, 0.0f), game->camera_position, v3(0.0f, 0.0f, 0.0f));
+        game->setting_3d.projection = projection_matrix_fov_y(60.0f, (f32)platform->width / (f32)platform->height, 0.1f, 100.0f);
+        graphics->update_buffer(game->setting_buffer_3d, &game->setting_3d, 0, sizeof(game->setting_3d));
+        graphics->set_buffer(game->setting_buffer_3d, STAGE_VERTEX_SHADER, 0, 0, 0);
+        graphics->set_buffer(game->globe_vertex_buffer, STAGE_VERTEX_SHADER, 0, sizeof(vec3), 0);
+        graphics->set_buffer(game->globe_index_buffer, STAGE_VERTEX_SHADER, 0, 0, 0);
+        graphics->set_program(game->program_globe);
+        graphics->set_pipeline(game->pipeline_3d);
+        // graphics->draw(TOPOLOGY_LINE_LIST, array_count(global_globe_vectors), 0);
+        graphics->draw_indexed(TOPOLOGY_LINE_LIST, array_count(global_globe_part_indices), 0, 0);
     }
     graphics->end_pass();
 
     graphics->begin_pass(game->glow_mask_target, &(graphics_pass_desc_t){ .clear_color = true, .clear_rgba = { 0.0f, 0.0f, 0.0f, 0.0f } });
     {
         graphics->set_buffer(game->setting_buffer_3d, STAGE_VERTEX_SHADER, 0, 0, 0);
-        graphics->set_buffer(game->shape_vertex_buffer, STAGE_VERTEX_SHADER, 0, sizeof(vec3), 0);
+        graphics->set_buffer(game->globe_vertex_buffer, STAGE_VERTEX_SHADER, 0, sizeof(vec3), 0);
         game->glow_mask_setting = (glow_mask_setting_t){ .glow_color = { 0.9964f, 0.8431f, 0.4941f, 0.0f } };
         graphics->update_buffer(game->glow_buffer, &game->glow_mask_setting, 0, sizeof(game->glow_mask_setting));
         graphics->set_buffer(game->glow_buffer, STAGE_PIXEL_SHADER, 0, 0, 0);
         graphics->set_program(game->glow_program_3d);
         graphics->set_pipeline(game->pipeline_3d);
-        // graphics->draw(TOPOLOGY_LINE_LIST, array_count(global_shape_vectors), 0);
-        graphics->draw_indexed(TOPOLOGY_LINE_LIST, array_count(global_shape_part_indices), 0, 0);
+        // graphics->draw(TOPOLOGY_LINE_LIST, array_count(global_globe_vectors), 0);
+        graphics->draw_indexed(TOPOLOGY_LINE_LIST, array_count(global_globe_part_indices), 0, 0);
     }
     graphics->end_pass();
 #endif

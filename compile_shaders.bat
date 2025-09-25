@@ -19,4 +19,10 @@ fxc.exe /nologo /T ps_5_0 /E ps /O3 /WX /Zpc /Ges /Fh post_pixel_shader.h /Vn po
 fxc.exe /nologo /T vs_5_0 /E vs /O3 /WX /Zpc /Ges /Fh vertex_shader_3d.h /Vn vshader_3d /Qstrip_reflect /Qstrip_debug /Qstrip_priv shader_3d.hlsl
 fxc.exe /nologo /T ps_5_0 /E ps /O3 /WX /Zpc /Ges /Fh pixel_shader_3d.h /Vn pshader_3d /Qstrip_reflect /Qstrip_debug /Qstrip_priv shader_3d.hlsl
 
+fxc.exe /nologo /T vs_5_0 /E vs /O3 /WX /Zpc /Ges /Fh vertex_shader_globe.h /Vn vshader_globe /Qstrip_reflect /Qstrip_debug /Qstrip_priv shader_globe.hlsl
+fxc.exe /nologo /T ps_5_0 /E ps /O3 /WX /Zpc /Ges /Fh pixel_shader_globe.h /Vn pshader_globe /Qstrip_reflect /Qstrip_debug /Qstrip_priv shader_globe.hlsl
+
+fxc.exe /nologo /T vs_5_0 /E vs /O3 /WX /Zpc /Ges /Fh vertex_shader_sphere.h /Vn vshader_sphere /Qstrip_reflect /Qstrip_debug /Qstrip_priv shader_sphere.hlsl
+fxc.exe /nologo /T ps_5_0 /E ps /O3 /WX /Zpc /Ges /Fh pixel_shader_sphere.h /Vn pshader_sphere /Qstrip_reflect /Qstrip_debug /Qstrip_priv shader_sphere.hlsl
+
 popd
