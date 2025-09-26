@@ -22,15 +22,13 @@ static void build_uv_sphere(f32 sphere_radius, u32 stacks, u32 slices)
         {
             f32 theta = (f32)j / (f32)slices * 2.0f * (f32)PI; // 0..2PI
             f32 x = radius * cosf(theta);
-            f32 z = radius * sinf(theta);
+            f32 z = -radius * sinf(theta);
             vec3 normal = v3_normalize(v3(x, y, z)); // NOTE: Unit outward normal.
             vec3 position = v3_mulf(normal, sphere_radius);
-            // NOTE: Position and normal
-            // printf("{ { %+3.12ff, %+3.12ff, %+3.12ff, }, { %+3.12ff, %+3.12ff, %+3.12ff, }, }, ",
-            //        position.x, position.y, position.z, normal.x, normal.y, normal.z);
+
             printf("%+3.12ff, %+3.12ff, %+3.12ff, %+3.12ff, %+3.12ff, %+3.12ff, ",
                    position.x, position.y, position.z, normal.x, normal.y, normal.z);
-            
+
             // vec2 uv  = v2((f32)j/slices, 1.0f - (f32)i/stacks);
         }
     }
@@ -47,8 +45,7 @@ static void build_uv_sphere(f32 sphere_radius, u32 stacks, u32 slices)
             u32 i2 =  i      * lon_count + (j + 1);
             u32 i3 = (i + 1) * lon_count + (j + 1);
 
-            printf("%u, %u, %u, %u, %u, %u, ",
-                   i0, i1, i2, i2, i1, i3);
+            printf("%u, %u, %u, %u, %u, %u, ", i0, i1, i2, i2, i1, i3);
         }
     }
     printf("\n};\n");

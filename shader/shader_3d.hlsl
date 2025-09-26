@@ -15,6 +15,7 @@ cbuffer global_settings : register(b0)
     float4x4 world_matrix;
     float4x4 view_matrix;
     float4x4 projection_matrix;
+    float4 camera_world;
 };
 
 PS_INPUT vs(VS_INPUT input)
