@@ -12,7 +12,7 @@ typedef struct gfx_buffer_t
     usize size;
     D3D11_USAGE usage;
     D3D11_BIND_FLAG bind;
-    DXGI_FORMAT index_format; // NOTE: For index buffer.
+    graphics_format_t index_format; // NOTE: For index buffer.
     u32 next_free_index;
 } gfx_buffer_t;
 
@@ -21,7 +21,7 @@ typedef struct gfx_texture_t
     u32 generation;
     ID3D11Texture2D* texture;
     ID3D11ShaderResourceView* srv;
-    DXGI_FORMAT format;
+    graphics_format_t format;
     UINT width;
     UINT height;
     u32 next_free_index;
@@ -140,7 +140,33 @@ static inline u64 pack_generation_index(u32 generation, u32 index)
     return generation_index;
 }
 
-static DXGI_FORMAT map_dxgi_format(graphics_format_t format)
+static DXGI_FORMAT map_dxgi_resource_format(graphics_format_t format)
+{
+    DXGI_FORMAT dxgi_format = DXGI_FORMAT_UNKNOWN;
+    
+    switch (format)
+    {
+        case FORMAT_R8_UNORM:
+        {
+            dxgi_format = DXGI_FORMAT_R8_TYPELESS;
+        } break;
+        
+        case FORMAT_R8G8B8A8_UNORM:
+        case FORMAT_R8G8B8A8_UNORM_SRGB:
+        {
+            dxgi_format = DXGI_FORMAT_R8G8B8A8_TYPELESS;
+        } break;
+
+        default:
+        {
+            assert(!"[GFX] Failed to map format.");
+        } break;
+    }
+
+    return dxgi_format;
+}
+
+static DXGI_FORMAT map_dxgi_rtv_format(graphics_format_t format)
 {
     DXGI_FORMAT dxgi_format = DXGI_FORMAT_UNKNOWN;
     
@@ -150,27 +176,59 @@ static DXGI_FORMAT map_dxgi_format(graphics_format_t format)
         {
             dxgi_format = DXGI_FORMAT_R8_UNORM;
         } break;
-        
+
         case FORMAT_R8G8B8A8_UNORM:
+        case FORMAT_R8G8B8A8_UNORM_SRGB:
         {
+            // NOTE: Linear write.
             dxgi_format = DXGI_FORMAT_R8G8B8A8_UNORM;
         } break;
 
+        default:
+        {
+            assert(!"[GFX] Failed to map rtv format.");
+        } break;
+    }
+
+    return dxgi_format;
+}
+
+static DXGI_FORMAT map_dxgi_srv_format(graphics_format_t format)
+{
+    DXGI_FORMAT dxgi_format = DXGI_FORMAT_UNKNOWN;
+    
+    switch (format)
+    {
+        case FORMAT_R8_UNORM:
+        {
+            dxgi_format = DXGI_FORMAT_R8_UNORM;
+        } break;
+
+        case FORMAT_R8G8B8A8_UNORM:
+        {
+            dxgi_format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        }  break;
+        
         case FORMAT_R8G8B8A8_UNORM_SRGB:
         {
             dxgi_format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
         } break;
-        
-        case FORMAT_R32G32_FLOAT:
-        {
-            dxgi_format = DXGI_FORMAT_R32G32_FLOAT;
-        } break;
 
-        case FORMAT_R32G32B32_FLOAT:
+        default:
         {
-            dxgi_format = DXGI_FORMAT_R32G32B32_FLOAT;
+            assert(!"[GFX] Failed to map srv format.");
         } break;
+    }
 
+    return dxgi_format;
+}
+
+static DXGI_FORMAT map_dxgi_ib_format(graphics_format_t format)
+{
+    DXGI_FORMAT dxgi_format = DXGI_FORMAT_UNKNOWN;
+    
+    switch (format)
+    {
         case FORMAT_R16_UINT:
         {
             dxgi_format = DXGI_FORMAT_R16_UINT;
@@ -183,7 +241,32 @@ static DXGI_FORMAT map_dxgi_format(graphics_format_t format)
 
         default:
         {
-            assert(!"[GFX] Failed to map format.");
+            assert(!"[GFX] Failed to map index buffer format.");
+        } break;
+    }
+
+    return dxgi_format;
+}
+
+static DXGI_FORMAT map_dxgi_ia_format(graphics_format_t format)
+{
+    DXGI_FORMAT dxgi_format = DXGI_FORMAT_UNKNOWN;
+    
+    switch (format)
+    {
+        case FORMAT_R32G32_FLOAT:
+        {
+            dxgi_format = DXGI_FORMAT_R32G32_FLOAT;
+        } break;
+
+        case FORMAT_R32G32B32_FLOAT:
+        {
+            dxgi_format = DXGI_FORMAT_R32G32B32_FLOAT;
+        } break;
+
+        default:
+        {
+            assert(!"[GFX] Failed to map input assembler format.");
         } break;
     }
 
@@ -379,7 +462,7 @@ static graphics_create_buffer_function(gfx_create_buffer)
     
     if (bind == D3D11_BIND_INDEX_BUFFER)
     {
-        index_format = map_dxgi_format(buffer_desc->index_format);
+        index_format = map_dxgi_ib_format(buffer_desc->index_format);
         assert(index_format != DXGI_FORMAT_UNKNOWN && "[GFX] Invalid index format.");
         u32 stride = index_format == DXGI_FORMAT_R16_UINT ? 2u : 4u;
         // NOTE: If index buffer buffer_desc->size is index count.
@@ -423,7 +506,7 @@ static graphics_create_buffer_function(gfx_create_buffer)
         .size = size,
         .usage = usage,
         .bind = bind,
-        .index_format = index_format,
+        .index_format = buffer_desc->index_format,
     };
     
     graphics_buffer.platform = pack_generation_index(buffer_generation, buffer_index);
@@ -440,7 +523,7 @@ static graphics_create_texture_2d_function(gfx_create_texture_2d)
         .Height = texture_2d_desc->height,
         .MipLevels = 1,
         .ArraySize = 1,
-        .Format = map_dxgi_format(texture_2d_desc->format),
+        .Format = map_dxgi_resource_format(texture_2d_desc->format),
         // NOTE: No AA.
         .SampleDesc =
         {
@@ -452,7 +535,7 @@ static graphics_create_texture_2d_function(gfx_create_texture_2d)
         .CPUAccessFlags = 0,
         .MiscFlags = 0,
     };
-
+    
     D3D11_SUBRESOURCE_DATA initial = { 0 };
     D3D11_SUBRESOURCE_DATA* ptr_initial = 0;
 
@@ -477,7 +560,7 @@ static graphics_create_texture_2d_function(gfx_create_texture_2d)
         .generation = texture_generation,
         .texture = texture_2d,
         .srv = 0,
-        .format = desc.Format,
+        .format = texture_2d_desc->format,
         .width = desc.Width,
         .height = desc.Height,
     };
@@ -486,7 +569,7 @@ static graphics_create_texture_2d_function(gfx_create_texture_2d)
     {
         D3D11_SHADER_RESOURCE_VIEW_DESC srv_desc =
         {
-            .Format = desc.Format,
+            .Format = map_dxgi_srv_format(texture_2d_desc->format),
             .ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D,
             .Texture2D = { .MostDetailedMip = 0, .MipLevels = 1, },
         };
@@ -525,7 +608,7 @@ static graphics_create_target_function(gfx_create_target)
 
     D3D11_RENDER_TARGET_VIEW_DESC desc =
     {
-        .Format = gfx_texture->format,
+        .Format = map_dxgi_rtv_format(gfx_texture->format),
         .ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D,
         .Texture2D = { .MipSlice = 0, },
     };
@@ -613,7 +696,7 @@ static graphics_create_program_function(gfx_create_program)
 
         desc->SemanticName = attribute->semantic;
         desc->SemanticIndex = attribute->index;
-        desc->Format = map_dxgi_format(attribute->format);
+        desc->Format = map_dxgi_ia_format(attribute->format);
         desc->InputSlot = attribute->slot;
         desc->AlignedByteOffset = attribute->offset;
         desc->InputSlotClass = attribute->per_instance ? D3D11_INPUT_PER_INSTANCE_DATA : D3D11_INPUT_PER_VERTEX_DATA;
@@ -773,7 +856,7 @@ static graphics_set_buffer_function(gfx_set_buffer)
 
         case D3D11_BIND_INDEX_BUFFER:
         {
-            ID3D11DeviceContext_IASetIndexBuffer(global_d3d11.context, gfx_buffer->buffer, gfx_buffer->index_format, offset);
+            ID3D11DeviceContext_IASetIndexBuffer(global_d3d11.context, gfx_buffer->buffer, map_dxgi_ib_format(gfx_buffer->index_format), offset);
         } break;
 
         case D3D11_BIND_CONSTANT_BUFFER:

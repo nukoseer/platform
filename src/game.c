@@ -175,7 +175,7 @@ static void resize_offscreen_buffer(graphics_t* graphics, game_t* game)
     {
         game->offscreen_scene = graphics->create_texture_2d(&(graphics_texture_2d_desc_t)
         {
-            .format = FORMAT_R8G8B8A8_UNORM_SRGB,
+            .format = FORMAT_R8G8B8A8_UNORM,
             .bind = BIND_SHADER_RESOURCE | BIND_RENDER_TARGET,
             .width = backbuffer_width,
             .height = backbuffer_height,
@@ -183,7 +183,7 @@ static void resize_offscreen_buffer(graphics_t* graphics, game_t* game)
 
         game->glow_mask = graphics->create_texture_2d(&(graphics_texture_2d_desc_t)
         {
-            .format = FORMAT_R8G8B8A8_UNORM_SRGB,
+            .format = FORMAT_R8G8B8A8_UNORM,
             .bind = BIND_SHADER_RESOURCE | BIND_RENDER_TARGET,
             .width = (u32)(backbuffer_width * 0.5f),
             .height = (u32)(backbuffer_height * 0.5f),
@@ -191,7 +191,7 @@ static void resize_offscreen_buffer(graphics_t* graphics, game_t* game)
 
         game->glow_a = graphics->create_texture_2d(&(graphics_texture_2d_desc_t)
         {
-            .format = FORMAT_R8G8B8A8_UNORM_SRGB,
+            .format = FORMAT_R8G8B8A8_UNORM,
             .bind = BIND_SHADER_RESOURCE | BIND_RENDER_TARGET,
             .width = (u32)(backbuffer_width * 0.5f),
             .height = (u32)(backbuffer_height * 0.5f),
@@ -199,7 +199,7 @@ static void resize_offscreen_buffer(graphics_t* graphics, game_t* game)
 
         game->glow_b = graphics->create_texture_2d(&(graphics_texture_2d_desc_t)
         {
-            .format = FORMAT_R8G8B8A8_UNORM_SRGB,
+            .format = FORMAT_R8G8B8A8_UNORM,
             .bind = BIND_SHADER_RESOURCE | BIND_RENDER_TARGET,
             .width = (u32)(backbuffer_width * 0.5f),
             .height = (u32)(backbuffer_height * 0.5f),
