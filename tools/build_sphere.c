@@ -2,8 +2,8 @@
 
 #include <stdio.h>
 
-#include "utils.h"
-#include "maths.h"
+#include "../src/utils.h"
+#include "../src/maths.h"
 
 static void build_uv_sphere(f32 sphere_radius, u32 stacks, u32 slices)
 {

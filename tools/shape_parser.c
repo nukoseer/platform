@@ -5,8 +5,8 @@
 #include <string.h>
 #include <stdlib.h>
 
-#include "utils.h"
-#include "maths.h"
+#include "../src/utils.h"
+#include "../src/maths.h"
 
 #define PRINT_PARTS    1
 #define PRINT_INDICES  2

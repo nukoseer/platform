@@ -130,9 +130,9 @@ if /I "%debug%"=="yes" (
    set common_linker_flags_dll=%common_linker_flags_dll% %release_linker_flags_dll%
 )
 
-rem %compiler% %common_compiler_flags% ..\src\gaussian_kernel_1d.c %link_section% %common_linker_flags% %OUTPUT%gaussian_kernel_1d.exe
-%compiler% %common_compiler_flags% ..\src\shape_parser.c %link_section% %common_linker_flags% %OUTPUT%shape_parser.exe
-%compiler% %common_compiler_flags% ..\src\build_sphere.c %link_section% %common_linker_flags% %OUTPUT%build_sphere.exe
+%compiler% %common_compiler_flags% ..\tools\gaussian_kernel_1d.c %link_section% %common_linker_flags% %OUTPUT%gaussian_kernel_1d.exe
+%compiler% %common_compiler_flags% ..\tools\shape_parser.c %link_section% %common_linker_flags% %OUTPUT%shape_parser.exe
+%compiler% %common_compiler_flags% ..\tools\build_sphere.c %link_section% %common_linker_flags% %OUTPUT%build_sphere.exe
 %compiler% %common_compiler_flags% ..\src\platform.c %link_section% %common_linker_flags% %OUTPUT%platform.exe
 rem %compiler% %common_compiler_flags% ..\src\gfx.c -E -dD
 rem -MJ ../compile_commands.json

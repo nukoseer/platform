@@ -123,6 +123,7 @@ typedef struct memory_t
 
 typedef enum graphics_format_t
 {
+    FORMAT_R8_UNORM,
     FORMAT_R8G8B8A8_UNORM,
     FORMAT_R8G8B8A8_UNORM_SRGB,
     FORMAT_R32G32_FLOAT,

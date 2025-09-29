@@ -106,6 +106,7 @@ typedef struct game_t
     graphics_program_t program_sphere;
 
     graphics_buffer_t globe_vertex_buffer;
+    graphics_buffer_t globe_vertex_buffer1;
     graphics_buffer_t globe_index_buffer;
     graphics_shader_t vertex_shader_globe;
     graphics_shader_t pixel_shader_globe;
@@ -224,16 +225,27 @@ static inline vec3 rotation_x(f32 angle, vec3 position)
     return result;
 }
 
-static inline vec3 rotation_y(f32 angle, vec3 position)
+static inline mat4x4 rotation_y(f32 angle, vec3 position)
 {
-    vec3 result = { 0 };
+    // vec3 result = { 0 };
     f32 rad = angle * (f32)DEG2RAD;
 
-    result.x = cosf(rad) * position.x - sinf(rad) * position.z;
-    result.y = position.y;
-    result.z = sinf(rad) * position.x + cosf(rad) * position.z;
+    // result.x = cosf(rad) * position.x - sinf(rad) * position.z;
+    // result.y = position.y;
+    // result.z = sinf(rad) * position.x + cosf(rad) * position.z;
 
-    return result;
+    mat4x4 rotation_matrix =
+    {
+        .columns =
+        {
+            [0] = v4(cosf(rad),  0.0f, sinf(rad), 0.0f),
+            [1] = v4(0.0f,       1.0f, 0.0f,      0.0f),
+            [2] = v4(-sinf(rad), 0.0f, cosf(rad), 0.0f),
+            [3] = v4(0.0f,       0.0f, 0.0f,      1.0f)
+        },
+    };
+
+    return rotation_matrix;
 }
 
 static inline vec3 rotation_z(f32 angle, vec3 position)
@@ -252,7 +264,9 @@ static inline vec3 rotation_z(f32 angle, vec3 position)
 static inline mat4x4 view_matrix(vec3 reference_up, vec3 from, vec3 to)
 {
     vec3 forward = v3_normalize(v3_sub(from, to));
-    vec3 right = v3_normalize(v3_cross(reference_up, forward));
+    f32 cos_up = fabsf(v3_dot(reference_up, forward));
+    vec3 up_hint = (cos_up > 0.999f) ? v3(0.0f, 0.0f, 1.0f) : reference_up;
+    vec3 right = v3_normalize(v3_cross(up_hint, forward));
     vec3 up = v3_cross(forward, right);
 
     mat4x4 result =
@@ -371,7 +385,7 @@ init_function(init)
         .wireframe = false,
     });
 
-    game->camera_position = v3(0.0f, 0.0f, 3.0f);
+    game->camera_position = v3(0.0f, 0.0f, 2.5f);
     game->setting_3d.world = m4x4d(1.0f);
     game->setting_3d.view = view_matrix(v3(0.0f, 1.0f, 0.0f), game->camera_position, v3(0.0f, 0.0f, 0.0f));
     // game->setting_3d.projection = projection_matrix(-1.0f, +1.0f, -1.0f, +1.0f, 0.1f, 100.0f);
@@ -534,6 +548,14 @@ init_function(init)
         .bind = BIND_VERTEX_BUFFER,
     });
 
+    game->globe_vertex_buffer1 = graphics->create_buffer(&(graphics_buffer_desc_t)
+    {
+        .data = global_globe_vectors_,
+        .size = sizeof(global_globe_vectors_),
+        .usage = USAGE_IMMUTABLE,
+        .bind = BIND_VERTEX_BUFFER,
+    });
+
     game->globe_index_buffer = graphics->create_buffer(&(graphics_buffer_desc_t)
     {
         .data = global_globe_part_indices,
@@ -684,7 +706,8 @@ init_function(init)
     });
 
     game->font = graphics->create_font("Consolas", 24);
-    game->font_color = graphics->create_font_color(0.8313f, 0.0f, 0.4705f, 1.0f);
+    // game->font_color = graphics->create_font_color(0.8313f, 0.0f, 0.4705f, 1.0f);
+    game->font_color = graphics->create_font_color(0.38f, 0.38f, 0.38f, 1.0f);
 
     io->release_file_memory(io->read_file("..\\src\\game.c").data);
 }
@@ -729,7 +752,12 @@ render_function(render)
 #else
     // game->camera_position = rotation_y(0.3f, game->camera_position);
     // game->camera_position = rotation_x(0.9f, game->camera_position);
+    static float earth_angle = 0.0f;
+    f32 omega_radians_per_sec = 10.0f;
+    earth_angle += omega_radians_per_sec * platform->delta_time;
+    mat4x4 rotation_matrix = rotation_y(earth_angle, game->camera_position);
 
+    game->setting_3d.world = rotation_matrix;
     game->setting_3d.view = view_matrix(v3(0.0f, 1.0f, 0.0f), game->camera_position, v3(0.0f, 0.0f, 0.0f));
     game->setting_3d.projection = projection_matrix_fov_y(60.0f, (f32)platform->width / (f32)platform->height, 0.1f, 100.0f);
     game->setting_3d.camera_world.xyz = game->camera_position;
@@ -763,6 +791,7 @@ render_function(render)
     // graphics->end_pass();
 
     graphics->begin_pass(game->offscreen_target, &(graphics_pass_desc_t){ .clear_color = true, .clear_rgba = { 0.005f, 0.005f, 0.005f, 0.0f }});
+    // graphics->begin_pass(game->offscreen_target, &(graphics_pass_desc_t){ .clear_color = true, .clear_rgba = { 0.95f, 0.95f, 0.95f, 0.0f }});
     {
         graphics->update_buffer(game->setting_buffer_3d, &game->setting_3d, 0, sizeof(game->setting_3d));
         graphics->set_buffer(game->setting_buffer_3d, STAGE_VERTEX_SHADER, 0, 0, 0);
@@ -780,27 +809,40 @@ render_function(render)
         graphics->update_buffer(game->setting_buffer_3d, &game->setting_3d, 0, sizeof(game->setting_3d));
         graphics->set_buffer(game->setting_buffer_3d, STAGE_VERTEX_SHADER, 0, 0, 0);
         graphics->set_buffer(game->globe_vertex_buffer, STAGE_VERTEX_SHADER, 0, sizeof(vec3), 0);
+        // graphics->set_buffer(game->globe_index_buffer, STAGE_VERTEX_SHADER, 0, 0, 0);
+        graphics->set_program(game->program_globe);
+        graphics->set_pipeline(game->pipeline_3d);
+        graphics->draw(TOPOLOGY_POINT_LIST, array_count(global_globe_vectors), 0);
+        // graphics->draw_indexed(TOPOLOGY_LINE_LIST, array_count(global_globe_part_indices), 0, 0);
+    }
+    graphics->end_pass();
+
+    graphics->begin_pass(game->offscreen_target, &(graphics_pass_desc_t){ .clear_color = false });
+    {
+        graphics->update_buffer(game->setting_buffer_3d, &game->setting_3d, 0, sizeof(game->setting_3d));
+        graphics->set_buffer(game->setting_buffer_3d, STAGE_VERTEX_SHADER, 0, 0, 0);
+        graphics->set_buffer(game->globe_vertex_buffer1, STAGE_VERTEX_SHADER, 0, sizeof(vec3), 0);
         graphics->set_buffer(game->globe_index_buffer, STAGE_VERTEX_SHADER, 0, 0, 0);
         graphics->set_program(game->program_globe);
         graphics->set_pipeline(game->pipeline_3d);
-        // graphics->draw(TOPOLOGY_LINE_LIST, array_count(global_globe_vectors), 0);
+        // graphics->draw(TOPOLOGY_POINT_LIST, array_count(global_globe_vectors), 0);
         graphics->draw_indexed(TOPOLOGY_LINE_LIST, array_count(global_globe_part_indices), 0, 0);
     }
     graphics->end_pass();
 
-    graphics->begin_pass(game->glow_mask_target, &(graphics_pass_desc_t){ .clear_color = true, .clear_rgba = { 0.0f, 0.0f, 0.0f, 0.0f } });
-    {
-        graphics->set_buffer(game->setting_buffer_3d, STAGE_VERTEX_SHADER, 0, 0, 0);
-        graphics->set_buffer(game->globe_vertex_buffer, STAGE_VERTEX_SHADER, 0, sizeof(vec3), 0);
-        game->glow_mask_setting = (glow_mask_setting_t){ .glow_color = { 0.9964f, 0.8431f, 0.4941f, 0.0f } };
-        graphics->update_buffer(game->glow_buffer, &game->glow_mask_setting, 0, sizeof(game->glow_mask_setting));
-        graphics->set_buffer(game->glow_buffer, STAGE_PIXEL_SHADER, 0, 0, 0);
-        graphics->set_program(game->glow_program_3d);
-        graphics->set_pipeline(game->pipeline_3d);
-        // graphics->draw(TOPOLOGY_LINE_LIST, array_count(global_globe_vectors), 0);
-        graphics->draw_indexed(TOPOLOGY_LINE_LIST, array_count(global_globe_part_indices), 0, 0);
-    }
-    graphics->end_pass();
+    // graphics->begin_pass(game->glow_mask_target, &(graphics_pass_desc_t){ .clear_color = true, .clear_rgba = { 0.0f, 0.0f, 0.0f, 0.0f } });
+    // {
+    //     graphics->set_buffer(game->setting_buffer_3d, STAGE_VERTEX_SHADER, 0, 0, 0);
+    //     graphics->set_buffer(game->globe_vertex_buffer, STAGE_VERTEX_SHADER, 0, sizeof(vec3), 0);
+    //     game->glow_mask_setting = (glow_mask_setting_t){ .glow_color = { 0.9964f, 0.8431f, 0.4941f, 0.0f } };
+    //     graphics->update_buffer(game->glow_buffer, &game->glow_mask_setting, 0, sizeof(game->glow_mask_setting));
+    //     graphics->set_buffer(game->glow_buffer, STAGE_PIXEL_SHADER, 0, 0, 0);
+    //     graphics->set_program(game->glow_program_3d);
+    //     graphics->set_pipeline(game->pipeline_3d);
+    //     // graphics->draw(TOPOLOGY_LINE_LIST, array_count(global_globe_vectors), 0);
+    //     graphics->draw_indexed(TOPOLOGY_LINE_LIST, array_count(global_globe_part_indices), 0, 0);
+    // }
+    // graphics->end_pass();
 #endif
     
     // NOTE: Horizontal blur. glow_mask -> glow_a.

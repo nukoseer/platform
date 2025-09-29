@@ -40,7 +40,7 @@ PS_INPUT vs(VS_INPUT input)
     output.color = float4(0.1, 0.1, 0.1, 1.0);
     // output.color = float4(input.color, 1.0);
 
-    float degree = -30.0;
+    float degree = 20.0;
     float rad = radians(degree);
     float threshold = sin(rad);
     
@@ -54,6 +54,7 @@ PS_INPUT vs(VS_INPUT input)
 float4 ps(PS_INPUT input) : SV_TARGET
 {
     // return float4(step(0.0, input.debug), 0, step(0, -input.debug), 1.0);
-    return float4(0.9964f, 0.8431f, 0.4941f, 1.0f);
+    // return float4(0.9964f, 0.8431f, 0.4941f, 1.0f);
+    return float4(0.04, 0.04, 0.04, 1.0f);
     // return input.color;
 }

@@ -146,6 +146,11 @@ static DXGI_FORMAT map_dxgi_format(graphics_format_t format)
     
     switch (format)
     {
+        case FORMAT_R8_UNORM:
+        {
+            dxgi_format = DXGI_FORMAT_R8_UNORM;
+        } break;
+        
         case FORMAT_R8G8B8A8_UNORM:
         {
             dxgi_format = DXGI_FORMAT_R8G8B8A8_UNORM;

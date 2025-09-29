@@ -614,3 +614,30 @@ static inline mat4x4 m4x4_sub(mat4x4 left, mat4x4 right)
 
     return result;
 }
+
+static inline vec4 m4x4_mulv4(mat4x4 left, vec4 right)
+{
+    vec4 result;
+
+    result.values[0] = left.columns[0].x * right.values[0];
+    result.values[1] = left.columns[0].y * right.values[0];
+    result.values[2] = left.columns[0].z * right.values[0];
+    result.values[3] = left.columns[0].w * right.values[0];
+
+    result.values[0] += left.columns[1].x * right.values[1];
+    result.values[1] += left.columns[1].y * right.values[1];
+    result.values[2] += left.columns[1].z * right.values[1];
+    result.values[3] += left.columns[1].w * right.values[1];
+
+    result.values[0] += left.columns[2].x * right.values[2];
+    result.values[1] += left.columns[2].y * right.values[2];
+    result.values[2] += left.columns[2].z * right.values[2];
+    result.values[3] += left.columns[2].w * right.values[2];
+
+    result.values[0] += left.columns[3].x * right.values[3];
+    result.values[1] += left.columns[3].y * right.values[3];
+    result.values[2] += left.columns[3].z * right.values[3];
+    result.values[3] += left.columns[3].w * right.values[3];
+
+    return result;
+}
