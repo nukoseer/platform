@@ -82,6 +82,7 @@ typedef struct game_t
     vertex_t vertex_data[3];
     graphics_buffer_t vertex_buffer;
     graphics_texture_t offscreen_scene;
+    graphics_texture_t offscreen_depth;
     graphics_target_t offscreen_target;
     graphics_shader_t vertex_shader;
     graphics_shader_t pixel_shader;
@@ -142,74 +143,72 @@ typedef struct game_t
     graphics_2d_font_color_t font_color;
 } game_t;
 
-static void resize_offscreen_buffer(graphics_t* graphics, game_t* game)
+static void resize_offscreen_buffer(platform_t* platform, game_t* game)
 {
+    graphics_t* graphics = platform->graphics;
+    bool resized = platform->resized;
     bool is_valid = graphics->is_valid_target(game->offscreen_target);
-    bool resize = false;
-    u32 backbuffer_width = 0;
-    u32 backbuffer_height = 0;
 
-    graphics->get_target_size(graphics->get_backbuffer_target(), &backbuffer_width, &backbuffer_height);
-
-    if (is_valid)
+    if (is_valid && resized)
     {
-        u32 offscreen_width = game->offscreen_scene.width;
-        u32 offscreen_height = game->offscreen_scene.height;
-
-        if (offscreen_width != backbuffer_width || offscreen_height != backbuffer_height)
-        {
-            graphics->delete_target(game->offscreen_target);
-            graphics->delete_target(game->glow_mask_target);
-            graphics->delete_target(game->glow_a_target);
-            graphics->delete_target(game->glow_b_target);
-            graphics->delete_texture_2d(game->offscreen_scene);
-            graphics->delete_texture_2d(game->glow_mask);
-            graphics->delete_texture_2d(game->glow_a);
-            graphics->delete_texture_2d(game->glow_b);
-
-            resize = true;
-        }
+        graphics->delete_target(game->offscreen_target);
+        graphics->delete_target(game->glow_mask_target);
+        graphics->delete_target(game->glow_a_target);
+        graphics->delete_target(game->glow_b_target);
+        graphics->delete_texture_2d(game->offscreen_scene);
+        graphics->delete_texture_2d(game->offscreen_depth);
+        graphics->delete_texture_2d(game->glow_mask);
+        graphics->delete_texture_2d(game->glow_a);
+        graphics->delete_texture_2d(game->glow_b);
     }
 
-    if (!is_valid || resize)
+    if (!is_valid || resized)
     {
         game->offscreen_scene = graphics->create_texture_2d(&(graphics_texture_2d_desc_t)
         {
             .format = FORMAT_R8G8B8A8_UNORM,
             .bind = BIND_SHADER_RESOURCE | BIND_RENDER_TARGET,
-            .width = backbuffer_width,
-            .height = backbuffer_height,
+            .width = platform->width,
+            .height = platform->height,
+        }, 0, 0);
+
+        game->offscreen_depth = graphics->create_texture_2d(&(graphics_texture_2d_desc_t)
+        {
+            .format = FORMAT_D24_UNORM_S8_UINT,
+            .bind = BIND_DEPTH_STENCIL,
+            .width = platform->width,
+            .height = platform->height,
         }, 0, 0);
 
         game->glow_mask = graphics->create_texture_2d(&(graphics_texture_2d_desc_t)
         {
             .format = FORMAT_R8G8B8A8_UNORM,
             .bind = BIND_SHADER_RESOURCE | BIND_RENDER_TARGET,
-            .width = (u32)(backbuffer_width * 0.5f),
-            .height = (u32)(backbuffer_height * 0.5f),
+            .width = (u32)(platform->width * 0.5f),
+            .height = (u32)(platform->height * 0.5f),
         }, 0, 0);
 
         game->glow_a = graphics->create_texture_2d(&(graphics_texture_2d_desc_t)
         {
             .format = FORMAT_R8G8B8A8_UNORM,
             .bind = BIND_SHADER_RESOURCE | BIND_RENDER_TARGET,
-            .width = (u32)(backbuffer_width * 0.5f),
-            .height = (u32)(backbuffer_height * 0.5f),
+            .width = (u32)(platform->width * 0.5f),
+            .height = (u32)(platform->height * 0.5f),
         }, 0, 0);
 
         game->glow_b = graphics->create_texture_2d(&(graphics_texture_2d_desc_t)
         {
             .format = FORMAT_R8G8B8A8_UNORM,
             .bind = BIND_SHADER_RESOURCE | BIND_RENDER_TARGET,
-            .width = (u32)(backbuffer_width * 0.5f),
-            .height = (u32)(backbuffer_height * 0.5f),
+            .width = (u32)(platform->width * 0.5f),
+            .height = (u32)(platform->height * 0.5f),
         }, 0, 0);
 
         // NOTE: Create RenderTargetView for offscreen_scene to render.
-        game->offscreen_target = graphics->create_target(game->offscreen_scene);
-        game->glow_mask_target = graphics->create_target(game->glow_mask);
-        game->glow_a_target = graphics->create_target(game->glow_a);
-        game->glow_b_target = graphics->create_target(game->glow_b);
+        game->offscreen_target = graphics->create_target(&(graphics_target_desc_t){ .color = game->offscreen_scene, .depth = game->offscreen_depth });
+        game->glow_mask_target = graphics->create_target(&(graphics_target_desc_t){ .color = game->glow_mask });
+        game->glow_a_target = graphics->create_target(&(graphics_target_desc_t){ .color = game->glow_a });
+        game->glow_b_target = graphics->create_target(&(graphics_target_desc_t){ .color = game->glow_b });
     }
 }
 
@@ -733,7 +732,7 @@ render_function(render)
     graphics_t* graphics = platform->graphics;
     game_t* game = (game_t*)memory->permanent;
 
-    resize_offscreen_buffer(graphics, game);
+    resize_offscreen_buffer(platform, game);
 #if 0
     // NOTE: Offscreen rendering pass.
     graphics->begin_pass(game->offscreen_target, &(graphics_pass_desc_t){ .clear_color = true, .clear_rgba = { 0.005f, 0.005f, 0.005f, 0.0f }});
@@ -800,7 +799,8 @@ render_function(render)
     // }
     // graphics->end_pass();
 
-    graphics->begin_pass(game->offscreen_target, &(graphics_pass_desc_t){ .clear_color = true, .clear_rgba = { 0.005f, 0.005f, 0.005f, 0.0f }});
+    graphics->begin_pass(game->offscreen_target, &(graphics_pass_desc_t){ .clear_color = true, .clear_rgba = { 0.005f, 0.005f, 0.005f, 0.0f },
+                                                                          .clear_depth = true, .clear_depth_value = 1.0f });
     // graphics->begin_pass(game->offscreen_target, &(graphics_pass_desc_t){ .clear_color = true, .clear_rgba = { 0.95f, 0.95f, 0.95f, 0.0f }});
     {
         graphics->update_buffer(game->setting_buffer_3d, &game->setting_3d, 0, sizeof(game->setting_3d));

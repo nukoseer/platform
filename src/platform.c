@@ -272,10 +272,9 @@ static window_t* create_window(i32 width, i32 height)
     return &window;
 }
 
-static void resize_back_buffer(window_t* window)
+static bool resize_back_buffer(window_t* window)
 {
-    HRESULT result = 0;
-
+    bool resized = false;
     // NOTE: Get current size for window client area.
     RECT rect = { 0 };
     GetClientRect(window->hwnd, &rect);
@@ -288,7 +287,9 @@ static void resize_back_buffer(window_t* window)
         {
             ID3D11DeviceContext_ClearState(window->d3d11->context);
             ID3D11RenderTargetView_Release(window->d3d11->rt_view);
+            ID3D11DepthStencilView_Release(window->d3d11->ds_view);
             window->d3d11->rt_view = 0;
+            window->d3d11->ds_view = 0;
         }
 
         if (window->d2d1->render_target)
@@ -299,7 +300,7 @@ static void resize_back_buffer(window_t* window)
 
         if (window->width != 0 && window->height != 0)
         {
-            result = IDXGISwapChain1_ResizeBuffers(window->swap_chain, 0, window->width, window->height, DXGI_FORMAT_UNKNOWN, 0);
+            HRESULT result = IDXGISwapChain1_ResizeBuffers(window->swap_chain, 0, window->width, window->height, DXGI_FORMAT_UNKNOWN, 0);
             fatal_system(SUCCEEDED(result), "[DXGI] Failed to resize swap chain.");
 
             ID3D11Texture2D* back_buffer = 0;
@@ -308,12 +309,26 @@ static void resize_back_buffer(window_t* window)
             D3D11_RENDER_TARGET_VIEW_DESC backbuffer_target =
             {
                 .ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D,
-                .Format= DXGI_FORMAT_R8G8B8A8_UNORM_SRGB,
+                .Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB,
             };
             ID3D11Device_CreateRenderTargetView(window->d3d11->device, (ID3D11Resource*)back_buffer, &backbuffer_target, &window->d3d11->rt_view);
 
-            window->d3d11->width = window->width;
-            window->d3d11->height = window->height;
+            D3D11_TEXTURE2D_DESC depth_desc =
+            {
+                .Width = window->width,
+                .Height = window->height,
+                .MipLevels = 1,
+                .ArraySize = 1,
+                .Format = DXGI_FORMAT_D24_UNORM_S8_UINT,
+                .SampleDesc = { 1, 0 },
+                .Usage = D3D11_USAGE_DEFAULT,
+                .BindFlags = D3D11_BIND_DEPTH_STENCIL,
+            };
+
+            ID3D11Texture2D* depth = 0;
+            ID3D11Device_CreateTexture2D(window->d3d11->device, &depth_desc, 0, &depth);
+            ID3D11Device_CreateDepthStencilView(window->d3d11->device, (ID3D11Resource*)depth, 0, &window->d3d11->ds_view);
+            ID3D11Texture2D_Release(depth);
 
             IDXGISurface* dxgi_surface = 0;
             result = ID3D11Texture2D_QueryInterface(back_buffer, &IID_IDXGISurface, (void**)&dxgi_surface);
@@ -347,9 +362,14 @@ static void resize_back_buffer(window_t* window)
             ID3D11Texture2D_Release(back_buffer);
         }
 
+        window->d3d11->width = window->width;
+        window->d3d11->height = window->height;
         window->current_width = window->width;
         window->current_height = window->height;
-   }
+        resized = true;
+    }
+
+    return resized;
 }
 
 static bool process_thread_messages(window_t* window, input_t* input)
@@ -579,7 +599,7 @@ static DWORD WINAPI main_thread(void* param)
 
         platform.input = new_input;
 
-        resize_back_buffer(window);
+        platform.resized = resize_back_buffer(window);
 
         platform.width = window->width;
         platform.height = window->height;

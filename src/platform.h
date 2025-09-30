@@ -287,6 +287,8 @@ typedef struct graphics_pass_desc_t
 
     // TODO: clear_depth/stencil, use_depth/stencil
     // color_load/store, depth_load/store, stencil_load/store
+    bool clear_depth;
+    f32 clear_depth_value;
 } graphics_pass_desc_t;
 
 typedef enum graphics_topology_t
@@ -313,7 +315,7 @@ typedef graphics_create_texture_2d_function(graphics_create_texture_2d_f);
 #define graphics_create_sampler_function(name) graphics_sampler_t name(const graphics_sampler_desc_t* sampler_desc)
 typedef graphics_create_sampler_function(graphics_create_sampler_f);
 
-#define graphics_create_target_function(name) graphics_target_t name(graphics_texture_t texture)
+#define graphics_create_target_function(name) graphics_target_t name(const graphics_target_desc_t* target_desc)
 typedef graphics_create_target_function(graphics_create_target_f);
 
 #define graphics_create_shader_function(name) graphics_shader_t name(const graphics_shader_desc_t* shader_desc)
@@ -508,6 +510,7 @@ typedef struct platform_t
 
     u32 width;
     u32 height;
+    bool resized;
     f32 delta_time;
 } platform_t;
 

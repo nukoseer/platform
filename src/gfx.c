@@ -160,6 +160,16 @@ static DXGI_FORMAT map_dxgi_resource_format(graphics_format_t format)
             dxgi_format = DXGI_FORMAT_R8G8B8A8_TYPELESS;
         } break;
 
+        case FORMAT_D24_UNORM_S8_UINT:
+        {
+            dxgi_format = DXGI_FORMAT_R24G8_TYPELESS;
+        } break;
+        
+        case FORMAT_D32_FLOAT:
+        {
+            dxgi_format = DXGI_FORMAT_R32_TYPELESS;
+        } break;
+
         default:
         {
             assert(!"[GFX] Failed to map resource format.");
@@ -633,29 +643,71 @@ static graphics_create_texture_2d_function(gfx_create_texture_2d)
 
 static graphics_create_target_function(gfx_create_target)
 {
-    // TODO: Do not build now.
-    u32 color_texture_generation = get_generation(color.platform);
-    u32 color_texture_index = get_index(color.platform);
+    u32 color_texture_generation = get_generation(target_desc->color.platform);
+    u32 color_texture_index = get_index(target_desc->color.platform);
     gfx_texture_t* gfx_color_texture = global_textures + color_texture_index;
-
-    if (color_texture_generation != gfx_color_texture->generation)
-    {
-        assert(!"[GFX] Color texture generation does not match.");
-    }
-
-    assert(gfx_texture->color_texture && "[GFX] Invalid color texture for target.");
-
-    u32 depth_texture_generation = get_generation(depth.platform);
-    u32 depth_texture_index = get_index(depth.platform);
+    u32 depth_texture_generation = get_generation(target_desc->depth.platform);
+    u32 depth_texture_index = get_index(target_desc->depth.platform);
     gfx_texture_t* gfx_depth_texture = global_textures + depth_texture_index;
+    ID3D11RenderTargetView* render_target = 0;
+    ID3D11DepthStencilView* depth_stencil = 0;
+    i32 width = 0;
+    i32 height = 0;
 
-    if (depth_texture_generation != gfx_depth_texture->generation)
+    if (color_texture_index != 0)
     {
-        assert(!"[GFX] Depth texture generation does not match.");
+        if (color_texture_generation != gfx_color_texture->generation)
+        {
+            assert(!"[GFX] Color texture generation does not match.");
+        }
+
+        assert(gfx_color_texture->texture && "[GFX] Invalid color texture for target.");
+
+        D3D11_RENDER_TARGET_VIEW_DESC desc =
+        {
+            .Format = map_dxgi_rtv_format(gfx_color_texture->format),
+            .ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D,
+            .Texture2D = { .MipSlice = 0, },
+        };
+
+        HRESULT result = ID3D11Device_CreateRenderTargetView(global_d3d11.device, (ID3D11Resource*)gfx_color_texture->texture, &desc, &render_target);
+        assert(SUCCEEDED(result) && "[GFX] Failed to create render target view.");
+
+        width = gfx_color_texture->width;
+        height = gfx_color_texture->height;
     }
 
-    assert(gfx_texture->depth_texture && "[GFX] Invalid depth texture for target.");
-    
+    if (depth_texture_index != 0)
+    {
+        if (depth_texture_generation != gfx_depth_texture->generation)
+        {
+            assert(!"[GFX] Depth texture generation does not match.");
+        }
+
+        assert(gfx_depth_texture->texture && "[GFX] Invalid depth texture for target.");
+        
+        D3D11_DEPTH_STENCIL_VIEW_DESC desc =
+        {
+            .Format = map_dxgi_dsv_format(gfx_depth_texture->format),
+            .ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D,
+            .Texture2D = { .MipSlice = 0, },
+        };
+
+        HRESULT result = ID3D11Device_CreateDepthStencilView(global_d3d11.device, (ID3D11Resource*)gfx_depth_texture->texture, &desc, &depth_stencil);
+        assert(SUCCEEDED(result) && "[GFX] Failed to create depth stencil view.");
+
+        if (width == 0 && height == 0)
+        {
+            width = gfx_depth_texture->width;
+            height = gfx_depth_texture->height;
+        }
+        else
+        {
+            assert(width == gfx_depth_texture->width && height == gfx_depth_texture->height &&
+                "[GFX] Render target view and depth stencil view has to be same size.");
+        }
+    }
+
     graphics_target_t graphics_target = { 0 };
     u32 target_index = next_target_index();
     gfx_target_t* gfx_target = get_gfx_target(target_index);
@@ -663,34 +715,11 @@ static graphics_create_target_function(gfx_create_target)
 
     *gfx_target = (gfx_target_t){ 0 };
 
-    if (gfx_texture->bind & BIND_RENDER_TARGET)
-    {
-        D3D11_RENDER_TARGET_VIEW_DESC desc =
-        {
-            .Format = map_dxgi_rtv_format(gfx_texture->format),
-            .ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D,
-            .Texture2D = { .MipSlice = 0, },
-        };
-
-        HRESULT result = ID3D11Device_CreateRenderTargetView(global_d3d11.device, (ID3D11Resource*)gfx_texture->texture, &desc, &gfx_target->render_target);
-        assert(SUCCEEDED(result) && "[GFX] Failed to create render target view.");   
-    }
-        
-    if (gfx_texture->bind & BIND_DEPTH_STENCIL)
-    {
-        D3D11_DEPTH_STENCIL_VIEW_DESC desc =
-        {
-            .Format = map_dxgi_dsv_format(gfx_texture->format),
-            .ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D,
-            .Texture2D = { .MipSlice = 0, },
-        };
-
-        HRESULT result = ID3D11Device_CreateDepthStencilView(global_d3d11.device, (ID3D11Resource*)gfx_texture->texture, &desc, &gfx_target->depth_stencil);
-        assert(SUCCEEDED(result) && "[GFX] Failed to create depth stencil view.");
-    }
-
-    gfx_target->width = gfx_texture->width;
-    gfx_target->height = gfx_texture->height;
+    gfx_target->render_target = render_target;
+    gfx_target->depth_stencil = depth_stencil;
+    // TODO: We assume color and depth buffer always have same size. Idk it is right or not.
+    gfx_target->width = width;
+    gfx_target->height = height;
     gfx_target->generation = target_generation;
     
     graphics_target.platform = pack_generation_index(target_generation, target_index);
@@ -896,8 +925,19 @@ static graphics_delete_texture_2d_function(gfx_delete_texture_2d)
         return;
     }
 
-    ID3D11ShaderResourceView_Release(gfx_texture->srv);
-    ID3D11Texture2D_Release(gfx_texture->texture);
+    if (gfx_texture->srv)
+    {
+        ID3D11ShaderResourceView_Release(gfx_texture->srv);
+    }
+    
+    if (gfx_texture->texture)
+    {
+        ID3D11Texture2D_Release(gfx_texture->texture);
+    }
+    else
+    {
+        assert(!"[GFX] Texture is empty.");
+    }
 
     *gfx_texture = (gfx_texture_t){ 0 };
     gfx_texture->generation = texture_generation + 1;
@@ -918,7 +958,15 @@ static graphics_delete_target_function(gfx_delete_target)
         return;
     }
 
-    ID3D11RenderTargetView_Release(gfx_target->render_target);
+    if (gfx_target->render_target)
+    {
+        ID3D11RenderTargetView_Release(gfx_target->render_target);
+    }
+
+    if (gfx_target->depth_stencil)
+    {
+        ID3D11DepthStencilView_Release(gfx_target->depth_stencil);
+    }
     
     *gfx_target = (gfx_target_t){ 0 };
     gfx_target->generation = target_generation + 1;
@@ -1069,6 +1117,7 @@ static graphics_get_backbuffer_target_function(gfx_get_backbuffer_target)
     gfx_target_t* gfx_target = get_gfx_target(target_index);
 
     gfx_target->render_target = global_d3d11.rt_view;
+    gfx_target->depth_stencil = global_d3d11.ds_view;
     gfx_target->width = global_d3d11.width;
     gfx_target->height = global_d3d11.height;
 
@@ -1110,9 +1159,6 @@ static graphics_begin_pass_function(gfx_begin_pass)
     if (gfx_target->render_target)
     {
         ID3D11DeviceContext_OMSetRenderTargets(global_d3d11.context, 1, &gfx_target->render_target, gfx_target->depth_stencil);
-        // TODO: We do not use any blend or depth/stencil states for now.
-        // ID3D11DeviceContext_OMSetBlendState(global_d3d11.context, 0, 0, 0xffffffff);
-        // ID3D11DeviceContext_OMSetDepthStencilState(global_d3d11.context, 0, 0);  
 
         assert(gfx_target->width > 0 && gfx_target->height > 0 && "[GFX] Invalid target size.");
         
@@ -1129,10 +1175,15 @@ static graphics_begin_pass_function(gfx_begin_pass)
 
         if (pass_desc->clear_color)
         {
+            assert(gfx_target->render_target && "[GFX] Invalid depth stencil view.");
             ID3D11DeviceContext_ClearRenderTargetView(global_d3d11.context, gfx_target->render_target, pass_desc->clear_rgba);
         }
 
-        // TODO: Depth/stencil etc.
+        if (pass_desc->clear_depth)
+        {
+            assert(gfx_target->depth_stencil && "[GFX] Invalid depth stencil view.");
+            ID3D11DeviceContext_ClearDepthStencilView(global_d3d11.context, gfx_target->depth_stencil, D3D11_CLEAR_DEPTH, pass_desc->clear_depth_value, 0);
+        }
     }
 
     assert(global_pass_count == 0 && "[GFX] Previous pass is still open.");
