@@ -130,6 +130,8 @@ typedef enum graphics_format_t
     FORMAT_R32G32B32_FLOAT,
     FORMAT_R16_UINT,
     FORMAT_R32_UINT,
+    FORMAT_D24_UNORM_S8_UINT,
+    FORMAT_D32_FLOAT,
 } graphics_format_t;
 
 typedef enum graphics_usage_t
@@ -258,12 +260,20 @@ typedef struct graphics_pipeline_desc_t
     // NOTE: Rasterizer State.
     bool cull;
     bool wireframe;
+    bool depth_test;
+    bool depth_write;
 } graphics_pipeline_desc_t;
 
 typedef struct graphics_pipeline_t
 {
     usize platform;
 } graphics_pipeline_t;
+
+typedef struct graphics_target_desc_t
+{
+    graphics_texture_t color;
+    graphics_texture_t depth;
+} graphics_target_desc_t;
 
 typedef struct graphics_target_t
 {

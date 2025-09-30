@@ -22,9 +22,8 @@
 #include "../shader/pixel_shader_sphere.h"
 
 #include "shape_data.inl"
-// #include "shape_data_detailed.inl"
-
 #include "sphere_data.inl"
+#include "landmask_data.inl"
 
 typedef struct vertex_t
 {
@@ -98,6 +97,7 @@ typedef struct game_t
     graphics_shader_t pixel_shader_3d;
     graphics_program_t program_3d;
     graphics_pipeline_t pipeline_3d;
+    graphics_pipeline_t pipeline_3d_;
 
     graphics_buffer_t sphere_vertex_buffer;
     graphics_buffer_t sphere_index_buffer;
@@ -495,6 +495,16 @@ init_function(init)
     {
         .cull = true,
         .wireframe = false,
+        .depth_test = true,
+        .depth_write = true,
+    });
+
+    game->pipeline_3d_ = graphics->create_pipeline(&(graphics_pipeline_desc_t)
+    {
+        .cull = true,
+        .wireframe = false,
+        .depth_test = true,
+        .depth_write = false,
     });
 
     game->sphere_vertex_buffer = graphics->create_buffer(&(graphics_buffer_desc_t)
@@ -542,16 +552,16 @@ init_function(init)
 
     game->globe_vertex_buffer = graphics->create_buffer(&(graphics_buffer_desc_t)
     {
-        .data = global_globe_vectors,
-        .size = sizeof(global_globe_vectors),
+        .data = global_ocean_vectors,
+        .size = sizeof(global_ocean_vectors),
         .usage = USAGE_IMMUTABLE,
         .bind = BIND_VERTEX_BUFFER,
     });
 
     game->globe_vertex_buffer1 = graphics->create_buffer(&(graphics_buffer_desc_t)
     {
-        .data = global_globe_vectors_,
-        .size = sizeof(global_globe_vectors_),
+        .data = global_globe_vectors,
+        .size = sizeof(global_globe_vectors),
         .usage = USAGE_IMMUTABLE,
         .bind = BIND_VERTEX_BUFFER,
     });
@@ -811,8 +821,9 @@ render_function(render)
         graphics->set_buffer(game->globe_vertex_buffer, STAGE_VERTEX_SHADER, 0, sizeof(vec3), 0);
         // graphics->set_buffer(game->globe_index_buffer, STAGE_VERTEX_SHADER, 0, 0, 0);
         graphics->set_program(game->program_globe);
-        graphics->set_pipeline(game->pipeline_3d);
-        graphics->draw(TOPOLOGY_POINT_LIST, array_count(global_globe_vectors), 0);
+        graphics->set_pipeline(game->pipeline_3d_);
+        // graphics->draw(TOPOLOGY_POINT_LIST, array_count(global_globe_vectors), 0);
+        graphics->draw(TOPOLOGY_POINT_LIST, array_count(global_ocean_vectors), 0);
         // graphics->draw_indexed(TOPOLOGY_LINE_LIST, array_count(global_globe_part_indices), 0, 0);
     }
     graphics->end_pass();
@@ -824,7 +835,7 @@ render_function(render)
         graphics->set_buffer(game->globe_vertex_buffer1, STAGE_VERTEX_SHADER, 0, sizeof(vec3), 0);
         graphics->set_buffer(game->globe_index_buffer, STAGE_VERTEX_SHADER, 0, 0, 0);
         graphics->set_program(game->program_globe);
-        graphics->set_pipeline(game->pipeline_3d);
+        graphics->set_pipeline(game->pipeline_3d_);
         // graphics->draw(TOPOLOGY_POINT_LIST, array_count(global_globe_vectors), 0);
         graphics->draw_indexed(TOPOLOGY_LINE_LIST, array_count(global_globe_part_indices), 0, 0);
     }

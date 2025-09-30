@@ -22,6 +22,7 @@ typedef struct gfx_texture_t
     ID3D11Texture2D* texture;
     ID3D11ShaderResourceView* srv;
     graphics_format_t format;
+    graphics_bind_t bind;
     UINT width;
     UINT height;
     u32 next_free_index;
@@ -32,6 +33,7 @@ typedef struct gfx_target_t
     u32 generation;
     // TODO: Multiple render targets and optional depth stencil?
     ID3D11RenderTargetView* render_target;
+    ID3D11DepthStencilView* depth_stencil;
     i32 width;
     i32 height;
     u32 next_free_index;
@@ -59,6 +61,7 @@ typedef struct gfx_program_t
 typedef struct gfx_pipeline_t
 {
     ID3D11RasterizerState* rasterizer_state;
+    ID3D11DepthStencilState* depth_stencil_state;
 } gfx_pipeline_t;
 
 // TODO: We should manage the lifetime of these resouces.
@@ -159,7 +162,7 @@ static DXGI_FORMAT map_dxgi_resource_format(graphics_format_t format)
 
         default:
         {
-            assert(!"[GFX] Failed to map format.");
+            assert(!"[GFX] Failed to map resource format.");
         } break;
     }
 
@@ -186,7 +189,32 @@ static DXGI_FORMAT map_dxgi_rtv_format(graphics_format_t format)
 
         default:
         {
-            assert(!"[GFX] Failed to map rtv format.");
+            assert(!"[GFX] Failed to map render target format.");
+        } break;
+    }
+
+    return dxgi_format;
+}
+
+static DXGI_FORMAT map_dxgi_dsv_format(graphics_format_t format)
+{
+    DXGI_FORMAT dxgi_format = DXGI_FORMAT_UNKNOWN;
+    
+    switch (format)
+    {
+        case FORMAT_D24_UNORM_S8_UINT:
+        {
+            dxgi_format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+        } break;
+
+        case FORMAT_D32_FLOAT:
+        {
+            dxgi_format = DXGI_FORMAT_D32_FLOAT;
+        } break;
+
+        default:
+        {
+            assert(!"[GFX] Failed to map depth stencil format.");
         } break;
     }
 
@@ -214,9 +242,20 @@ static DXGI_FORMAT map_dxgi_srv_format(graphics_format_t format)
             dxgi_format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
         } break;
 
+        // NOTE: Depth formats.
+        case FORMAT_D24_UNORM_S8_UINT:
+        {
+            dxgi_format = DXGI_FORMAT_R24_UNORM_X8_TYPELESS;
+        } break;
+            
+        case FORMAT_D32_FLOAT:
+        {
+            dxgi_format = DXGI_FORMAT_R32_FLOAT;
+        } break;
+
         default:
         {
-            assert(!"[GFX] Failed to map srv format.");
+            assert(!"[GFX] Failed to map shader resource format.");
         } break;
     }
 
@@ -516,6 +555,11 @@ static graphics_create_buffer_function(gfx_create_buffer)
 
 static graphics_create_texture_2d_function(gfx_create_texture_2d)
 {
+    assert(texture_2d_desc->width > 0 && texture_2d_desc->height > 0 && "[GFX] Invalid texture size.");
+    assert(texture_2d_desc->bind != BIND_NULL && "[GFX] Texture must have at least one bind flag.");
+    assert(!((texture_2d_desc->bind & BIND_DEPTH_STENCIL) && (texture_2d_desc->bind & BIND_RENDER_TARGET)) &&
+        "[GFX] Texture cannot be both depth stencil and render target.");
+
     graphics_texture_t graphics_texture = { 0 };
     D3D11_TEXTURE2D_DESC desc =
     {
@@ -561,6 +605,7 @@ static graphics_create_texture_2d_function(gfx_create_texture_2d)
         .texture = texture_2d,
         .srv = 0,
         .format = texture_2d_desc->format,
+        .bind = texture_2d_desc->bind,
         .width = desc.Width,
         .height = desc.Height,
     };
@@ -588,16 +633,28 @@ static graphics_create_texture_2d_function(gfx_create_texture_2d)
 
 static graphics_create_target_function(gfx_create_target)
 {
-    u32 texture_generation = get_generation(texture.platform);
-    u32 texture_index = get_index(texture.platform);
-    gfx_texture_t* gfx_texture = global_textures + texture_index;
+    // TODO: Do not build now.
+    u32 color_texture_generation = get_generation(color.platform);
+    u32 color_texture_index = get_index(color.platform);
+    gfx_texture_t* gfx_color_texture = global_textures + color_texture_index;
 
-    if (texture_generation != gfx_texture->generation)
+    if (color_texture_generation != gfx_color_texture->generation)
     {
-        assert(!"[GFX] Texture generation does not match.");
+        assert(!"[GFX] Color texture generation does not match.");
     }
 
-    assert(gfx_texture->texture && "[GFX] Invalid texture for target.");
+    assert(gfx_texture->color_texture && "[GFX] Invalid color texture for target.");
+
+    u32 depth_texture_generation = get_generation(depth.platform);
+    u32 depth_texture_index = get_index(depth.platform);
+    gfx_texture_t* gfx_depth_texture = global_textures + depth_texture_index;
+
+    if (depth_texture_generation != gfx_depth_texture->generation)
+    {
+        assert(!"[GFX] Depth texture generation does not match.");
+    }
+
+    assert(gfx_texture->depth_texture && "[GFX] Invalid depth texture for target.");
     
     graphics_target_t graphics_target = { 0 };
     u32 target_index = next_target_index();
@@ -606,15 +663,31 @@ static graphics_create_target_function(gfx_create_target)
 
     *gfx_target = (gfx_target_t){ 0 };
 
-    D3D11_RENDER_TARGET_VIEW_DESC desc =
+    if (gfx_texture->bind & BIND_RENDER_TARGET)
     {
-        .Format = map_dxgi_rtv_format(gfx_texture->format),
-        .ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D,
-        .Texture2D = { .MipSlice = 0, },
-    };
+        D3D11_RENDER_TARGET_VIEW_DESC desc =
+        {
+            .Format = map_dxgi_rtv_format(gfx_texture->format),
+            .ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D,
+            .Texture2D = { .MipSlice = 0, },
+        };
 
-    HRESULT result = ID3D11Device_CreateRenderTargetView(global_d3d11.device, (ID3D11Resource*)gfx_texture->texture, &desc, &gfx_target->render_target);
-    assert(SUCCEEDED(result) && "[GFX] Failed to create render target view.");
+        HRESULT result = ID3D11Device_CreateRenderTargetView(global_d3d11.device, (ID3D11Resource*)gfx_texture->texture, &desc, &gfx_target->render_target);
+        assert(SUCCEEDED(result) && "[GFX] Failed to create render target view.");   
+    }
+        
+    if (gfx_texture->bind & BIND_DEPTH_STENCIL)
+    {
+        D3D11_DEPTH_STENCIL_VIEW_DESC desc =
+        {
+            .Format = map_dxgi_dsv_format(gfx_texture->format),
+            .ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D,
+            .Texture2D = { .MipSlice = 0, },
+        };
+
+        HRESULT result = ID3D11Device_CreateDepthStencilView(global_d3d11.device, (ID3D11Resource*)gfx_texture->texture, &desc, &gfx_target->depth_stencil);
+        assert(SUCCEEDED(result) && "[GFX] Failed to create depth stencil view.");
+    }
 
     gfx_target->width = gfx_texture->width;
     gfx_target->height = gfx_texture->height;
@@ -722,7 +795,7 @@ static graphics_create_pipeline_function(gfx_create_pipeline)
     usize pipeline_index = global_pipeline_count++;
     gfx_pipeline_t* gfx_pipeline = global_pipelines + pipeline_index;
 
-    D3D11_RASTERIZER_DESC desc =
+    D3D11_RASTERIZER_DESC rasterizer_desc =
     {
         .FillMode = pipeline_desc->wireframe ? D3D11_FILL_WIREFRAME : D3D11_FILL_SOLID,
         .CullMode = pipeline_desc->cull ? D3D11_CULL_BACK : D3D11_CULL_NONE,
@@ -730,7 +803,18 @@ static graphics_create_pipeline_function(gfx_create_pipeline)
         .DepthClipEnable = TRUE,
     };
 
-    ID3D11Device_CreateRasterizerState(global_d3d11.device, &desc, &gfx_pipeline->rasterizer_state);
+    HRESULT result = ID3D11Device_CreateRasterizerState(global_d3d11.device, &rasterizer_desc, &gfx_pipeline->rasterizer_state);
+    assert(SUCCEEDED(result) && "[GFX] Failed to create rasterizer state.");
+
+    D3D11_DEPTH_STENCIL_DESC depth_desc =
+    {
+        .DepthEnable = pipeline_desc->depth_test,
+        .DepthWriteMask = pipeline_desc->depth_write ? D3D11_DEPTH_WRITE_MASK_ALL : D3D11_DEPTH_WRITE_MASK_ZERO,
+        .DepthFunc = D3D11_COMPARISON_LESS_EQUAL,
+    };
+
+    result = ID3D11Device_CreateDepthStencilState(global_d3d11.device, &depth_desc, &gfx_pipeline->depth_stencil_state);
+    assert(SUCCEEDED(result) && "[GFX] Failed to create depth stencil state.");
 
     graphics_pipeline.platform = pipeline_index;
     
@@ -894,6 +978,7 @@ static graphics_set_pipeline_function(gfx_set_pipeline)
     gfx_pipeline_t* gfx_pipeline = global_pipelines + pipeline_index;
 
     ID3D11DeviceContext_RSSetState(global_d3d11.context, gfx_pipeline->rasterizer_state);
+    ID3D11DeviceContext_OMSetDepthStencilState(global_d3d11.context, gfx_pipeline->depth_stencil_state, 0);
 }
 
 static graphics_set_samplers_function(gfx_set_samplers)
@@ -1024,10 +1109,10 @@ static graphics_begin_pass_function(gfx_begin_pass)
     
     if (gfx_target->render_target)
     {
-        ID3D11DeviceContext_OMSetRenderTargets(global_d3d11.context, 1, &gfx_target->render_target, 0);
+        ID3D11DeviceContext_OMSetRenderTargets(global_d3d11.context, 1, &gfx_target->render_target, gfx_target->depth_stencil);
         // TODO: We do not use any blend or depth/stencil states for now.
-        ID3D11DeviceContext_OMSetBlendState(global_d3d11.context, 0, 0, 0xffffffff);
-        ID3D11DeviceContext_OMSetDepthStencilState(global_d3d11.context, 0, 0);  
+        // ID3D11DeviceContext_OMSetBlendState(global_d3d11.context, 0, 0, 0xffffffff);
+        // ID3D11DeviceContext_OMSetDepthStencilState(global_d3d11.context, 0, 0);  
 
         assert(gfx_target->width > 0 && gfx_target->height > 0 && "[GFX] Invalid target size.");
         

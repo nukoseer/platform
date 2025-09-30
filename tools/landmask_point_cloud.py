@@ -1,9 +1,7 @@
+import sys
 import netCDF4
 import numpy as np
 from math import cos, sin, pi
-
-#LANDMASK_FILE = "./sst.oisst.mon.ltm.1991-2020.nc"
-LANDMASK_FILE = "./sst.ltm.1981-2010.nc"
 
 def polar_to_xyz(lon_deg, lat_deg):
     lon = lon_deg * pi / 180
@@ -16,7 +14,7 @@ def polar_to_xyz(lon_deg, lat_deg):
     return x, y, z
 
 
-def get_land_points(filename=LANDMASK_FILE, min_lat=-84):
+def get_land_points(filename, min_lat=-84):
     with netCDF4.Dataset(filename) as dataset:
         lon = dataset.variables["lon"][:]
         lat = dataset.variables["lat"][:]
@@ -39,19 +37,41 @@ def get_land_points(filename=LANDMASK_FILE, min_lat=-84):
         #     for j in range(len(img[i])):
         #         print(img[i][j], sep=", ", end=", ")
 
-        land = ~land
+        ocean = ~land
 
-        lons = lon2d[land].ravel()
-        lats = lat2d[land].ravel()
+        land_lons = lon2d[land].ravel()
+        land_lats = lat2d[land].ravel()
 
-        return (lons, lats)
+        ocean_lons = lon2d[ocean].ravel()
+        ocean_lats = lat2d[ocean].ravel()
+
+        return [(land_lons, land_lats), (ocean_lons, ocean_lats)]
+
 
 if __name__ == "__main__":
-    lons, lats = get_land_points()
+    if (sys.argv[1] != "--landmask-file") or (len(sys.argv) < 3):
+        print("Usage: %s --landmask-file <path-to-netcdf-file>" % sys.argv[0])
+        sys.exit(1)
+    
+    landmask_file = sys.argv[2]
+    land_ocean = get_land_points(landmask_file)
 
-    coordinates = []
+    land_lons, land_lats = land_ocean[0]
+    ocean_lons, ocean_lats = land_ocean[1]
 
-    coordinates.extend([ polar_to_xyz(lon, lat) for lon, lat in zip(lons, lats)])
+    land_coordinates = []
+    land_coordinates.extend([ polar_to_xyz(lon, lat) for lon, lat in zip(land_lons, land_lats)])
 
-    for coordinate in coordinates:
+    ocean_coordinates = []
+    ocean_coordinates.extend([ polar_to_xyz(lon, lat) for lon, lat in zip(ocean_lons, ocean_lats)])
+
+    print("static vec3 global_landmask_vectors[] =\n{")
+    for coordinate in land_coordinates:
         print("{ %ff, %ff, %ff }" % coordinate, sep=", ", end=", ")
+    print("\n};\n")
+
+    print("static vec3 global_ocean_vectors[] =\n{")
+    for coordinate in ocean_coordinates:
+        print("{ %ff, %ff, %ff }" % coordinate, sep=", ", end=", ")
+    print("\n};\n")
+
