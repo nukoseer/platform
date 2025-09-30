@@ -77,6 +77,14 @@ typedef struct glow_blur_setting_t
     f32 direction[2];
 } glow_blur_setting_t;
 
+typedef struct camera_t
+{
+    vec3 position;
+    vec3 rotation;
+    // TODO: Is scale necessary?
+    vec3 scale;
+} camera_t;
+
 typedef struct game_t
 {
     vertex_t vertex_data[3];
@@ -89,7 +97,7 @@ typedef struct game_t
     graphics_program_t program;
     graphics_pipeline_t default_pipeline;
 
-    vec3 camera_position;
+    camera_t camera;
     setting_3d_t setting_3d;
     vertex3d_t vertex_data_3d[36];
     graphics_buffer_t vertex_buffer_3d;
@@ -212,21 +220,30 @@ static void resize_offscreen_buffer(platform_t* platform, game_t* game)
     }
 }
 
-static inline vec3 rotation_x(f32 angle, vec3 position)
+static inline mat4x4 rotate_x(f32 angle)
 {
-    vec3 result = { 0 };
     f32 rad = angle * (f32)DEG2RAD;
 
-    result.x = position.x;
-    result.y = cosf(rad) * position.y - sinf(rad) * position.z;
-    result.z = sinf(rad) * position.y + cosf(rad) * position.z;
+    // result.x = position.x;
+    // result.y = cosf(rad) * position.y - sinf(rad) * position.z;
+    // result.z = sinf(rad) * position.y + cosf(rad) * position.z;
 
-    return result;
+    mat4x4 rotation_matrix =
+    {
+        .columns =
+        {
+            [0] = v4(1.0f, 0.0f,       0.0f,      0.0f),
+            [1] = v4(0.0f, cosf(rad), -sinf(rad), 0.0f),
+            [2] = v4(0.0f, sinf(rad),  cosf(rad), 0.0f),
+            [3] = v4(0.0f, 0.0f,       0.0f,      1.0f)
+        },
+    };
+
+    return rotation_matrix;
 }
 
-static inline mat4x4 rotation_y(f32 angle, vec3 position)
+static inline mat4x4 rotate_y(f32 angle)
 {
-    // vec3 result = { 0 };
     f32 rad = angle * (f32)DEG2RAD;
 
     // result.x = cosf(rad) * position.x - sinf(rad) * position.z;
@@ -237,26 +254,37 @@ static inline mat4x4 rotation_y(f32 angle, vec3 position)
     {
         .columns =
         {
-            [0] = v4(cosf(rad),  0.0f, sinf(rad), 0.0f),
-            [1] = v4(0.0f,       1.0f, 0.0f,      0.0f),
-            [2] = v4(-sinf(rad), 0.0f, cosf(rad), 0.0f),
-            [3] = v4(0.0f,       0.0f, 0.0f,      1.0f)
+            [0] = v4(cosf(rad), 0.0f, -sinf(rad), 0.0f),
+            [1] = v4(0.0f,      1.0f,  0.0f,      0.0f),
+            [2] = v4(sinf(rad), 0.0f,  cosf(rad), 0.0f),
+            [3] = v4(0.0f,      0.0f,  0.0f,      1.0f)
         },
     };
 
     return rotation_matrix;
 }
 
-static inline vec3 rotation_z(f32 angle, vec3 position)
+static inline mat4x4 rotate_z(f32 angle)
 {
-    vec3 result = { 0 };
     f32 rad = angle * (f32)DEG2RAD;
 
-    result.x = cosf(rad) * position.x - sinf(rad) * position.y;
-    result.y = sinf(rad) * position.x + cosf(rad) * position.y;
-    result.z = position.z;
+    // result.x = cosf(rad) * position.x - sinf(rad) * position.y;
+    // result.y = sinf(rad) * position.x + cosf(rad) * position.y;
+    // result.z = position.z;
 
-    return result;
+    mat4x4 rotation_matrix =
+    {
+        .columns =
+        {
+            [0] = v4(cosf(rad),  -sinf(rad),  0.0f, 0.0f),
+            [1] = v4(sinf(rad),   cosf(rad),  0.0f, 0.0f),
+            [2] = v4(0.0f,        0.0f,       1.0f, 0.0f),
+            [3] = v4(0.0f,        0.0f,       0.0f, 1.0f)
+        },
+    };
+
+
+    return rotation_matrix;
 }
 
 // NOTE: View matrix, right-handed, -z
@@ -384,9 +412,9 @@ init_function(init)
         .wireframe = false,
     });
 
-    game->camera_position = v3(0.0f, 0.0f, 2.5f);
-    game->setting_3d.world = m4x4d(1.0f);
-    game->setting_3d.view = view_matrix(v3(0.0f, 1.0f, 0.0f), game->camera_position, v3(0.0f, 0.0f, 0.0f));
+    game->camera.position = v3(0.0f, 0.0f, 2.5f);
+    game->setting_3d.world = m4x4d(0.0f);
+    game->setting_3d.view = view_matrix(v3(0.0f, 1.0f, 0.0f), game->camera.position, v3(0.0f, 0.0f, 0.0f));
     // game->setting_3d.projection = projection_matrix(-1.0f, +1.0f, -1.0f, +1.0f, 0.1f, 100.0f);
     game->setting_3d.projection = projection_matrix_fov_y(60.0f, (f32)platform->width / (f32)platform->height, 0.1f, 100.0f);
 
@@ -764,12 +792,11 @@ render_function(render)
     static float earth_angle = 0.0f;
     f32 omega_radians_per_sec = 10.0f;
     earth_angle += omega_radians_per_sec * platform->delta_time;
-    mat4x4 rotation_matrix = rotation_y(earth_angle, game->camera_position);
-
-    game->setting_3d.world = rotation_matrix;
-    game->setting_3d.view = view_matrix(v3(0.0f, 1.0f, 0.0f), game->camera_position, v3(0.0f, 0.0f, 0.0f));
+    mat4x4 rotation_y = rotate_y(earth_angle);
+    
+    game->setting_3d.world = rotation_y;
     game->setting_3d.projection = projection_matrix_fov_y(60.0f, (f32)platform->width / (f32)platform->height, 0.1f, 100.0f);
-    game->setting_3d.camera_world.xyz = game->camera_position;
+    game->setting_3d.camera_world = v4v(game->camera.position, 0.0f);
 
     // NOTE: Offscreen rendering pass.
     // graphics->begin_pass(game->offscreen_target, &(graphics_pass_desc_t){ .clear_color = true, .clear_rgba = { 0.005f, 0.005f, 0.005f, 0.0f }});

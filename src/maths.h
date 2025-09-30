@@ -641,3 +641,15 @@ static inline vec4 m4x4_mulv4(mat4x4 left, vec4 right)
 
     return result;
 }
+
+static inline mat4x4 m4x4_mul(mat4x4 left, mat4x4 right)
+{
+    mat4x4 result;
+
+    result.columns[0] = m4x4_mulv4(left, right.columns[0]);
+    result.columns[1] = m4x4_mulv4(left, right.columns[1]);
+    result.columns[2] = m4x4_mulv4(left, right.columns[2]);
+    result.columns[3] = m4x4_mulv4(left, right.columns[3]);
+    
+    return result;
+}
