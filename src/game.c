@@ -151,6 +151,119 @@ typedef struct game_t
     graphics_2d_font_color_t font_color;
 } game_t;
 
+typedef struct bmp_header_t
+{
+    u16 file_type;
+    u32 file_size;
+    u16 reserved_1;
+    u16 reserved_2;
+    u32 bitmap_offset;
+    u32 size;
+    u32 width;
+    u32 height;
+    u16 planes;
+    u16 bits_per_pixel;
+    u32 compression;
+    u32 size_of_bitmap;
+    i32 horizontal_resolution;
+    i32 vertical_resolution;
+    u32 colors_used;
+    u32 colors_important;
+
+    u32 red_mask;
+    u32 green_mask;
+    u32 blue_mask;
+} bmp_header_t;
+
+#pragma pack(pop)
+
+typedef struct bmp_image_t
+{
+    u8* data;
+    u32 width;
+    u32 height;
+    u32 pitch;
+} bmp_image_t;
+
+static bmp_image_t load_bmp_image(const io_t* io, const char* file_name)
+{
+    bmp_image_t result = { 0 };
+    io_file_read_result_t read_result = io->read_file(file_name);
+
+    if (read_result.size != 0)
+    {
+        bmp_header_t* header = (bmp_header_t*)read_result.data;
+        u32* pixels = (u32*)((u8*)read_result.data + header->bitmap_offset);
+
+        result.data = (u8*)pixels;
+        result.width = header->width;
+        result.height = header->height;
+
+        assert(header->compression == 3 && "[BMP] Unsupported compression format");
+        // NOTE: If you are using this generically for some reason,
+        // please remember that BMP files can go in either direction and
+        // the height will be negative for top-down.
+        // Also, there can be compression etc., etc...
+        // Don't think this is complete BMP loading code because it is not.
+
+        // NOTE: Byter order in memory is determined by the header itself.
+        // So we have to read out the masks and convert the pixels ourselves.
+
+        u32 red_mask = header->red_mask;
+        u32 green_mask = header->green_mask;
+        u32 blue_mask = header->blue_mask;
+        u32 alpha_mask = ~(red_mask | green_mask | blue_mask);
+        
+        u32 red_index = 0;
+        u32 green_index = 0;
+        u32 blue_index = 0;
+        u32 alpha_index = 0;
+    
+        bool red_found = _BitScanForward(&red_index, red_mask);
+        bool green_found = _BitScanForward(&green_index, green_mask);
+        bool blue_found = _BitScanForward(&blue_index, blue_mask);
+        bool alpha_found = _BitScanForward(&alpha_index, alpha_mask);
+    
+        assert(red_found   && "[BMP] Invalid red channel mask.");
+        assert(green_found && "[BMP] Invalid green channel mask.");
+        assert(blue_found  && "[BMP] Invalid blue channel mask.");
+        assert(alpha_found && "[BMP] Invalud alpha channel mask.");
+    
+        u32* memory = pixels;
+
+        for (u32 y = 0; y < header->height; ++y)
+        {
+            for (u32 x = 0; x < header->width; ++x)
+            {
+    	        u32 color = *memory;
+
+    	        f32 r = (f32)((color & red_mask) >> red_index);
+    	        f32 g = (f32)((color & green_mask) >> green_index);
+    	        f32 b = (f32)((color & blue_mask) >> blue_index);
+    	        f32 a = (f32)((color & alpha_mask) >> alpha_index);
+
+    	        *memory++ = (((u32)(a + 0.5f) << 24) |
+                             ((u32)(b + 0.5f) << 16) |
+                             ((u32)(g + 0.5f) << 8)  |
+                             ((u32)(r + 0.5f) << 0));
+            }
+        }
+    }
+    else
+    {
+        assert(!"[BMP] File could not read.");
+    }
+
+    result.pitch = result.width * 4;
+
+#if 0
+    result.memory = (u8*)result.memory + result.pitch * (result.height - 1);
+    result.pitch = -result.pitch;
+#endif
+
+    return result;
+}
+
 static void resize_offscreen_buffer(platform_t* platform, game_t* game)
 {
     graphics_t* graphics = platform->graphics;
