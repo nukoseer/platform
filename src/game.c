@@ -159,11 +159,12 @@ typedef struct game_t
     graphics_program_t post_program;
     post_setting_t post_setting;
 
-    graphics_2d_font_t font;
-    graphics_2d_font_color_t font_color;
+    // graphics_2d_font_t font;
+    // graphics_2d_font_color_t font_color;
 
     graphics_texture_t water_normal_a;
     graphics_texture_t water_normal_b;
+    graphics_texture_t land_sea_mask;
     graphics_sampler_t linear_wrap_sampler;
     graphics_buffer_t water_buffer;
     water_setting_t water_setting;
@@ -705,7 +706,7 @@ init_function(init)
         .attributes = (graphics_vertex_attribute_t[])
         {
             { "POSITION", FORMAT_R32G32B32_FLOAT, offsetof(sphere_vertex_t, position), 0, 0, 0, 0 },
-            { "NORMAL", FORMAT_R32G32B32_FLOAT, offsetof(sphere_vertex_t, normal), 0, 0, 0, 0 },
+            { "NORMAL",   FORMAT_R32G32B32_FLOAT, offsetof(sphere_vertex_t, normal), 0, 0, 0, 0 },
         },
         .attribute_count = 2,
     });
@@ -875,14 +876,15 @@ init_function(init)
         .address_w = TEXTURE_ADDRESS_WRAP,
     });
 
-    game->font = graphics->create_font("Consolas", 24);
-    // game->font_color = graphics->create_font_color(0.8313f, 0.0f, 0.4705f, 1.0f);
-    game->font_color = graphics->create_font_color(0.38f, 0.38f, 0.38f, 1.0f);
+    // game->font = graphics->create_font("Consolas", 24);
+    // // game->font_color = graphics->create_font_color(0.8313f, 0.0f, 0.4705f, 1.0f);
+    // game->font_color = graphics->create_font_color(0.38f, 0.38f, 0.38f, 1.0f);
 
     io->release_file_memory(io->read_file("..\\src\\game.c").data);
 
     bmp_image_t water_normal_a = load_bmp_image(io, "../src/water_normal_a.bmp");
     bmp_image_t water_normal_b = load_bmp_image(io, "../src/water_normal_b.bmp");
+    bmp_image_t land_sea_mask = load_bmp_image(io, "../src/land_sea_mask.bmp");
 
     game->water_normal_a = graphics->create_texture_2d(&(graphics_texture_2d_desc_t)
     {
@@ -899,6 +901,14 @@ init_function(init)
         .width = water_normal_b.width,
         .height = water_normal_b.height,
     }, water_normal_b.data, water_normal_b.pitch);
+
+    game->land_sea_mask = graphics->create_texture_2d(&(graphics_texture_2d_desc_t)
+    {
+        .format = FORMAT_R8G8B8A8_UNORM,
+        .bind = BIND_SHADER_RESOURCE,
+        .width = land_sea_mask.width,
+        .height = land_sea_mask.height,
+    }, land_sea_mask.data, land_sea_mask.pitch);
     
     game->linear_wrap_sampler = graphics->create_sampler(&(graphics_sampler_desc_t)
     {
@@ -968,10 +978,9 @@ render_function(render)
     static float earth_angle = 0.0f;
     f32 omega_radians_per_sec = 10.0f;
     earth_angle += omega_radians_per_sec * platform->delta_time;
-    // mat4x4 rotation_y = rotate_y(earth_angle);
-    
-    // game->setting_3d.world = rotation_y;
-    game->setting_3d.world = m4x4d(1.0f);
+    mat4x4 rotation_y = rotate_y(earth_angle);
+
+    game->setting_3d.world = rotation_y;
     game->setting_3d.projection = projection_matrix_fov_y(60.0f, (f32)platform->width / (f32)platform->height, 0.1f, 100.0f);
     game->setting_3d.camera_world = v4v(game->camera.position, 0.0f);
 
@@ -1003,8 +1012,6 @@ render_function(render)
     // }
     // graphics->end_pass();
 
-    game->water_setting.time += platform->delta_time * 5.0f;
-    
     graphics->begin_pass(game->offscreen_target, &(graphics_pass_desc_t){ .clear_color = true, .clear_rgba = { 0.005f, 0.005f, 0.005f, 0.0f },
                                                                           .clear_depth = true, .clear_depth_value = 1.0f });
     // graphics->begin_pass(game->offscreen_target, &(graphics_pass_desc_t){ .clear_color = true, .clear_rgba = { 0.95f, 0.95f, 0.95f, 0.0f }});
@@ -1012,45 +1019,41 @@ render_function(render)
         graphics->update_buffer(game->setting_buffer_3d, &game->setting_3d, 0, sizeof(game->setting_3d));
         graphics->set_buffer(game->setting_buffer_3d, STAGE_VERTEX_SHADER, 0, 0, 0);
         graphics->set_buffer(game->setting_buffer_3d, STAGE_PIXEL_SHADER, 0, 0, 0);
-        graphics->update_buffer(game->water_buffer, &game->water_setting, 0, sizeof(game->water_setting));
-        graphics->set_buffer(game->water_buffer, STAGE_PIXEL_SHADER, 1, 0, 0);
         graphics->set_buffer(game->sphere_vertex_buffer, STAGE_VERTEX_SHADER, 0, sizeof(sphere_vertex_t), 0);
         graphics->set_buffer(game->sphere_index_buffer, STAGE_VERTEX_SHADER, 0, 0, 0);
         graphics->set_program(game->program_sphere);
         graphics->set_pipeline(game->pipeline_3d);
-        graphics->set_samplers(STAGE_PIXEL_SHADER, &game->linear_wrap_sampler, 1, 0);
-        graphics_texture_t srvs[] = { game->water_normal_a, game->water_normal_b };
-        graphics->set_srvs(STAGE_PIXEL_SHADER, srvs, 2, 0);
+        // graphics_sampler_t samplers[] = { game->linear_wrap_sampler };
+        // graphics->set_samplers(STAGE_PIXEL_SHADER, samplers, array_count(samplers), 0);
+        // graphics_texture_t srvs[] = { game->water_normal_a, game->water_normal_b };
+        // graphics->set_srvs(STAGE_PIXEL_SHADER, srvs, array_count(srvs), 0);
         graphics->draw_indexed(TOPOLOGY_TRIANGLE_LIST, array_count(global_sphere_indices), 0, 0);
     }
     graphics->end_pass();
     
-    // graphics->begin_pass(game->offscreen_target, &(graphics_pass_desc_t){ .clear_color = false });
-    // {
-    //     graphics->update_buffer(game->setting_buffer_3d, &game->setting_3d, 0, sizeof(game->setting_3d));
-    //     graphics->set_buffer(game->setting_buffer_3d, STAGE_VERTEX_SHADER, 0, 0, 0);
-    //     graphics->set_buffer(game->globe_vertex_buffer, STAGE_VERTEX_SHADER, 0, sizeof(vec3), 0);
-    //     // graphics->set_buffer(game->globe_index_buffer, STAGE_VERTEX_SHADER, 0, 0, 0);
-    //     graphics->set_program(game->program_globe);
-    //     graphics->set_pipeline(game->pipeline_3d_);
-    //     // graphics->draw(TOPOLOGY_POINT_LIST, array_count(global_globe_vectors), 0);
-    //     graphics->draw(TOPOLOGY_POINT_LIST, array_count(global_ocean_vectors), 0);
-    //     // graphics->draw_indexed(TOPOLOGY_LINE_LIST, array_count(global_globe_part_indices), 0, 0);
-    // }
-    // graphics->end_pass();
+    graphics->begin_pass(game->offscreen_target, &(graphics_pass_desc_t){ .clear_color = false });
+    {
+        graphics->update_buffer(game->setting_buffer_3d, &game->setting_3d, 0, sizeof(game->setting_3d));
+        graphics->set_buffer(game->setting_buffer_3d, STAGE_VERTEX_SHADER, 0, 0, 0);
+        graphics->set_buffer(game->globe_vertex_buffer, STAGE_VERTEX_SHADER, 0, sizeof(vec3), 0);
+        graphics->set_program(game->program_globe);
+        graphics->set_pipeline(game->pipeline_3d_);
+        graphics->draw(TOPOLOGY_POINT_LIST, array_count(global_ocean_vectors), 0);
+    }
+    graphics->end_pass();
 
-    // graphics->begin_pass(game->offscreen_target, &(graphics_pass_desc_t){ .clear_color = false });
-    // {
-    //     graphics->update_buffer(game->setting_buffer_3d, &game->setting_3d, 0, sizeof(game->setting_3d));
-    //     graphics->set_buffer(game->setting_buffer_3d, STAGE_VERTEX_SHADER, 0, 0, 0);
-    //     graphics->set_buffer(game->globe_vertex_buffer1, STAGE_VERTEX_SHADER, 0, sizeof(vec3), 0);
-    //     graphics->set_buffer(game->globe_index_buffer, STAGE_VERTEX_SHADER, 0, 0, 0);
-    //     graphics->set_program(game->program_globe);
-    //     graphics->set_pipeline(game->pipeline_3d_);
-    //     // graphics->draw(TOPOLOGY_POINT_LIST, array_count(global_globe_vectors), 0);
-    //     graphics->draw_indexed(TOPOLOGY_LINE_LIST, array_count(global_globe_part_indices), 0, 0);
-    // }
-    // graphics->end_pass();
+    graphics->begin_pass(game->offscreen_target, &(graphics_pass_desc_t){ .clear_color = false });
+    {
+        graphics->update_buffer(game->setting_buffer_3d, &game->setting_3d, 0, sizeof(game->setting_3d));
+        graphics->set_buffer(game->setting_buffer_3d, STAGE_VERTEX_SHADER, 0, 0, 0);
+        graphics->set_buffer(game->globe_vertex_buffer1, STAGE_VERTEX_SHADER, 0, sizeof(vec3), 0);
+        graphics->set_buffer(game->globe_index_buffer, STAGE_VERTEX_SHADER, 0, 0, 0);
+        graphics->set_program(game->program_globe);
+        graphics->set_pipeline(game->pipeline_3d_);
+        // graphics->draw(TOPOLOGY_POINT_LIST, array_count(global_globe_vectors), 0);
+        graphics->draw_indexed(TOPOLOGY_LINE_LIST, array_count(global_globe_part_indices), 0, 0);
+    }
+    graphics->end_pass();
 
     // graphics->begin_pass(game->glow_mask_target, &(graphics_pass_desc_t){ .clear_color = true, .clear_rgba = { 0.0f, 0.0f, 0.0f, 0.0f } });
     // {
@@ -1141,18 +1144,18 @@ render_function(render)
     }
     graphics->end_pass();
     
-    graphics->begin_draw();
-    {
-        char frame_ms_text[32] = { 0 };
-        size_t frame_ms_length = 0;
+    // graphics->begin_draw();
+    // {
+    //     char frame_ms_text[32] = { 0 };
+    //     size_t frame_ms_length = 0;
 
-        if ((frame_ms_length = snprintf(frame_ms_text, sizeof(frame_ms_text), "%.2f ms", platform->delta_time * 1000)) > 0)
-        {
-            graphics->draw_text(game->font, game->font_color, TEXT_ALIGNMENT_TRAILING,
-                                0.0f - 8.0f, 0.0f + 8.0f, (f32)platform->width, (f32)platform->height,
-                                frame_ms_text, frame_ms_length);   
-        }
+    //     if ((frame_ms_length = snprintf(frame_ms_text, sizeof(frame_ms_text), "%.2f ms", platform->delta_time * 1000)) > 0)
+    //     {
+    //         graphics->draw_text(game->font, game->font_color, TEXT_ALIGNMENT_TRAILING,
+    //                             0.0f - 8.0f, 0.0f + 8.0f, (f32)platform->width, (f32)platform->height,
+    //                             frame_ms_text, frame_ms_length);   
+    //     }
         
-    }
-    graphics->end_draw();
+    // }
+    // graphics->end_draw();
 }

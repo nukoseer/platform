@@ -117,7 +117,6 @@ void parse_shape_file(uint8_t* shape_file_buffer, size_t shape_file_size, u32 pr
                 uint8_t* point_ptr = part_ptr + (shape_content->part_count * sizeof(u32));
                 point_t* points = (point_t*)(point_ptr);
 
-                
                 for (u32 i = 0; i < shape_content->point_count; ++i)
                 {
                     if (print_format & PRINT_VECTORS)
@@ -125,16 +124,16 @@ void parse_shape_file(uint8_t* shape_file_buffer, size_t shape_file_size, u32 pr
                         f32 lon = (f32)points[i].x;
                         f32 lat = (f32)points[i].y;
 
+                        f32 lon_rad = -lon * (f32)DEG2RAD;
                         f32 lat_rad = lat * (f32)DEG2RAD;
-                        f32 lon_rad = lon * (f32)DEG2RAD;
 
-                        // f32 x = cosf(lat_rad) * cosf(lon_rad) /* * radius */;
-                        // f32 y = cosf(lat_rad) * sinf(lon_rad) /* * radius */;
+                        // f32 x = cosf(lat_rad) * cosf(lon_rad) /* radius */;
+                        // f32 y = cosf(lat_rad) * sinf(lon_rad) /* radius */;
                         // f32 z = sinf(lat_rad) /* * radius */;
 
-                        f32 x = cosf(lat_rad) * cosf(lon_rad) /* * radius */;
-                        f32 y = sinf(lat_rad) /* * radius */;
-                        f32 z = cosf(lat_rad) * sinf(lon_rad) /* * radius */;
+                        f32 x = cosf(lat_rad) * cosf(lon_rad) /* radius */;
+                        f32 y = sinf(lat_rad) /* radius */;
+                        f32 z = cosf(lat_rad) * sinf(lon_rad) /* radius */;
 
                         printf("{ %+3.12ff, %+3.12ff, %+3.12ff }, ", x, y, z);
                     }

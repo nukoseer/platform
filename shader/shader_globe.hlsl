@@ -22,7 +22,7 @@ PS_INPUT vs(VS_INPUT input)
     PS_INPUT output;
 
     // NOTE: A bit bigger radius.
-    input.position.xyz = input.position.xyz * 1.0005f;
+    input.position = input.position * 1.0005f;
     
     float4 position = float4(input.position, 1.0);
     float4 world_space = mul(world_matrix, position);

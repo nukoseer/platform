@@ -1,10 +1,11 @@
 import sys
 import netCDF4
 import numpy as np
+from PIL import Image
 from math import cos, sin, pi
 
 def polar_to_xyz(lon_deg, lat_deg):
-    lon = lon_deg * pi / 180
+    lon = -lon_deg * pi / 180
     lat = lat_deg * pi / 180
     
     x = cos(lat) * cos(lon)
@@ -25,17 +26,8 @@ def get_land_points(filename, min_lat=-84):
         sst_ma = np.ma.array(sst0, mask=np.ma.getmaskarray(sst0))
         land = sst_ma.mask
 
-        if min_lat is not None:
-            land &= (lat2d > float(min_lat))
-
-        # img = np.zeros_like(land, dtype=np.uint8)
-        # img[land] = 255
-
-        # img = np.flipud(img)
-
-        # for i in range(len(img)):
-        #     for j in range(len(img[i])):
-        #         print(img[i][j], sep=", ", end=", ")
+        # if min_lat is not None:
+        #     land &= (lat2d > float(min_lat))
 
         ocean = ~land
 
@@ -47,7 +39,40 @@ def get_land_points(filename, min_lat=-84):
 
         return [(land_lons, land_lats), (ocean_lons, ocean_lats)]
 
+# https://gpm.nasa.gov/data/directory/imerg-land-sea-mask-netcdf
+def get_landseamask(filename):
+    with netCDF4.Dataset(filename) as dataset:
+        landseamask = dataset.variables["landseamask"][:].astype(np.float32)
+        lon = dataset.variables["lon"][:]
+        lat = dataset.variables["lat"][:]
 
+        lon_wrapped = ((lon + 180.0) % 360.0) - 180.0
+        # Reorder columns into ascending order:
+        order = np.argsort(lon_wrapped, kind="mergesort")
+        lon_wrapped = lon_wrapped[order]
+        landseamask = landseamask[:, order]
+
+        lon2d, lat2d = np.meshgrid(lon_wrapped, lat)
+
+        print(landseamask.shape)
+        
+        img = np.zeros(landseamask.shape, dtype=np.uint8)
+        img[landseamask >= 75.0] = 255
+        
+        # Flip so row 0 = North
+        img = np.flipud(img)
+        img = np.fliplr(img)
+        img[:,-1] = img[:,0]
+
+        Image.fromarray(img, mode="L").save("../src/land_sea_mask.bmp")
+
+        lons = lon2d[landseamask >= 75.0].ravel()
+        lats = lat2d[landseamask >= 75.0].ravel()
+
+        return lons, lats
+
+        
+        
 if __name__ == "__main__":
     if (sys.argv[1] != "--landmask-file") or (len(sys.argv) < 3):
         print("Usage: %s --landmask-file <path-to-netcdf-file>" % sys.argv[0])
@@ -75,3 +100,5 @@ if __name__ == "__main__":
         print("{ %ff, %ff, %ff }" % coordinate, sep=", ", end=", ")
     print("\n};\n")
 
+    # a = get_landseamask(landmask_file)
+    # print(a)

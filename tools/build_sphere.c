@@ -15,14 +15,21 @@ static void build_uv_sphere(f32 sphere_radius, u32 stacks, u32 slices)
     printf("static f32 global_sphere_vertices[] = \n{");
     for (u32 i = 0; i <= stacks; ++i)
     {
-        f32 phi = (f32)i / (f32)stacks * (f32)PI;          // 0..PI
-        f32 y = cosf(phi); // NOTE: Up coordinate.
-        f32 radius = sinf(phi); // NOTE: Radius of circle at this latitude.
+        f32 v = (f32)i / (f32)stacks;
+        float lat = -0.5f * (f32)PI + v * (f32)PI;
+
+        float s = sinf(lat);
+        float c = cosf(lat);
+        
         for (u32 j = 0; j <= slices; ++j)
         {
-            f32 theta = (f32)j / (f32)slices * 2.0f * (f32)PI; // 0..2PI
-            f32 x = radius * cosf(theta);
-            f32 z = -radius * sinf(theta);
+            f32 u = (f32)j / (f32)slices;
+            f32 lon = -(f32)PI + u * (2.0f * (f32)PI);
+            
+            f32 x = c * cosf(lon);
+            f32 y = s;
+            f32 z = c * sinf(lon);
+
             vec3 normal = v3_normalize(v3(x, y, z)); // NOTE: Unit outward normal.
             vec3 position = v3_mulf(normal, sphere_radius);
 
