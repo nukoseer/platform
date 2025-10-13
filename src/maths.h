@@ -136,6 +136,23 @@ typedef union mat4x4
     vec4 columns[4];
 } mat4x4;
 
+
+static inline f32 clamp(f32 min, f32 v, f32 max)
+{
+    f32 result = v;
+
+    if (result < min)
+    {
+        result = min;
+    }
+    else if (result > max)
+    {
+        result = max;
+    }
+
+    return result;
+}
+
 // NOTE: Vector initialization.
 
 static inline vec2 v2(f32 x, f32 y)

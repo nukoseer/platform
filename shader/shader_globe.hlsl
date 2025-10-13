@@ -17,14 +17,26 @@ cbuffer global_settings : register(b0)
     float4 camera_world;
 };
 
+cbuffer global_globe_param : register(b1)
+{
+    float shape;
+    float2 scale;
+    float _pad;
+};
+
 PS_INPUT vs(VS_INPUT input)
 {
     PS_INPUT output;
 
-    // NOTE: A bit bigger radius.
-    input.position = input.position * 1.0005f;
+    const float PI = 3.14159265358979323846;
     
-    float4 position = float4(input.position, 1.0);
+    float lon = radians(input.position.x);
+    float lat = radians(input.position.y);
+
+    float3 globe_position = float3(cos(lat) * cos(-lon + PI * 0.5), sin(lat), cos(lat) * sin(-lon + PI * 0.5)) * 1.005;
+    float3 flat_position = float3(lon * scale.x, lat * scale.y, 0.0) * 0.9995;
+    float4 position = float4(lerp(flat_position, globe_position, saturate(shape)), 1.0);
+
     float4 world_space = mul(world_matrix, position);
     float4 view_space = mul(view_matrix, world_space);
     // NOTE: Before perspective division.

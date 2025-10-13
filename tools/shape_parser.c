@@ -139,7 +139,7 @@ void parse_shape_file(uint8_t* shape_file_buffer, size_t shape_file_size, u32 pr
                     }
                     else
                     {
-                        printf("%+3.12ff, %+3.12ff, ", (f32)points[i].x, (f32)points[i].y);
+                        printf("{ %+3.12ff, %+3.12ff, %+3.12ff }, ", (f32)points[i].x, (f32)points[i].y, 0.0f);
                     }
                 }
             }
@@ -243,6 +243,13 @@ int main(int argc, char* argv[])
     {
         printf("static vec3 global_globe_vectors[] =\n{\n");
         parse_shape_file(shape_file_buffer, shape_file_size, PRINT_VECTORS);
+        printf("\n};\n\n");
+    }
+
+    if (print_format & PRINT_POINTS)
+    {
+        printf("static vec3 global_globe_points[] =\n{\n");
+        parse_shape_file(shape_file_buffer, shape_file_size, PRINT_POINTS);
         printf("\n};\n\n");
     }
 

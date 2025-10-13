@@ -51,6 +51,13 @@ typedef struct setting_3d_t
     vec4 camera_world;
 } setting_3d_t;
 
+typedef struct globe_param_t
+{
+    f32 shape;
+    vec2 scale;
+    f32 _pad;
+} globe_param_t;
+
 typedef struct water_setting_t
 {
     f32 time;
@@ -126,6 +133,7 @@ typedef struct game_t
     graphics_shader_t pixel_shader_sphere;
     graphics_program_t program_sphere;
 
+    graphics_buffer_t globe_param_buffer;
     graphics_buffer_t globe_vertex_buffer;
     graphics_buffer_t globe_vertex_buffer1;
     graphics_buffer_t globe_index_buffer;
@@ -454,7 +462,7 @@ static inline mat4x4 view_matrix(vec3 reference_up, vec3 from, vec3 to)
 // yc: -wc <= yc <= wc
 // zc:   0 <= zc <= wc -> D3D/Vulkan
 // wc:  wc
-static inline mat4x4 projection_matrix(f32 left, f32 right, f32 bottom, f32 top, f32 near, f32 far)
+static inline mat4x4 perspective_projection(f32 left, f32 right, f32 bottom, f32 top, f32 near, f32 far)
 {
     mat4x4 result =
     {
@@ -470,7 +478,7 @@ static inline mat4x4 projection_matrix(f32 left, f32 right, f32 bottom, f32 top,
     return result;
 }
 
-static inline mat4x4 projection_matrix_fov_y(f32 fov_y, f32 aspect_ratio, f32 near, f32 far)
+static inline mat4x4 perspective_projection_fov_y(f32 fov_y, f32 aspect_ratio, f32 near, f32 far)
 {
     f32 tangent = tanf(fov_y * 0.5f * (f32)DEG2RAD);
     f32 top = near * tangent;
@@ -487,6 +495,22 @@ static inline mat4x4 projection_matrix_fov_y(f32 fov_y, f32 aspect_ratio, f32 ne
         },
     };
     
+    return result;
+}
+
+static inline mat4x4 orthographic_projection(f32 left, f32 right, f32 bottom, f32 top, f32 near, f32 far)
+{
+    mat4x4 result =
+    {
+        .columns =
+        {
+            [0] = v4(2.0f / (right - left), 0.0f, 0.0f, 0.0f),
+            [1] = v4(0.0f, 2.0f / (top - bottom), 0.0f, 0.0f),
+            [2] = v4(0.0f, 0.0f, 1.0f / (far - near), 0.0f),
+            [3] = v4(-(right + left) / (right - left), -(top + bottom) / (top - bottom), -near / (far - near), 1.0f),
+        },
+    };
+
     return result;
 }
 
@@ -547,10 +571,10 @@ init_function(init)
     });
 
     game->camera.position = v3(0.0f, 0.0f, 2.5f);
-    game->setting_3d.world = m4x4d(0.0f);
+    game->setting_3d.world = m4x4d(1.0f);
     game->setting_3d.view = view_matrix(v3(0.0f, 1.0f, 0.0f), game->camera.position, v3(0.0f, 0.0f, 0.0f));
     // game->setting_3d.projection = projection_matrix(-1.0f, +1.0f, -1.0f, +1.0f, 0.1f, 100.0f);
-    game->setting_3d.projection = projection_matrix_fov_y(60.0f, (f32)platform->width / (f32)platform->height, 0.1f, 100.0f);
+    game->setting_3d.projection = perspective_projection_fov_y(60.0f, (f32)platform->width / (f32)platform->height, 0.1f, 100.0f);
 
     vertex3d_t unit_cube[] =
     {
@@ -711,6 +735,13 @@ init_function(init)
         .attribute_count = 2,
     });
 
+    game->globe_param_buffer = graphics->create_buffer(&(graphics_buffer_desc_t)
+    {
+        .size = sizeof(globe_param_t),
+        .usage = USAGE_DYNAMIC,
+        .bind = BIND_CONSTANT_BUFFER,
+    });
+
     game->globe_vertex_buffer = graphics->create_buffer(&(graphics_buffer_desc_t)
     {
         .data = global_ocean_vectors,
@@ -721,8 +752,8 @@ init_function(init)
 
     game->globe_vertex_buffer1 = graphics->create_buffer(&(graphics_buffer_desc_t)
     {
-        .data = global_globe_vectors,
-        .size = sizeof(global_globe_vectors),
+        .data = global_globe_points,
+        .size = sizeof(global_globe_points),
         .usage = USAGE_IMMUTABLE,
         .bind = BIND_VERTEX_BUFFER,
     });
@@ -882,57 +913,57 @@ init_function(init)
 
     io->release_file_memory(io->read_file("..\\src\\game.c").data);
 
-    bmp_image_t water_normal_a = load_bmp_image(io, "../src/water_normal_a.bmp");
-    bmp_image_t water_normal_b = load_bmp_image(io, "../src/water_normal_b.bmp");
-    bmp_image_t land_sea_mask = load_bmp_image(io, "../src/land_sea_mask.bmp");
+    // bmp_image_t water_normal_a = load_bmp_image(io, "../src/water_normal_a.bmp");
+    // bmp_image_t water_normal_b = load_bmp_image(io, "../src/water_normal_b.bmp");
+    // bmp_image_t land_sea_mask = load_bmp_image(io, "../src/land_sea_mask.bmp");
 
-    game->water_normal_a = graphics->create_texture_2d(&(graphics_texture_2d_desc_t)
-    {
-        .format = FORMAT_R8G8B8A8_UNORM,
-        .bind = BIND_SHADER_RESOURCE,
-        .width = water_normal_a.width,
-        .height = water_normal_a.height,
-    }, water_normal_a.data, water_normal_a.pitch);
+    // game->water_normal_a = graphics->create_texture_2d(&(graphics_texture_2d_desc_t)
+    // {
+    //     .format = FORMAT_R8G8B8A8_UNORM,
+    //     .bind = BIND_SHADER_RESOURCE,
+    //     .width = water_normal_a.width,
+    //     .height = water_normal_a.height,
+    // }, water_normal_a.data, water_normal_a.pitch);
 
-    game->water_normal_b = graphics->create_texture_2d(&(graphics_texture_2d_desc_t)
-    {
-        .format = FORMAT_R8G8B8A8_UNORM,
-        .bind = BIND_SHADER_RESOURCE,
-        .width = water_normal_b.width,
-        .height = water_normal_b.height,
-    }, water_normal_b.data, water_normal_b.pitch);
+    // game->water_normal_b = graphics->create_texture_2d(&(graphics_texture_2d_desc_t)
+    // {
+    //     .format = FORMAT_R8G8B8A8_UNORM,
+    //     .bind = BIND_SHADER_RESOURCE,
+    //     .width = water_normal_b.width,
+    //     .height = water_normal_b.height,
+    // }, water_normal_b.data, water_normal_b.pitch);
 
-    game->land_sea_mask = graphics->create_texture_2d(&(graphics_texture_2d_desc_t)
-    {
-        .format = FORMAT_R8G8B8A8_UNORM,
-        .bind = BIND_SHADER_RESOURCE,
-        .width = land_sea_mask.width,
-        .height = land_sea_mask.height,
-    }, land_sea_mask.data, land_sea_mask.pitch);
+    // game->land_sea_mask = graphics->create_texture_2d(&(graphics_texture_2d_desc_t)
+    // {
+    //     .format = FORMAT_R8G8B8A8_UNORM,
+    //     .bind = BIND_SHADER_RESOURCE,
+    //     .width = land_sea_mask.width,
+    //     .height = land_sea_mask.height,
+    // }, land_sea_mask.data, land_sea_mask.pitch);
     
-    game->linear_wrap_sampler = graphics->create_sampler(&(graphics_sampler_desc_t)
-    {
-        .filter = FILTER_MIN_MAG_MIP_LINEAR,
-        .address_u = TEXTURE_ADDRESS_WRAP,
-        .address_v = TEXTURE_ADDRESS_WRAP,
-        .address_w = TEXTURE_ADDRESS_WRAP,
-    });
+    // game->linear_wrap_sampler = graphics->create_sampler(&(graphics_sampler_desc_t)
+    // {
+    //     .filter = FILTER_MIN_MAG_MIP_LINEAR,
+    //     .address_u = TEXTURE_ADDRESS_WRAP,
+    //     .address_v = TEXTURE_ADDRESS_WRAP,
+    //     .address_w = TEXTURE_ADDRESS_WRAP,
+    // });
 
-    game->water_buffer = graphics->create_buffer(&(graphics_buffer_desc_t)
-    {
-        .size = sizeof(water_setting_t),
-        .usage = USAGE_DYNAMIC,
-        .bind = BIND_CONSTANT_BUFFER,
-    });
+    // game->water_buffer = graphics->create_buffer(&(graphics_buffer_desc_t)
+    // {
+    //     .size = sizeof(water_setting_t),
+    //     .usage = USAGE_DYNAMIC,
+    //     .bind = BIND_CONSTANT_BUFFER,
+    // });
 
-    game->water_setting = (water_setting_t)
-    {
-        .tiling_a = 12.0f,
-        .speed_a = 0.007f,
-        .tiling_b = 8.0f,
-        .speed_b = -0.011f,
-        .ripple_amp = 0.08f
-    };
+    // game->water_setting = (water_setting_t)
+    // {
+    //     .tiling_a = 12.0f,
+    //     .speed_a = 0.007f,
+    //     .tiling_b = 8.0f,
+    //     .speed_b = -0.011f,
+    //     .ripple_amp = 0.08f
+    // };
 }
 
 update_function(update)
@@ -979,9 +1010,18 @@ render_function(render)
     f32 omega_radians_per_sec = 10.0f;
     earth_angle += omega_radians_per_sec * platform->delta_time;
     mat4x4 rotation_y = rotate_y(earth_angle);
+    (void)rotation_y;
 
+    f32 fov_y = 60.0f;
+    f32 half_height = game->camera.position.z * tanf(fov_y * (f32)DEG2RAD * 0.5f);
+    f32 half_width = half_height * (f32)platform->width / (f32)platform->height;
+    f32 scale_x = half_width / (f32)PI;
+    f32 scale_y = half_height / (0.5f * (f32)PI);
+    
     game->setting_3d.world = rotation_y;
-    game->setting_3d.projection = projection_matrix_fov_y(60.0f, (f32)platform->width / (f32)platform->height, 0.1f, 100.0f);
+    game->setting_3d.world = m4x4d(1.0f);
+    game->setting_3d.view = view_matrix(v3(0.0f, 1.0f, 0.0f), game->camera.position, v3(0.0f, 0.0f, 0.0f));
+    game->setting_3d.projection = perspective_projection_fov_y(60.0f, platform->width / (f32)platform->height, 0.0001f, 100.0f);
     game->setting_3d.camera_world = v4v(game->camera.position, 0.0f);
 
     // NOTE: Offscreen rendering pass.
@@ -1014,7 +1054,6 @@ render_function(render)
 
     graphics->begin_pass(game->offscreen_target, &(graphics_pass_desc_t){ .clear_color = true, .clear_rgba = { 0.005f, 0.005f, 0.005f, 0.0f },
                                                                           .clear_depth = true, .clear_depth_value = 1.0f });
-    // graphics->begin_pass(game->offscreen_target, &(graphics_pass_desc_t){ .clear_color = true, .clear_rgba = { 0.95f, 0.95f, 0.95f, 0.0f }});
     {
         graphics->update_buffer(game->setting_buffer_3d, &game->setting_3d, 0, sizeof(game->setting_3d));
         graphics->set_buffer(game->setting_buffer_3d, STAGE_VERTEX_SHADER, 0, 0, 0);
@@ -1031,21 +1070,40 @@ render_function(render)
     }
     graphics->end_pass();
     
-    graphics->begin_pass(game->offscreen_target, &(graphics_pass_desc_t){ .clear_color = false });
+    // graphics->begin_pass(game->offscreen_target, &(graphics_pass_desc_t){ .clear_color = false });
+    // {
+    //     graphics->update_buffer(game->setting_buffer_3d, &game->setting_3d, 0, sizeof(game->setting_3d));
+    //     graphics->set_buffer(game->setting_buffer_3d, STAGE_VERTEX_SHADER, 0, 0, 0);
+    //     graphics->set_buffer(game->globe_vertex_buffer, STAGE_VERTEX_SHADER, 0, sizeof(vec3), 0);
+    //     graphics->set_program(game->program_globe);
+    //     graphics->set_pipeline(game->pipeline_3d_);
+    //     graphics->draw(TOPOLOGY_POINT_LIST, array_count(global_ocean_vectors), 0);
+    // }
+    // graphics->end_pass();
+
+    static f32 globe_shape = 1.0f;
+    static f32 globe_shape_morph_speed = 0.033f;
+
+    if (platform->input->keys[KEY_T].action == KEY_ACTION_RELEASE)
     {
-        graphics->update_buffer(game->setting_buffer_3d, &game->setting_3d, 0, sizeof(game->setting_3d));
-        graphics->set_buffer(game->setting_buffer_3d, STAGE_VERTEX_SHADER, 0, 0, 0);
-        graphics->set_buffer(game->globe_vertex_buffer, STAGE_VERTEX_SHADER, 0, sizeof(vec3), 0);
-        graphics->set_program(game->program_globe);
-        graphics->set_pipeline(game->pipeline_3d_);
-        graphics->draw(TOPOLOGY_POINT_LIST, array_count(global_ocean_vectors), 0);
+        globe_shape_morph_speed *= -1.0f;
     }
-    graphics->end_pass();
+
+    globe_shape += globe_shape_morph_speed;
+    globe_shape = clamp(0.0f, globe_shape, 1.0f);
+    
+    globe_param_t globe_param =
+    {
+        .shape = globe_shape,
+        .scale = v2(scale_x, scale_y),
+    };
 
     graphics->begin_pass(game->offscreen_target, &(graphics_pass_desc_t){ .clear_color = false });
     {
         graphics->update_buffer(game->setting_buffer_3d, &game->setting_3d, 0, sizeof(game->setting_3d));
+        graphics->update_buffer(game->globe_param_buffer, &globe_param, 0, sizeof(globe_param));
         graphics->set_buffer(game->setting_buffer_3d, STAGE_VERTEX_SHADER, 0, 0, 0);
+        graphics->set_buffer(game->globe_param_buffer, STAGE_VERTEX_SHADER, 1, 0, 0);
         graphics->set_buffer(game->globe_vertex_buffer1, STAGE_VERTEX_SHADER, 0, sizeof(vec3), 0);
         graphics->set_buffer(game->globe_index_buffer, STAGE_VERTEX_SHADER, 0, 0, 0);
         graphics->set_program(game->program_globe);
