@@ -12,6 +12,8 @@
 #define PRINT_INDICES  2
 #define PRINT_POINTS   4
 #define PRINT_VECTORS  8
+#define PRINT_CENTERS  16
+#define PRINT_INDEX_COUNTS  32
 
 #pragma pack(push, 1)
 typedef struct shape_file_header_t
@@ -83,7 +85,7 @@ void parse_shape_file(uint8_t* shape_file_buffer, size_t shape_file_size, u32 pr
             u8* part_ptr = shape_content_ptr + sizeof(shape_content_t);
             u32* parts = (u32*)part_ptr;
 
-            if ((print_format & PRINT_PARTS) || (print_format & PRINT_INDICES))
+            if ((print_format & PRINT_PARTS) || (print_format & PRINT_INDICES) || (print_format & PRINT_INDEX_COUNTS))
             {
                 if (print_format & PRINT_PARTS)
                 {
@@ -99,48 +101,75 @@ void parse_shape_file(uint8_t* shape_file_buffer, size_t shape_file_size, u32 pr
                     {
                         u32 start = parts[i] + part_index;
                         u32 end = ((i + 1 < shape_content->part_count) ? parts[i + 1] : shape_content->point_count) + part_index;
-
+                        
                         for (u32 j = start; j + 1 < end; ++j)
                         {
                             printf("%u, %u, ", j, j + 1);
                         }
-
                         printf("%u, %u, ", end - 1, start);
                     }
+                }
+
+                if (print_format & PRINT_INDEX_COUNTS)
+                {
+                    printf("%u, ", shape_content->point_count * 2);
                 }
                 
                 part_index += shape_content->point_count;
             }
             
-            if ((print_format & PRINT_POINTS) || (print_format & PRINT_VECTORS))
+            if ((print_format & PRINT_POINTS) || (print_format & PRINT_VECTORS) || (print_format & PRINT_CENTERS))
             {
                 uint8_t* point_ptr = part_ptr + (shape_content->part_count * sizeof(u32));
                 point_t* points = (point_t*)(point_ptr);
 
+                f32 sum_x = 0.0f;
+                f32 sum_y = 0.0f;
+                f32 sum_z = 0.0f;
+                
                 for (u32 i = 0; i < shape_content->point_count; ++i)
                 {
+                    f32 lon = (f32)points[i].x;
+                    f32 lat = (f32)points[i].y;
+
+                    f32 lon_rad = -lon * (f32)DEG2RAD;
+                    f32 lat_rad = lat * (f32)DEG2RAD;
+
+                    f32 x = cosf(lat_rad) * cosf(lon_rad) /* radius */;
+                    f32 y = sinf(lat_rad) /* radius */;
+                    f32 z = cosf(lat_rad) * sinf(lon_rad) /* radius */;
+                    
                     if (print_format & PRINT_VECTORS)
                     {
-                        f32 lon = (f32)points[i].x;
-                        f32 lat = (f32)points[i].y;
-
-                        f32 lon_rad = -lon * (f32)DEG2RAD;
-                        f32 lat_rad = lat * (f32)DEG2RAD;
-
-                        // f32 x = cosf(lat_rad) * cosf(lon_rad) /* radius */;
-                        // f32 y = cosf(lat_rad) * sinf(lon_rad) /* radius */;
-                        // f32 z = sinf(lat_rad) /* * radius */;
-
-                        f32 x = cosf(lat_rad) * cosf(lon_rad) /* radius */;
-                        f32 y = sinf(lat_rad) /* radius */;
-                        f32 z = cosf(lat_rad) * sinf(lon_rad) /* radius */;
-
                         printf("{ %+3.12ff, %+3.12ff, %+3.12ff }, ", x, y, z);
                     }
                     else
                     {
-                        printf("{ %+3.12ff, %+3.12ff, %+3.12ff }, ", (f32)points[i].x, (f32)points[i].y, 0.0f);
+                        if (print_format & PRINT_CENTERS)
+                        {
+                            sum_x += x;
+                            sum_y += y;
+                            sum_z += z;
+                        }
+                        else if (print_format & PRINT_POINTS)
+                        {
+                            printf("{ %+3.12ff, %+3.12ff, %+3.12ff }, ", lon, lat, 0.0f);
+                        }
                     }
+                }
+
+                if (print_format & PRINT_CENTERS)
+                {
+                    f32 inv = 1.0f / shape_content->point_count;
+                    sum_x *= inv;
+                    sum_y *= inv;
+                    sum_z *= inv;
+                
+                    // f32 radius = sqrt(sum_x * sum_x + sum_y * sum_y + sum_z * sum_z);
+                    f32 lon = atan2f(sum_z, sum_x);
+                    f32 lat = asinf(sum_y);
+
+                    printf("{ %+3.12ff, %+3.12ff }, ", (f32)lon, (f32)lat);
                 }
             }
 
@@ -237,6 +266,11 @@ int main(int argc, char* argv[])
         printf("static u16 global_globe_part_indices[] =\n{\n");
         parse_shape_file(shape_file_buffer, shape_file_size, PRINT_INDICES);
         printf("\n};\n\n");
+
+        fseek(shape_file, 0, SEEK_SET);
+        printf("static u16 global_globe_part_index_counts[] =\n{\n");
+        parse_shape_file(shape_file_buffer, shape_file_size, PRINT_INDEX_COUNTS);
+        printf("\n};\n\n");
     }
 
     if (print_format & PRINT_VECTORS)
@@ -250,6 +284,10 @@ int main(int argc, char* argv[])
     {
         printf("static vec3 global_globe_points[] =\n{\n");
         parse_shape_file(shape_file_buffer, shape_file_size, PRINT_POINTS);
+        printf("\n};\n\n");
+
+        printf("static vec2 global_globe_centers[] =\n{\n");
+        parse_shape_file(shape_file_buffer, shape_file_size, PRINT_CENTERS);
         printf("\n};\n\n");
     }
 

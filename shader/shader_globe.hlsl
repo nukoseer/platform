@@ -21,8 +21,38 @@ cbuffer global_globe_param : register(b1)
 {
     float shape;
     float2 scale;
-    float _pad;
+    float _pad0;
+    
+    float2 center;
+    uint center_enable;
+    float depth_nudge;
+
+    float4 pad;
 };
+
+float ease_in_circ(float t)
+{
+    return 1.0 - sqrt(1.0 - pow(t, 2));
+}
+
+float ease_in_out_circ(float t)
+{
+    float result = t < 0.5 ?
+        (1.0 - sqrt(1.0 - pow(2.0 * t, 2.0))) * 0.5 :
+        (sqrt(1.0 - pow(-2.0 * t + 2.0, 2.0)) + 1.0) * 0.5;
+
+    return result;
+}
+
+float ease_in_out_back(float t)
+{
+    const float c1 = 1.70158;
+    const float c2 = c1 * 1.525;
+    
+    return t < 0.5 ? 
+        (pow(2 * t, 2) * ((c2 + 1) * 2 * t - c2)) / 2 :
+        (pow(2 * t - 2, 2) * ((c2 + 1) * (t * 2 - 2) + c2) + 2) / 2;
+}
 
 PS_INPUT vs(VS_INPUT input)
 {
@@ -34,13 +64,32 @@ PS_INPUT vs(VS_INPUT input)
     float lat = radians(input.position.y);
 
     float3 globe_position = float3(cos(lat) * cos(-lon + PI * 0.5), sin(lat), cos(lat) * sin(-lon + PI * 0.5)) * 1.005;
+
+    if (center_enable)
+    {
+        lon += center.x;
+        lat -= center.y;
+    }
+
     float3 flat_position = float3(lon * scale.x, lat * scale.y, 0.0) * 0.9995;
-    float4 position = float4(lerp(flat_position, globe_position, saturate(shape)), 1.0);
+
+    if (center_enable)
+    {
+        flat_position *= 5.0;
+    }
+
+    float4 position = float4(lerp(flat_position, globe_position, ease_in_out_back(saturate(shape))), 1.0);
 
     float4 world_space = mul(world_matrix, position);
     float4 view_space = mul(view_matrix, world_space);
+
     // NOTE: Before perspective division.
     float4 clip_space = mul(projection_matrix, view_space);
+
+    if (center_enable)
+    {
+        clip_space.z -= 0.005f;
+    }
 
     output.position = clip_space;
     output.color = float4(0.1, 0.1, 0.1, 1.0);

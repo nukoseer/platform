@@ -21,7 +21,8 @@
 #include "../shader/vertex_shader_sphere.h"
 #include "../shader/pixel_shader_sphere.h"
 
-#include "shape_data.inl"
+// #include "shape_data.inl"
+#include "shape_data1.inl"
 #include "sphere_data.inl"
 #include "landmask_data.inl"
 
@@ -55,7 +56,13 @@ typedef struct globe_param_t
 {
     f32 shape;
     vec2 scale;
-    f32 _pad;
+    f32 _pad0;
+
+    vec2 center;
+    u32 center_enable;
+    f32 depth_nudge;
+
+    f32 _pad[4];
 } globe_param_t;
 
 typedef struct water_setting_t
@@ -140,6 +147,8 @@ typedef struct game_t
     graphics_shader_t vertex_shader_globe;
     graphics_shader_t pixel_shader_globe;
     graphics_program_t program_globe;
+    f32 globe_shape_morph_speed;
+    f32 globe_shape_morph_direction;
 
     glow_mask_setting_t glow_mask_setting;
     graphics_sampler_t linear_sampler;
@@ -964,6 +973,8 @@ init_function(init)
     //     .speed_b = -0.011f,
     //     .ripple_amp = 0.08f
     // };
+
+    game->globe_shape_morph_direction = 1.0f;
 }
 
 update_function(update)
@@ -1055,18 +1066,18 @@ render_function(render)
     graphics->begin_pass(game->offscreen_target, &(graphics_pass_desc_t){ .clear_color = true, .clear_rgba = { 0.005f, 0.005f, 0.005f, 0.0f },
                                                                           .clear_depth = true, .clear_depth_value = 1.0f });
     {
-        graphics->update_buffer(game->setting_buffer_3d, &game->setting_3d, 0, sizeof(game->setting_3d));
-        graphics->set_buffer(game->setting_buffer_3d, STAGE_VERTEX_SHADER, 0, 0, 0);
-        graphics->set_buffer(game->setting_buffer_3d, STAGE_PIXEL_SHADER, 0, 0, 0);
-        graphics->set_buffer(game->sphere_vertex_buffer, STAGE_VERTEX_SHADER, 0, sizeof(sphere_vertex_t), 0);
-        graphics->set_buffer(game->sphere_index_buffer, STAGE_VERTEX_SHADER, 0, 0, 0);
-        graphics->set_program(game->program_sphere);
-        graphics->set_pipeline(game->pipeline_3d);
-        // graphics_sampler_t samplers[] = { game->linear_wrap_sampler };
-        // graphics->set_samplers(STAGE_PIXEL_SHADER, samplers, array_count(samplers), 0);
-        // graphics_texture_t srvs[] = { game->water_normal_a, game->water_normal_b };
-        // graphics->set_srvs(STAGE_PIXEL_SHADER, srvs, array_count(srvs), 0);
-        graphics->draw_indexed(TOPOLOGY_TRIANGLE_LIST, array_count(global_sphere_indices), 0, 0);
+        // graphics->update_buffer(game->setting_buffer_3d, &game->setting_3d, 0, sizeof(game->setting_3d));
+        // graphics->set_buffer(game->setting_buffer_3d, STAGE_VERTEX_SHADER, 0, 0, 0);
+        // graphics->set_buffer(game->setting_buffer_3d, STAGE_PIXEL_SHADER, 0, 0, 0);
+        // graphics->set_buffer(game->sphere_vertex_buffer, STAGE_VERTEX_SHADER, 0, sizeof(sphere_vertex_t), 0);
+        // graphics->set_buffer(game->sphere_index_buffer, STAGE_VERTEX_SHADER, 0, 0, 0);
+        // graphics->set_program(game->program_sphere);
+        // graphics->set_pipeline(game->pipeline_3d);
+        // // graphics_sampler_t samplers[] = { game->linear_wrap_sampler };
+        // // graphics->set_samplers(STAGE_PIXEL_SHADER, samplers, array_count(samplers), 0);
+        // // graphics_texture_t srvs[] = { game->water_normal_a, game->water_normal_b };
+        // // graphics->set_srvs(STAGE_PIXEL_SHADER, srvs, array_count(srvs), 0);
+        // graphics->draw_indexed(TOPOLOGY_TRIANGLE_LIST, array_count(global_sphere_indices), 0, 0);
     }
     graphics->end_pass();
     
@@ -1082,14 +1093,14 @@ render_function(render)
     // graphics->end_pass();
 
     static f32 globe_shape = 1.0f;
-    static f32 globe_shape_morph_speed = 0.033f;
+    game->globe_shape_morph_speed = 3.0f * platform->delta_time * game->globe_shape_morph_direction;
 
     if (platform->input->keys[KEY_T].action == KEY_ACTION_RELEASE)
     {
-        globe_shape_morph_speed *= -1.0f;
+        game->globe_shape_morph_direction *= -1.0f;
     }
 
-    globe_shape += globe_shape_morph_speed;
+    globe_shape += game->globe_shape_morph_speed;
     globe_shape = clamp(0.0f, globe_shape, 1.0f);
     
     globe_param_t globe_param =
@@ -1101,15 +1112,36 @@ render_function(render)
     graphics->begin_pass(game->offscreen_target, &(graphics_pass_desc_t){ .clear_color = false });
     {
         graphics->update_buffer(game->setting_buffer_3d, &game->setting_3d, 0, sizeof(game->setting_3d));
-        graphics->update_buffer(game->globe_param_buffer, &globe_param, 0, sizeof(globe_param));
+        // graphics->update_buffer(game->globe_param_buffer, &globe_param, 0, sizeof(globe_param));
         graphics->set_buffer(game->setting_buffer_3d, STAGE_VERTEX_SHADER, 0, 0, 0);
-        graphics->set_buffer(game->globe_param_buffer, STAGE_VERTEX_SHADER, 1, 0, 0);
+        // graphics->set_buffer(game->globe_param_buffer, STAGE_VERTEX_SHADER, 1, 0, 0);
         graphics->set_buffer(game->globe_vertex_buffer1, STAGE_VERTEX_SHADER, 0, sizeof(vec3), 0);
         graphics->set_buffer(game->globe_index_buffer, STAGE_VERTEX_SHADER, 0, 0, 0);
         graphics->set_program(game->program_globe);
-        graphics->set_pipeline(game->pipeline_3d_);
-        // graphics->draw(TOPOLOGY_POINT_LIST, array_count(global_globe_vectors), 0);
-        graphics->draw_indexed(TOPOLOGY_LINE_LIST, array_count(global_globe_part_indices), 0, 0);
+        graphics->set_pipeline(game->pipeline_3d);
+
+        u32 offset = 0;
+        for (u32 i = 0; i < array_count(global_globe_part_index_counts); ++i)
+        {
+            if (i == 124)
+            {
+                globe_param.center_enable = true;
+                globe_param.center = global_globe_centers[i];
+                globe_param.depth_nudge = 0.01f;
+            }
+            else
+            {
+                globe_param.center_enable = false;
+                globe_param.center = (vec2){ 0 };
+                globe_param.depth_nudge = 0.0f;
+            }
+
+            graphics->update_buffer(game->globe_param_buffer, &globe_param, 0, sizeof(globe_param));
+            graphics->set_buffer(game->globe_param_buffer, STAGE_VERTEX_SHADER, 1, 0, 0);
+            u32 index_count = global_globe_part_index_counts[i];
+            graphics->draw_indexed(TOPOLOGY_LINE_LIST, index_count, offset, 0);
+            offset += index_count;
+        }
     }
     graphics->end_pass();
 
