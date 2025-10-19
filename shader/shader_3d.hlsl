@@ -33,8 +33,3 @@ PS_INPUT vs(VS_INPUT input)
 
     return output;
 }
-
-float4 ps(PS_INPUT input) : SV_TARGET
-{
-     return input.color;
-}

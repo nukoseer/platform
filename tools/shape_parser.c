@@ -263,30 +263,30 @@ int main(int argc, char* argv[])
     if (print_format & PRINT_INDICES)
     {
         fseek(shape_file, 0, SEEK_SET);
-        printf("static u16 global_globe_part_indices[] =\n{\n");
+        printf("static u16 global_shape_indices[] =\n{\n");
         parse_shape_file(shape_file_buffer, shape_file_size, PRINT_INDICES);
         printf("\n};\n\n");
 
         fseek(shape_file, 0, SEEK_SET);
-        printf("static u16 global_globe_part_index_counts[] =\n{\n");
+        printf("static u16 global_shape_index_counts[] =\n{\n");
         parse_shape_file(shape_file_buffer, shape_file_size, PRINT_INDEX_COUNTS);
         printf("\n};\n\n");
     }
 
     if (print_format & PRINT_VECTORS)
     {
-        printf("static vec3 global_globe_vectors[] =\n{\n");
+        printf("static vec3 global_shape_vectors[] =\n{\n");
         parse_shape_file(shape_file_buffer, shape_file_size, PRINT_VECTORS);
         printf("\n};\n\n");
     }
 
     if (print_format & PRINT_POINTS)
     {
-        printf("static vec3 global_globe_points[] =\n{\n");
+        printf("static vec3 global_shape_points[] =\n{\n");
         parse_shape_file(shape_file_buffer, shape_file_size, PRINT_POINTS);
         printf("\n};\n\n");
 
-        printf("static vec2 global_globe_centers[] =\n{\n");
+        printf("static vec2 global_shape_centers[] =\n{\n");
         parse_shape_file(shape_file_buffer, shape_file_size, PRINT_CENTERS);
         printf("\n};\n\n");
     }

@@ -30,11 +30,6 @@ cbuffer global_globe_param : register(b1)
     float4 pad;
 };
 
-float ease_in_circ(float t)
-{
-    return 1.0 - sqrt(1.0 - pow(t, 2));
-}
-
 float ease_in_out_circ(float t)
 {
     float result = t < 0.5 ?
@@ -75,21 +70,15 @@ PS_INPUT vs(VS_INPUT input)
 
     if (center_enable)
     {
-        flat_position *= 5.0;
+        flat_position *= 2.0;
     }
 
     float4 position = float4(lerp(flat_position, globe_position, ease_in_out_back(saturate(shape))), 1.0);
-
     float4 world_space = mul(world_matrix, position);
     float4 view_space = mul(view_matrix, world_space);
-
+    
     // NOTE: Before perspective division.
     float4 clip_space = mul(projection_matrix, view_space);
-
-    if (center_enable)
-    {
-        clip_space.z -= 0.005f;
-    }
 
     output.position = clip_space;
     output.color = float4(0.1, 0.1, 0.1, 1.0);
