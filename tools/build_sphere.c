@@ -16,25 +16,17 @@ static void build_uv_sphere(f32 sphere_radius, u32 stacks, u32 slices)
     for (u32 i = 0; i <= stacks; ++i)
     {
         f32 v = (f32)i / (f32)stacks;
-        float lat = -0.5f * (f32)PI + v * (f32)PI;
+        // f32 lat = -0.5f * (f32)PI + v * (f32)PI;
+        f32 lat = -90.0f + v * 180.0f;
 
-        float s = sinf(lat);
-        float c = cosf(lat);
-        
         for (u32 j = 0; j <= slices; ++j)
         {
             f32 u = (f32)j / (f32)slices;
-            f32 lon = -(f32)PI + u * (2.0f * (f32)PI);
+            // f32 lon = -(f32)PI + u * (2.0f * (f32)PI);
+            f32 lon = -180.0f + u * 360.0f;
             
-            f32 x = c * cosf(lon);
-            f32 y = s;
-            f32 z = c * sinf(lon);
-
-            vec3 normal = v3_normalize(v3(x, y, z)); // NOTE: Unit outward normal.
-            vec3 position = v3_mulf(normal, sphere_radius);
-
-            printf("%+3.12ff, %+3.12ff, %+3.12ff, %+3.12ff, %+3.12ff, %+3.12ff, ",
-                   position.x, position.y, position.z, normal.x, normal.y, normal.z);
+            printf("%+3.12ff, %+3.12ff, %+3.12ff, ",
+                   -lon, lat, 0.0f);
 
             // vec2 uv  = v2((f32)j/slices, 1.0f - (f32)i/stacks);
         }

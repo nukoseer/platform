@@ -1,7 +1,6 @@
 struct VS_INPUT
 {
     float3 position : POSITION;
-    float3 normal   : NORMAL;
 };
 
 struct PS_INPUT
@@ -11,7 +10,7 @@ struct PS_INPUT
     float3 normal_world   : TEXCOORD1;
 };
 
-cbuffer global_settings : register(b0)
+cbuffer global_params : register(b0)
 {
     float4x4 world_matrix;
     float4x4 view_matrix;
@@ -19,7 +18,7 @@ cbuffer global_settings : register(b0)
     float4 camera_world;
 };
 
-cbuffer global_water_settings : register(b1)
+cbuffer global_water_params : register(b1)
 {
     float time;
     float earth_angle;
@@ -40,13 +39,19 @@ PS_INPUT vs(VS_INPUT input)
 {
     PS_INPUT output;
 
-    float4 position = float4(input.position, 1.0);
+    const float PI = 3.14159265358979323846;
+    
+    float lon = -radians(input.position.x);
+    float lat = radians(input.position.y);
+
+    float4 position = float4(cos(lat) * cos(lon), sin(lat), cos(lat) * sin(lon), 1.0);
+    
     float4 world_space = mul(world_matrix, position);
     float4 view_space = mul(view_matrix, world_space);
     // NOTE: Before perspective division.
     float4 clip_space = mul(projection_matrix, view_space);
 
-    float3 normal_world = mul((float3x3)world_matrix, input.normal);
+    float3 normal_world = mul((float3x3)world_matrix, normalize(position.xyz));
 
     output.position = clip_space;
     output.position_world = world_space.xyz;

@@ -27,7 +27,7 @@ cbuffer global_globe_param : register(b1)
     uint center_enable;
     float depth_nudge;
 
-    float4 pad;
+    float4 color;
 };
 
 float ease_in_out_circ(float t)
@@ -82,12 +82,12 @@ PS_INPUT vs(VS_INPUT input)
 
     output.position = clip_space;
     output.color = float4(0.1, 0.1, 0.1, 1.0);
-    // output.color = float4(input.color, 1.0);
+    output.color = color;
 
     return output;
 }
 
 float4 ps(PS_INPUT input) : SV_TARGET
 {
-     return float4(0.04, 0.04, 0.04, 1.0f);
+    return input.color;
 }
