@@ -18,22 +18,36 @@ cbuffer global_params : register(b0)
     float4 camera_world;
 };
 
-cbuffer global_water_params : register(b1)
+cbuffer global_sphere_params : register(b1)
 {
-    float time;
-    float earth_angle;
-    float tiling_a;
-    float speed_a;
-    float tiling_b;
-    float speed_b;
-    float ripple_amp;
-    float _pad;
+    float4 color_;
 };
+
+// cbuffer global_water_params : register(b2)
+// {
+//     float time;
+//     float earth_angle;
+//     float tiling_a;
+//     float speed_a;
+//     float tiling_b;
+//     float speed_b;
+//     float ripple_amp;
+//     float _pad;
+// };
 
 // TODO: We do not use any water shader. Maybe delete later?
 Texture2D global_water_normal_a : register(t0);
 Texture2D global_water_normal_b : register(t1);
 SamplerState global_linear_wrap_sampler : register(s0);
+
+float ease_in_out_circ(float t)
+{
+    float result = t < 0.5 ?
+        (1.0 - sqrt(1.0 - pow(2.0 * t, 2.0))) * 0.5 :
+        (sqrt(1.0 - pow(-2.0 * t + 2.0, 2.0)) + 1.0) * 0.5;
+
+    return result;
+}
 
 PS_INPUT vs(VS_INPUT input)
 {
@@ -44,7 +58,9 @@ PS_INPUT vs(VS_INPUT input)
     float lon = -radians(input.position.x);
     float lat = radians(input.position.y);
 
-    float4 position = float4(cos(lat) * cos(lon), sin(lat), cos(lat) * sin(lon), 1.0);
+    float t = ease_in_out_circ(smoothstep(0.0, 1.0, color_.a));
+
+    float4 position = float4(cos(lat) * cos(lon) * t, sin(lat) * t, cos(lat) * sin(lon) * t, 1.0);
     
     float4 world_space = mul(world_matrix, position);
     float4 view_space = mul(view_matrix, world_space);
@@ -111,8 +127,8 @@ float4 ps(PS_INPUT input) : SV_TARGET
 
     // NOTE: Apply dithering to avoid banding.
     float3 dithered_color = saturate(color) + dither8x8(input.position.xy);
-    
-    return float4(saturate(dithered_color), 1);
+
+    return float4(saturate(dithered_color), smoothstep(0.0, 1.0, color_.a));
 
     // return float4(saturate(dot(n, v) * 0.5 + 0.5).xxx, 1.0);
     // return float4(0.5 * (normalize(input.normal_world) + 1.0), 1.0);

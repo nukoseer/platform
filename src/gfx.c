@@ -62,6 +62,7 @@ typedef struct gfx_pipeline_t
 {
     ID3D11RasterizerState* rasterizer_state;
     ID3D11DepthStencilState* depth_stencil_state;
+    ID3D11BlendState* blend_state;
 } gfx_pipeline_t;
 
 // TODO: We should manage the lifetime of these resouces.
@@ -160,6 +161,11 @@ static DXGI_FORMAT map_dxgi_resource_format(graphics_format_t format)
             dxgi_format = DXGI_FORMAT_R8G8B8A8_TYPELESS;
         } break;
 
+        case FORMAT_R16G16B16A16_FLOAT:
+        {
+            dxgi_format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+        }break;
+
         case FORMAT_D24_UNORM_S8_UINT:
         {
             dxgi_format = DXGI_FORMAT_R24G8_TYPELESS;
@@ -196,6 +202,11 @@ static DXGI_FORMAT map_dxgi_rtv_format(graphics_format_t format)
             // NOTE: Linear write.
             dxgi_format = DXGI_FORMAT_R8G8B8A8_UNORM;
         } break;
+
+        case FORMAT_R16G16B16A16_FLOAT:
+        {
+            dxgi_format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+        }break;
 
         default:
         {
@@ -251,6 +262,11 @@ static DXGI_FORMAT map_dxgi_srv_format(graphics_format_t format)
         {
             dxgi_format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
         } break;
+
+        case FORMAT_R16G16B16A16_FLOAT:
+        {
+            dxgi_format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+        }break;
 
         // NOTE: Depth formats.
         case FORMAT_D24_UNORM_S8_UINT:
@@ -845,6 +861,26 @@ static graphics_create_pipeline_function(gfx_create_pipeline)
     result = ID3D11Device_CreateDepthStencilState(global_d3d11.device, &depth_desc, &gfx_pipeline->depth_stencil_state);
     assert(SUCCEEDED(result) && "[GFX] Failed to create depth stencil state.");
 
+    
+    D3D11_BLEND_DESC blend_desc =
+    {
+        .RenderTarget[0].BlendEnable = pipeline_desc->alpha_blend_enable,
+        .RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL,
+    };
+
+    if (pipeline_desc->alpha_blend_enable)
+    {
+        blend_desc.RenderTarget[0].SrcBlend = D3D11_BLEND_SRC_ALPHA;
+        blend_desc.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
+        blend_desc.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
+        blend_desc.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_SRC_ALPHA;
+        blend_desc.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_INV_SRC_ALPHA;
+        blend_desc.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
+    }
+
+    result = ID3D11Device_CreateBlendState(global_d3d11.device, &blend_desc, &gfx_pipeline->blend_state);
+    assert(SUCCEEDED(result) && "[GFX] Failed to create blend state.");
+
     graphics_pipeline.platform = pipeline_index;
     
     return graphics_pipeline;
@@ -1027,6 +1063,7 @@ static graphics_set_pipeline_function(gfx_set_pipeline)
 
     ID3D11DeviceContext_RSSetState(global_d3d11.context, gfx_pipeline->rasterizer_state);
     ID3D11DeviceContext_OMSetDepthStencilState(global_d3d11.context, gfx_pipeline->depth_stencil_state, 0);
+    ID3D11DeviceContext_OMSetBlendState(global_d3d11.context, gfx_pipeline->blend_state, 0, ~0U);
 }
 
 static graphics_set_samplers_function(gfx_set_samplers)

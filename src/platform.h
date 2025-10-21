@@ -126,6 +126,7 @@ typedef enum graphics_format_t
     FORMAT_R8_UNORM,
     FORMAT_R8G8B8A8_UNORM,
     FORMAT_R8G8B8A8_UNORM_SRGB,
+    FORMAT_R16G16B16A16_FLOAT,
     FORMAT_R32G32_FLOAT,
     FORMAT_R32G32B32_FLOAT,
     FORMAT_R16_UINT,
@@ -262,6 +263,7 @@ typedef struct graphics_pipeline_desc_t
     bool wireframe;
     bool depth_test;
     bool depth_write;
+    bool alpha_blend_enable;
 } graphics_pipeline_desc_t;
 
 typedef struct graphics_pipeline_t

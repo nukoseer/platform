@@ -37,6 +37,11 @@ typedef struct transform_param_t
     vec4 camera_world;
 } transform_param_t;
 
+typedef struct sphere_param_t
+{
+    vec4 color;
+} sphere_param_t;
+
 typedef struct sphere_info_t
 {
     graphics_buffer_t param_buffer;
@@ -45,6 +50,8 @@ typedef struct sphere_info_t
     graphics_shader_t vertex_shader;
     graphics_shader_t pixel_shader;
     graphics_program_t program;
+
+    sphere_param_t param;
 } sphere_info_t;
 
 typedef struct shape_param_t
@@ -298,7 +305,7 @@ static void resize_offscreen_buffer(platform_t* platform, game_t* game)
     {
         game->offscreen_scene = graphics->create_texture_2d(&(graphics_texture_2d_desc_t)
         {
-            .format = FORMAT_R8G8B8A8_UNORM,
+            .format = FORMAT_R16G16B16A16_FLOAT,
             .bind = BIND_SHADER_RESOURCE | BIND_RENDER_TARGET,
             .width = platform->width,
             .height = platform->height,
@@ -498,6 +505,13 @@ static inline mat4x4 orthographic_projection(f32 left, f32 right, f32 bottom, f3
 
 static void init_sphere(const graphics_t* graphics, sphere_info_t* sphere_info)
 {
+    sphere_info->param_buffer = graphics->create_buffer(&(graphics_buffer_desc_t)
+    {
+        .size = sizeof(sphere_param_t),
+        .usage = USAGE_DYNAMIC,
+        .bind = BIND_CONSTANT_BUFFER,
+    });
+
     sphere_info->vertex_buffer = graphics->create_buffer(&(graphics_buffer_desc_t)
     {
         .data = global_sphere_vertices,
@@ -633,6 +647,7 @@ init_function(init)
         .cull = true,
         .depth_test = true,
         .depth_write = true,
+        .alpha_blend_enable = true,
     });
 
     game->d_test_pipeline = graphics->create_pipeline(&(graphics_pipeline_desc_t)
@@ -640,6 +655,7 @@ init_function(init)
         .cull = true,
         .depth_test = true,
         .depth_write = false,
+        .alpha_blend_enable = true,
     });
 
     game->linear_sampler = graphics->create_sampler(&(graphics_sampler_desc_t)
@@ -801,17 +817,25 @@ render_function(render)
     game->transform_param.camera_world = v4v(game->camera.position, 0.0f);
 
     sphere_info_t* sphere_info = &game->sphere_info;
+
+    sphere_info->param.color = v4(1.0f, 1.0f, 1.0f, game->shape_info.shape_value);
     
-    graphics->begin_pass(game->offscreen_target, &(graphics_pass_desc_t){ .clear_color = true, .clear_rgba = { 0.005f, 0.005f, 0.005f, 0.0f },
-                                                                          .clear_depth = true, .clear_depth_value = 1.0f });
+    graphics->begin_pass(game->offscreen_target, &(graphics_pass_desc_t)
+    {
+        .clear_color = true, .clear_rgba = { 0.005f, 0.005f, 0.005f, 1.0f },
+        .clear_depth = true, .clear_depth_value = 1.0f
+    });
     {
         graphics->update_buffer(game->transform_buffer, &game->transform_param, 0, sizeof(game->transform_param));
+        graphics->update_buffer(sphere_info->param_buffer, &sphere_info->param, 0, sizeof(sphere_info->param));
         graphics->set_buffer(game->transform_buffer, STAGE_VERTEX_SHADER, 0, 0, 0);
         graphics->set_buffer(game->transform_buffer, STAGE_PIXEL_SHADER, 0, 0, 0);
+        graphics->set_buffer(sphere_info->param_buffer, STAGE_VERTEX_SHADER, 1, 0, 0);
+        graphics->set_buffer(sphere_info->param_buffer, STAGE_PIXEL_SHADER, 1, 0, 0);
         graphics->set_buffer(sphere_info->vertex_buffer, STAGE_VERTEX_SHADER, 0, sizeof(vec3), 0);
         graphics->set_buffer(sphere_info->index_buffer, STAGE_VERTEX_SHADER, 0, 0, 0);
         graphics->set_program(sphere_info->program);
-        graphics->set_pipeline(game->d_test_pipeline);
+        graphics->set_pipeline(game->d_test_write_pipeline);
         // graphics_sampler_t samplers[] = { game->linear_wrap_sampler };
         // graphics->set_samplers(STAGE_PIXEL_SHADER, samplers, array_count(samplers), 0);
         // graphics_texture_t srvs[] = { game->water_normal_a, game->water_normal_b };
@@ -831,7 +855,11 @@ render_function(render)
     shape_param->scale = v2(scale_x, scale_y);
     shape_param->color = v4(0.006f, 0.006f, 0.006f, 1.0f);
 
-    graphics->begin_pass(game->offscreen_target, &(graphics_pass_desc_t){ .clear_color = false, .clear_depth = false });
+    graphics->begin_pass(game->offscreen_target, &(graphics_pass_desc_t)
+    {
+        .clear_color = false,
+        .clear_depth = false
+    });
     {
         graphics->update_buffer(game->transform_buffer, &game->transform_param, 0, sizeof(game->transform_param));
         graphics->update_buffer(shape_info->param_buffer, &shape_info->param, 0, sizeof(shape_info->param));
