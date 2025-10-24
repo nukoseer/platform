@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <string.h>
+#include <intrin.h>
 #include "utils.h"
 #include "platform.h"
 #include "maths.h"

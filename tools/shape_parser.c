@@ -14,6 +14,7 @@
 #define PRINT_VECTORS  8
 #define PRINT_CENTERS  16
 #define PRINT_INDEX_COUNTS  32
+#define PRINT_MIN_MAX       64
 
 #pragma pack(push, 1)
 typedef struct shape_file_header_t
@@ -70,7 +71,6 @@ void parse_shape_file(uint8_t* shape_file_buffer, size_t shape_file_size, u32 pr
     uint8_t* initial_record_offset = shape_file_buffer + sizeof(shape_file_header_t);
     u32 offset = 0;
     u32 part_index = 0;
-    u32 polygon_count = 0;
     
     while (offset < shape_file_size - sizeof(shape_file_header_t))
     {
@@ -85,7 +85,7 @@ void parse_shape_file(uint8_t* shape_file_buffer, size_t shape_file_size, u32 pr
             u8* part_ptr = shape_content_ptr + sizeof(shape_content_t);
             u32* parts = (u32*)part_ptr;
 
-            if ((print_format & PRINT_PARTS) || (print_format & PRINT_INDICES) || (print_format & PRINT_INDEX_COUNTS))
+            if ((print_format & PRINT_PARTS) || (print_format & PRINT_INDICES) || (print_format & PRINT_INDEX_COUNTS) || (print_format & PRINT_MIN_MAX))
             {
                 if (print_format & PRINT_PARTS)
                 {
@@ -113,6 +113,20 @@ void parse_shape_file(uint8_t* shape_file_buffer, size_t shape_file_size, u32 pr
                 if (print_format & PRINT_INDEX_COUNTS)
                 {
                     printf("%u, ", shape_content->point_count * 2);
+                }
+
+                if (print_format & PRINT_MIN_MAX)
+                {
+                    printf("{ { %+3.12ff, %+3.12ff }, { %+3.12ff, %+3.12ff } }, ",
+                           shape_content->x_min,
+                           shape_content->x_max,
+                           shape_content->y_min,
+                           shape_content->y_max);
+                    // printf("{ { %+3.12ff, %+3.12ff }, { %+3.12ff, %+3.12ff } }, ",
+                    //        DEG2RAD * shape_content->x_min,
+                    //        DEG2RAD * shape_content->x_max,
+                    //        DEG2RAD * shape_content->y_min,
+                    //        DEG2RAD * shape_content->y_max);
                 }
                 
                 part_index += shape_content->point_count;
@@ -172,8 +186,6 @@ void parse_shape_file(uint8_t* shape_file_buffer, size_t shape_file_size, u32 pr
                     printf("{ %+3.12ff, %+3.12ff }, ", (f32)lon, (f32)lat);
                 }
             }
-
-            ++polygon_count;
         }
         else
         {
@@ -288,6 +300,10 @@ int main(int argc, char* argv[])
 
         printf("static vec2 global_shape_centers[] =\n{\n");
         parse_shape_file(shape_file_buffer, shape_file_size, PRINT_CENTERS);
+        printf("\n};\n\n");
+
+        printf("static vec2 global_shape_min_maxs[][2] =\n{\n");
+        parse_shape_file(shape_file_buffer, shape_file_size, PRINT_MIN_MAX);
         printf("\n};\n\n");
     }
 

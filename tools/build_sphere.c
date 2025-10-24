@@ -1,5 +1,3 @@
-#pragma once
-
 #include <stdio.h>
 
 #include "../src/utils.h"
@@ -8,7 +6,7 @@
 static void build_uv_sphere(f32 sphere_radius, u32 stacks, u32 slices)
 {
     // NOTE: stacks: latitude bands (pole-to-pole), slices: longitude
-    u32 lat_count = stacks + 1;
+    // u32 lat_count = stacks + 1;
     u32 lon_count = slices + 1;
 
     // NOTE: Vertices
