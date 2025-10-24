@@ -460,6 +460,11 @@ static bool process_thread_messages(window_t* window, input_t* input)
     input->modifiers = ((alt_is_down * KEY_MODIFIER_ALT) |
                         (shift_is_down * KEY_MODIFIER_SHIFT) |
                         (ctrl_is_down * KEY_MODIFIER_CTRL));
+
+    POINT mouse_point = { 0 };
+    GetCursorPos(&mouse_point);
+    ScreenToClient(window->hwnd, &mouse_point);
+    input->mouse_position = v3((f32)mouse_point.x, (f32)mouse_point.y, 0.0f);
         
     return quit;
 }

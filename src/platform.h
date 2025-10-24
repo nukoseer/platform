@@ -1,5 +1,7 @@
 #pragma once
 
+#include "maths.h"
+
 typedef enum key_modifier_t
 {
     KEY_MODIFIER_CTRL = (1 << 0),
@@ -110,6 +112,7 @@ typedef struct input_t
 {
     key_input_t keys[KEY_COUNT];
     key_modifier_t modifiers;
+    vec3 mouse_position;
 } input_t;
 
 typedef struct memory_t
