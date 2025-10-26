@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 #include <intrin.h>
 #include "utils.h"
 #include "platform.h"
@@ -21,8 +22,13 @@
 #include "../shader/vertex_shader_sphere.h"
 #include "../shader/pixel_shader_sphere.h"
 
+#include "shape_meta_data.inl"
 #include "shape_data.inl"
 #include "sphere_data.inl"
+
+#define CELL_X_COUNT    360
+#define CELL_Y_COUNT    180
+#define CELL_SLOT_COUNT 10
 
 typedef struct vertex3d_t
 {
@@ -166,6 +172,8 @@ typedef struct game_t
 
     // graphics_2d_font_t font;
     // graphics_2d_font_color_t font_color;
+
+    u8* cells;
 } game_t;
 
  #pragma pack(push, 1)
@@ -238,10 +246,10 @@ static bmp_image_t load_bmp_image(const io_t* io, const char* file_name)
         u32 blue_index = 0;
         u32 alpha_index = 0;
     
-        bool red_found = _BitScanForward(&red_index, red_mask);
-        bool green_found = _BitScanForward(&green_index, green_mask);
-        bool blue_found = _BitScanForward(&blue_index, blue_mask);
-        bool alpha_found = _BitScanForward(&alpha_index, alpha_mask);
+        bool red_found = _BitScanForward((unsigned long*)&red_index, red_mask);
+        bool green_found = _BitScanForward((unsigned long*)&green_index, green_mask);
+        bool blue_found = _BitScanForward((unsigned long*)&blue_index, blue_mask);
+        bool alpha_found = _BitScanForward((unsigned long*)&alpha_index, alpha_mask);
     
         assert(red_found   && "[BMP] Invalid red channel mask.");
         assert(green_found && "[BMP] Invalid green channel mask.");
@@ -628,6 +636,73 @@ static void init_shape(const graphics_t* graphics, shape_info_t* shape_info)
     shape_info->morph_direction = 1.0f;
 }
 
+// NOTE: [-180, 180] -> [0, 360)
+static inline u32 x_index_from_lon(f32 lon)
+{
+    f32 u = (lon + 180.0f) / 360.0f;
+    u32 x = (u32)floorf(u * 360.0f);
+    x = clamp_u32(0, x, CELL_X_COUNT - 1);
+
+    return x;
+}
+
+// NOTE: [-90, 90] -> [0, 180)
+static inline u32 y_index_from_lat(f32 lat)
+{
+    f32 v = (lat + 90.0f) / 180.0f;
+    u32 y = (u32)floor(v * 180.0f);
+    y = clamp_u32(0, y, CELL_Y_COUNT - 1);
+
+    return y;
+}
+
+static inline u32 cell_index(u32 x, u32 y)
+{
+    u32 result = (y * CELL_X_COUNT + x) * CELL_SLOT_COUNT;
+
+    return result;
+}
+
+static inline void cell_insert(u8* cells, u8 country_id, u32 x, u32 y)
+{
+    u32 index = cell_index(x, y);
+
+    for (u32 i = 0; i < CELL_SLOT_COUNT; ++i)
+    {
+        u8* id = cells + index + i;
+                    
+        if (*id == country_id + 1)
+        {
+            break;
+        }
+        else if (*id != 0)
+        {
+            continue;
+        }
+        else
+        {
+            *id = country_id + 1;
+            break;
+        }
+    }
+}
+
+static void insert_country_id(u8* cells, u8 country_id, f32 lon_min, f32 lon_max, f32 lat_min, f32 lat_max)
+{
+    u32 x_min = x_index_from_lon(lon_min);
+    u32 x_max = x_index_from_lon(lon_max);
+    u32 y_min = y_index_from_lat(lat_min);
+    u32 y_max = y_index_from_lat(lat_max);
+
+    for (u32 y = y_min; y < y_max; ++y)
+    {
+        for (u32 x = x_min; x < x_max; ++x)
+        {
+            cell_insert(cells, country_id, x, y);
+        }
+    }
+}
+
 init_function(init)
 {
     memory_t* memory = platform->memory;
@@ -784,11 +859,43 @@ init_function(init)
 
     init_sphere(graphics, &game->sphere_info);
     init_shape(graphics, &game->shape_info);
+
+    game->cells = calloc(1, CELL_X_COUNT * CELL_Y_COUNT * CELL_SLOT_COUNT);
+
+    for (u8 country_id = 0; country_id < array_count(global_shape_min_maxs); ++country_id)
+    {
+        vec2 lon_min_max = global_shape_min_maxs[country_id][0];
+        vec2 lat_min_max = global_shape_min_maxs[country_id][1];
+        insert_country_id(game->cells, country_id, lon_min_max.x, lon_min_max.y, lat_min_max.x, lat_min_max.y);
+    }
 }
 
 update_function(update)
 {
+    memory_t* memory = platform->memory;
+    input_t* input = platform->input;
+    game_t* game = (game_t*)memory->permanent;
+    vec2 normalized_mouse = v2(input->mouse_position.x / platform->width,
+                               input->mouse_position.y / platform->height);
+    // NOTE: Map mouse to lon(-180, 180), lat(-90, 90).
+    f32 lon = (2.0f * normalized_mouse.x - 1.0f) * 180.0f;
+    f32 lat = (2.0f * normalized_mouse.y - 1.0f) * -90.0f;
+    u32 y = y_index_from_lat(lat);
+    u32 x = x_index_from_lon(lon);
+    u32 index = cell_index(x, y);
+    u8 cell_id = 0;
 
+    for (u32 i = 0; i < CELL_SLOT_COUNT; ++i)
+    {
+        if (game->cells[index + i] != 0)
+        {
+            cell_id = game->cells[index + i] - 1;
+            break;
+        }
+    }
+    
+    fprintf(stderr, "\rx: %f, y: %f, lon: %f, lat: %f, country: %s", input->mouse_position.x, input->mouse_position.y,
+            lon, lat, global_shape_country_names[cell_id]);
 }
 
 render_function(render)
@@ -880,37 +987,6 @@ render_function(render)
     graphics->end_pass();
 
     shape_param->color = v4(0.04f, 0.04f, 0.04f, 1.0f);
-
-    u32 offset = 0;
-    u32 index = 124;
-    for (u32 i = 0; i < array_count(global_shape_index_counts); ++i)
-    {
-        if (i == index)
-        {
-            break;
-        }
-
-        offset += global_shape_index_counts[i];
-    }
-
-    // graphics->begin_pass(game->offscreen_target, &(graphics_pass_desc_t){ .clear_color = false });
-    // {
-    //     graphics->update_buffer(game->transform_buffer, &game->transform_param, 0, sizeof(game->transform_param));
-    //     graphics->set_buffer(game->transform_buffer, STAGE_VERTEX_SHADER, 0, 0, 0);
-    //     graphics->set_buffer(game->shape_info.vertex_buffer, STAGE_VERTEX_SHADER, 0, sizeof(vec3), 0);
-    //     graphics->set_buffer(game->shape_info.index_buffer, STAGE_VERTEX_SHADER, 0, 0, 0);
-    //     graphics->set_program(game->shape_info.program);
-    //     graphics->set_pipeline(game->d_test_write_pipeline);
-
-    //     shape_param->center_enable = true;
-    //     shape_param->center = global_shape_centers[index];
-    //     shape_param->depth_nudge = 0.1f;
-
-    //     graphics->update_buffer(game->shape_info.param_buffer, shape_param, 0, sizeof(shape_param_t));
-    //     graphics->set_buffer(game->shape_info.param_buffer, STAGE_VERTEX_SHADER, 1, 0, 0);
-    //     graphics->draw_indexed(TOPOLOGY_LINE_LIST, global_shape_index_counts[index], offset, 0);
-    // }
-    // graphics->end_pass();
     
     graphics->begin_pass(game->offscreen_target, &(graphics_pass_desc_t){ .clear_color = false });
     {
@@ -926,16 +1002,13 @@ render_function(render)
         {
             u32 index_count = global_shape_index_counts[i];
 
-            if (i != index)
-            {
-                shape_param->center_enable = false;
-                shape_param->center = (vec2){ 0 };
-                shape_param->depth_nudge = 0.0f;
-
-                graphics->update_buffer(game->shape_info.param_buffer, shape_param, 0, sizeof(shape_param_t));
-                graphics->set_buffer(game->shape_info.param_buffer, STAGE_VERTEX_SHADER, 1, 0, 0);
-                graphics->draw_indexed(TOPOLOGY_LINE_LIST, index_count, offset, 0);
-            }
+            shape_param->center_enable = false;
+            shape_param->center = (vec2){ 0 };
+            shape_param->depth_nudge = 0.0f;
+            
+            graphics->update_buffer(game->shape_info.param_buffer, shape_param, 0, sizeof(shape_param_t));
+            graphics->set_buffer(game->shape_info.param_buffer, STAGE_VERTEX_SHADER, 1, 0, 0);
+            graphics->draw_indexed(TOPOLOGY_LINE_LIST, index_count, offset, 0);
 
             offset += index_count;
         }

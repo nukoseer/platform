@@ -153,6 +153,22 @@ static inline f32 clamp(f32 min, f32 v, f32 max)
     return result;
 }
 
+static inline u32 clamp_u32(u32 min, u32 v, u32 max)
+{
+    u32 result = v;
+
+    if (result < min)
+    {
+        result = min;
+    }
+    else if (result > max)
+    {
+        result = max;
+    }
+
+    return result;
+}
+
 // NOTE: Vector initialization.
 
 static inline vec2 v2(f32 x, f32 y)

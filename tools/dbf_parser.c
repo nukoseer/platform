@@ -50,8 +50,6 @@ static void parse_dbf_file(const u8* dbf_file_buffer)
     dbf_header_t* dbf_header = (dbf_header_t*)dbf_file_buffer;
     const u8* dbf_buffer = dbf_file_buffer + sizeof(dbf_header_t);
 
-    printf("Version: %0X\n", dbf_header->version);
-
     dbf_column_t dbf_columns[256] = { 0 };
     u32 dbf_column_count = 0;
 
@@ -100,6 +98,8 @@ static void parse_dbf_file(const u8* dbf_file_buffer)
 
     const u8* dbf_records = dbf_file_buffer + dbf_header->header_size;
     const dbf_column_t* dbf_name_column = dbf_columns + name_index;
+
+    printf("static char* global_shape_country_names[] = \n{\n");
     
     for (u32 record_index = 0; record_index < dbf_header->record_count; dbf_records += dbf_header->record_size, ++record_index)
     {
@@ -116,8 +116,9 @@ static void parse_dbf_file(const u8* dbf_file_buffer)
         // NOTE: We don't need +1 because our data do not use deletion flag as mentioned above.
         memcpy(name_buffer, dbf_record + /* + 1 + */ dbf_name_column->offset, dbf_name_column->length);
         name_buffer[dbf_name_column->length] = 0;
-        printf("%s\n", name_buffer);
+        printf("\"%s\", ", name_buffer);
     }
+    printf("\n};\n");
 }
 
 int main(int argc, char* argv[])
