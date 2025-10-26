@@ -170,10 +170,14 @@ typedef struct game_t
     graphics_program_t post_program;
     post_setting_t post_setting;
 
-    // graphics_2d_font_t font;
-    // graphics_2d_font_color_t font_color;
+#if FONT_ENABLE
+    graphics_2d_font_t font;
+    graphics_2d_font_color_t font_color;
+#endif
 
     u8* cells;
+    u8 country_index;
+    u8 country_found;
 } game_t;
 
  #pragma pack(push, 1)
@@ -663,31 +667,31 @@ static inline u32 cell_index(u32 x, u32 y)
     return result;
 }
 
-static inline void cell_insert(u8* cells, u8 country_id, u32 x, u32 y)
+static inline void cell_insert(u8* cells, u8 country_index, u32 x, u32 y)
 {
     u32 index = cell_index(x, y);
 
-    for (u32 i = 0; i < CELL_SLOT_COUNT; ++i)
+    for (u32 slot_index = 0; slot_index < CELL_SLOT_COUNT; ++slot_index)
     {
-        u8* id = cells + index + i;
-                    
-        if (*id == country_id + 1)
+        u8* country_id = cells + index + slot_index;
+
+        if (*country_id == country_index + 1)
         {
             break;
         }
-        else if (*id != 0)
+        else if (*country_id != 0)
         {
             continue;
         }
         else
         {
-            *id = country_id + 1;
+            *country_id = country_index + 1;
             break;
         }
     }
 }
 
-static void insert_country_id(u8* cells, u8 country_id, f32 lon_min, f32 lon_max, f32 lat_min, f32 lat_max)
+static void cell_insert_country(u8* cells, u8 country_index, f32 lon_min, f32 lon_max, f32 lat_min, f32 lat_max)
 {
     u32 x_min = x_index_from_lon(lon_min);
     u32 x_max = x_index_from_lon(lon_max);
@@ -698,8 +702,79 @@ static void insert_country_id(u8* cells, u8 country_id, f32 lon_min, f32 lon_max
     {
         for (u32 x = x_min; x < x_max; ++x)
         {
-            cell_insert(cells, country_id, x, y);
+            cell_insert(cells, country_index, x, y);
         }
+    }
+}
+
+static bool inside_country(const vec3* points, u32 point_count, f32 lon, f32 lat)
+{
+    bool inside = false;
+
+    for (u32 i = 0, j = point_count - 1; i < point_count; j = i++)
+    {
+        f32 xi = points[i].x;
+        f32 yi = points[i].y;
+        f32 xj = points[j].x;
+        f32 yj = points[j].y;
+
+        bool hit = ((yi > lat) != (yj > lat)) && (lon < (xj - xi) * (lat - yi) / (yj - yi) + xi);
+
+        inside ^= hit;
+    }
+
+    return inside;
+}
+
+static u8 cell_get_country_id(const u8* cells, f32 lon, f32 lat)
+{
+    u32 result = 0;
+    u32 x = x_index_from_lon(lon);
+    u32 y = y_index_from_lat(lat);
+    u32 index = cell_index(x, y);
+    
+    for (u32 slot_index = 0; slot_index < CELL_SLOT_COUNT; ++slot_index)
+    {
+        u32 country_id = cells[index + slot_index];
+        
+        if (country_id != 0)
+        {
+            u32 country_index = country_id - 1;
+            u16 part_offset = global_shape_part_offset_counts[country_index][0];
+            u16 part_count = global_shape_part_offset_counts[country_index][1];
+
+            for (u32 part_index = 0; part_index < part_count; ++part_index)
+            {
+                u32 start = global_shape_parts[part_offset + part_index][0];
+                u32 end = global_shape_parts[part_offset + part_index][1];
+
+                if (inside_country(global_shape_points + start, end - start, lon, lat))
+                {
+                    result = country_id;
+                    break;
+                }       
+            }
+        }
+        else
+        {
+            break;
+        }
+    }
+
+    return result;
+}
+
+static void cell_get_country(game_t* game, const u8* cells, f32 lon, f32 lat)
+{
+    u32 country_id = cell_get_country_id(cells, lon, lat);
+
+    game->country_found = false;
+    game->country_index = 0;
+    
+    if (country_id)
+    {
+        game->country_found = true;
+        game->country_index = country_id - 1;
     }
 }
 
@@ -851,22 +926,85 @@ init_function(init)
         .attribute_count = 0,
     });
 
-    // game->font = graphics->create_font("Consolas", 24);
-    // // game->font_color = graphics->create_font_color(0.8313f, 0.0f, 0.4705f, 1.0f);
-    // game->font_color = graphics->create_font_color(0.38f, 0.38f, 0.38f, 1.0f);
+#if FONT_ENABLE
+    game->font = graphics->create_font("Consolas", 24);
+    // game->font_color = graphics->create_font_color(0.8313f, 0.0f, 0.4705f, 1.0f);
+    game->font_color = graphics->create_font_color(0.38f, 0.38f, 0.38f, 1.0f);
+#endif
 
     io->release_file_memory(io->read_file("..\\src\\game.c").data);
 
     init_sphere(graphics, &game->sphere_info);
     init_shape(graphics, &game->shape_info);
 
+    u32 total_part_count = global_shape_part_offset_counts[array_count(global_shape_part_offset_counts) - 1][0] + 1;
+    f32* part_outlines = calloc(1, total_part_count * sizeof(f32) * 4);
+    u32 part_outline_count = 0;
+
+    for (u8 country_index = 0; country_index < array_count(global_shape_part_offset_counts); ++country_index)
+    {
+        u32 part_offset = global_shape_part_offset_counts[country_index][0];
+        u32 part_count = global_shape_part_offset_counts[country_index][1];
+
+        for (u32 part_index = 0; part_index < part_count; ++part_index)
+        {
+            u32 start = global_shape_parts[part_offset + part_index][0];
+            u32 end = global_shape_parts[part_offset + part_index][1];
+
+            f32 lon_min = 1000.0f;
+            f32 lon_max = -1000.0f;
+            f32 lat_min = 1000.0f;
+            f32 lat_max = -1000.0f;
+
+            for (u32 k = start; k < end; ++k)
+            {
+                vec3 point = global_shape_points[k];
+
+                if (point.x < lon_min)
+                {
+                    lon_min = point.x;
+                }
+
+                if (point.y < lat_min)
+                {
+                    lat_min = point.y;
+                }
+
+                if (point.x > lon_max)
+                {
+                    lon_max = point.x;
+                }
+
+                if (point.y > lat_max)
+                {
+                    lat_max = point.y;
+                }
+            }
+
+            part_outlines[part_outline_count + 0] = lon_min;
+            part_outlines[part_outline_count + 1] = lon_max;
+            part_outlines[part_outline_count + 2] = lat_min;
+            part_outlines[part_outline_count + 3] = lat_max;
+            part_outline_count += 4;
+        }
+    }
+
+    assert(total_part_count * 4 == part_outline_count);
+
     game->cells = calloc(1, CELL_X_COUNT * CELL_Y_COUNT * CELL_SLOT_COUNT);
 
-    for (u8 country_id = 0; country_id < array_count(global_shape_min_maxs); ++country_id)
+    for (u8 country_index = 0; country_index < array_count(global_shape_part_offset_counts); ++country_index)
     {
-        vec2 lon_min_max = global_shape_min_maxs[country_id][0];
-        vec2 lat_min_max = global_shape_min_maxs[country_id][1];
-        insert_country_id(game->cells, country_id, lon_min_max.x, lon_min_max.y, lat_min_max.x, lat_min_max.y);
+        for (u32 part_index = 0; part_index < global_shape_part_offset_counts[country_index][1]; ++part_index)
+        {
+            f32 lon_min = part_outlines[0];
+            f32 lon_max = part_outlines[1];
+            f32 lat_min = part_outlines[2];
+            f32 lat_max = part_outlines[3];
+            part_outlines += 4;
+            
+            cell_insert_country(game->cells, country_index, lon_min, lon_max, lat_min, lat_max);
+        }
     }
 }
 
@@ -875,27 +1013,18 @@ update_function(update)
     memory_t* memory = platform->memory;
     input_t* input = platform->input;
     game_t* game = (game_t*)memory->permanent;
+
     vec2 normalized_mouse = v2(input->mouse_position.x / platform->width,
                                input->mouse_position.y / platform->height);
     // NOTE: Map mouse to lon(-180, 180), lat(-90, 90).
     f32 lon = (2.0f * normalized_mouse.x - 1.0f) * 180.0f;
     f32 lat = (2.0f * normalized_mouse.y - 1.0f) * -90.0f;
-    u32 y = y_index_from_lat(lat);
-    u32 x = x_index_from_lon(lon);
-    u32 index = cell_index(x, y);
-    u8 cell_id = 0;
 
-    for (u32 i = 0; i < CELL_SLOT_COUNT; ++i)
-    {
-        if (game->cells[index + i] != 0)
-        {
-            cell_id = game->cells[index + i] - 1;
-            break;
-        }
-    }
+    cell_get_country(game, game->cells, lon, lat);
     
-    fprintf(stderr, "\rx: %f, y: %f, lon: %f, lat: %f, country: %s", input->mouse_position.x, input->mouse_position.y,
-            lon, lat, global_shape_country_names[cell_id]);
+    fprintf(stderr, "\rx: %f, y: %f, lon: %f, lat: %f, country: %s, id: %u",
+            input->mouse_position.x, input->mouse_position.y,
+            lon, lat, global_shape_country_names[game->country_index], game->country_index);
 }
 
 render_function(render)
@@ -986,8 +1115,6 @@ render_function(render)
     }
     graphics->end_pass();
 
-    shape_param->color = v4(0.04f, 0.04f, 0.04f, 1.0f);
-    
     graphics->begin_pass(game->offscreen_target, &(graphics_pass_desc_t){ .clear_color = false });
     {
         graphics->update_buffer(game->transform_buffer, &game->transform_param, 0, sizeof(game->transform_param));
@@ -997,21 +1124,36 @@ render_function(render)
         graphics->set_program(game->shape_info.program);
         graphics->set_pipeline(game->d_test_pipeline);
 
-        u32 offset = 0;
-        for (u32 i = 0; i < array_count(global_shape_index_counts); ++i)
+        u32 candidate_offset = 0;
+        u32 candidate_index_count = 0;
+
+        for (u32 country_index = 0; country_index < array_count(global_shape_offset_index_counts); ++country_index)
         {
-            u32 index_count = global_shape_index_counts[i];
+            u32 index_offset = global_shape_offset_index_counts[country_index][0];
+            u32 index_count = global_shape_offset_index_counts[country_index][1];
 
             shape_param->center_enable = false;
             shape_param->center = (vec2){ 0 };
             shape_param->depth_nudge = 0.0f;
-            
-            graphics->update_buffer(game->shape_info.param_buffer, shape_param, 0, sizeof(shape_param_t));
-            graphics->set_buffer(game->shape_info.param_buffer, STAGE_VERTEX_SHADER, 1, 0, 0);
-            graphics->draw_indexed(TOPOLOGY_LINE_LIST, index_count, offset, 0);
+            shape_param->color = v4(0.04f, 0.04f, 0.04f, 1.0f);
 
-            offset += index_count;
+            if (game->country_found && country_index == game->country_index)
+            {
+                candidate_offset = index_offset;
+                candidate_index_count = index_count;
+            }
+            else
+            {
+                graphics->update_buffer(game->shape_info.param_buffer, shape_param, 0, sizeof(shape_param_t));
+                graphics->set_buffer(game->shape_info.param_buffer, STAGE_VERTEX_SHADER, 1, 0, 0);
+                graphics->draw_indexed(TOPOLOGY_LINE_LIST, index_count, index_offset, 0);
+            }
         }
+
+        shape_param->color = v4(0.0f, 0.5f, 0.0f, 1.0f);
+        graphics->update_buffer(game->shape_info.param_buffer, shape_param, 0, sizeof(shape_param_t));
+        graphics->set_buffer(game->shape_info.param_buffer, STAGE_VERTEX_SHADER, 1, 0, 0);
+        graphics->draw_indexed(TOPOLOGY_LINE_LIST, candidate_index_count, candidate_offset, 0);
     }
     graphics->end_pass();
 
@@ -1102,19 +1244,28 @@ render_function(render)
         graphics->draw(TOPOLOGY_TRIANGLE_LIST, 3, 0);
     }
     graphics->end_pass();
-    
-    // graphics->begin_draw();
-    // {
-    //     char frame_ms_text[32] = { 0 };
-    //     size_t frame_ms_length = 0;
 
-    //     if ((frame_ms_length = snprintf(frame_ms_text, sizeof(frame_ms_text), "%.2f ms", platform->delta_time * 1000)) > 0)
-    //     {
-    //         graphics->draw_text(game->font, game->font_color, TEXT_ALIGNMENT_TRAILING,
-    //                             0.0f - 8.0f, 0.0f + 8.0f, (f32)platform->width, (f32)platform->height,
-    //                             frame_ms_text, frame_ms_length);   
-    //     }
-        
-    // }
-    // graphics->end_draw();
+#if FONT_ENABLE
+    graphics->begin_draw();
+    {
+        char frame_ms_text[32] = { 0 };
+        size_t frame_ms_length = 0;
+
+        if ((frame_ms_length = snprintf(frame_ms_text, sizeof(frame_ms_text), "%.2f ms", platform->delta_time * 1000)) > 0)
+        {
+            graphics->draw_text(game->font, game->font_color, TEXT_ALIGNMENT_TRAILING,
+                                0.0f - 8.0f, 0.0f + 8.0f, (f32)platform->width, (f32)platform->height,
+                                frame_ms_text, frame_ms_length);   
+        }
+
+        if (game->country_found)
+        {
+            graphics->draw_text(game->font, game->font_color, TEXT_ALIGNMENT_LEADING,
+                                8.0f, 8.0f, (f32)platform->width, (f32)platform->height,
+                                global_shape_country_names[game->country_index],
+                                strlen(global_shape_country_names[game->country_index]));
+        }
+    }
+    graphics->end_draw();
+#endif
 }

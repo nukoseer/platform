@@ -330,35 +330,37 @@ static bool resize_back_buffer(window_t* window)
             ID3D11Device_CreateDepthStencilView(window->d3d11->device, (ID3D11Resource*)depth, 0, &window->d3d11->ds_view);
             ID3D11Texture2D_Release(depth);
 
-            // IDXGISurface* dxgi_surface = 0;
-            // result = ID3D11Texture2D_QueryInterface(back_buffer, &IID_IDXGISurface, (void**)&dxgi_surface);
-            // fatal_system(SUCCEEDED(result), "[DXGI] Failed to get surface.");
+#if FONT_ENABLE
+            IDXGISurface* dxgi_surface = 0;
+            result = ID3D11Texture2D_QueryInterface(back_buffer, &IID_IDXGISurface, (void**)&dxgi_surface);
+            fatal_system(SUCCEEDED(result), "[DXGI] Failed to get surface.");
             
-            // D2D1_RENDER_TARGET_PROPERTIES d2d_render_target_props = 
-            // {
-            //     .type = D2D1_RENDER_TARGET_TYPE_DEFAULT,
-            //     .pixelFormat =
-            //     {
-            //         .format = DXGI_FORMAT_UNKNOWN,
-            //         .alphaMode = D2D1_ALPHA_MODE_IGNORE,
-            //     },
-            //     .dpiX = 0,
-            //     .dpiY = 0,
-            //     .usage = D2D1_RENDER_TARGET_USAGE_NONE,
-            //     .minLevel = D2D1_FEATURE_LEVEL_DEFAULT,
-            // };
-            // result = ID2D1Factory_CreateDxgiSurfaceRenderTarget(window->d2d1->factory,
-            //                                                     dxgi_surface,
-            //                                                     &d2d_render_target_props,
-            //                                                     &window->d2d1->render_target);
-            // fatal_system(SUCCEEDED(result), "[D2D1] Failed to create render target.");
+            D2D1_RENDER_TARGET_PROPERTIES d2d_render_target_props = 
+            {
+                .type = D2D1_RENDER_TARGET_TYPE_DEFAULT,
+                .pixelFormat =
+                {
+                    .format = DXGI_FORMAT_UNKNOWN,
+                    .alphaMode = D2D1_ALPHA_MODE_IGNORE,
+                },
+                .dpiX = 0,
+                .dpiY = 0,
+                .usage = D2D1_RENDER_TARGET_USAGE_NONE,
+                .minLevel = D2D1_FEATURE_LEVEL_DEFAULT,
+            };
+            result = ID2D1Factory_CreateDxgiSurfaceRenderTarget(window->d2d1->factory,
+                                                                dxgi_surface,
+                                                                &d2d_render_target_props,
+                                                                &window->d2d1->render_target);
+            fatal_system(SUCCEEDED(result), "[D2D1] Failed to create render target.");
 
-            // // NOTE: This looks like it works but I am not sure we really do anti-aliasing?
-            // ID2D1RenderTarget_SetTextAntialiasMode(window->d2d1->render_target, D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);
-            // D2D1_TEXT_ANTIALIAS_MODE text_antialias_mode = ID2D1RenderTarget_GetTextAntialiasMode(window->d2d1->render_target);
-            // fatal(text_antialias_mode == D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE, "[D2D1] Failed to set text anti-alias mode.");
+            // NOTE: This looks like it works but I am not sure we really do anti-aliasing?
+            ID2D1RenderTarget_SetTextAntialiasMode(window->d2d1->render_target, D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);
+            D2D1_TEXT_ANTIALIAS_MODE text_antialias_mode = ID2D1RenderTarget_GetTextAntialiasMode(window->d2d1->render_target);
+            fatal(text_antialias_mode == D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE, "[D2D1] Failed to set text anti-alias mode.");
 
-            // IDXGISurface_Release(dxgi_surface);
+            IDXGISurface_Release(dxgi_surface);
+#endif
             ID3D11Texture2D_Release(back_buffer);
         }
 

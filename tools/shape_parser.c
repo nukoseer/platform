@@ -8,13 +8,13 @@
 #include "../src/utils.h"
 #include "../src/maths.h"
 
-#define PRINT_PARTS    1
-#define PRINT_INDICES  2
-#define PRINT_POINTS   4
-#define PRINT_VECTORS  8
-#define PRINT_CENTERS  16
-#define PRINT_INDEX_COUNTS  32
-#define PRINT_MIN_MAX       64
+#define PRINT_PARTS          1
+#define PRINT_PART_COUNTS    2
+#define PRINT_INDICES        4
+#define PRINT_POINTS         8
+#define PRINT_VECTORS        16
+#define PRINT_CENTERS        32
+#define PRINT_INDEX_COUNTS   64
 
 #pragma pack(push, 1)
 typedef struct shape_file_header_t
@@ -71,6 +71,7 @@ void parse_shape_file(uint8_t* shape_file_buffer, size_t shape_file_size, u32 pr
     uint8_t* initial_record_offset = shape_file_buffer + sizeof(shape_file_header_t);
     u32 offset = 0;
     u32 part_index = 0;
+    u32 part_offset = 0;
     
     while (offset < shape_file_size - sizeof(shape_file_header_t))
     {
@@ -79,20 +80,27 @@ void parse_shape_file(uint8_t* shape_file_buffer, size_t shape_file_size, u32 pr
         shape_content_t* shape_content = (shape_content_t*)(shape_content_ptr);
         u32 content_length_byte = swap_endianness(shape_record_header->content_length) * 2;
 
-        // NOTE: Polygon
+        // NOTE: Polygonn
         if (shape_content->shape_type == 5)
         {
             u8* part_ptr = shape_content_ptr + sizeof(shape_content_t);
             u32* parts = (u32*)part_ptr;
 
-            if ((print_format & PRINT_PARTS) || (print_format & PRINT_INDICES) || (print_format & PRINT_INDEX_COUNTS) || (print_format & PRINT_MIN_MAX))
+            if ((print_format & PRINT_PARTS) || (print_format & PRINT_PART_COUNTS) || (print_format & PRINT_INDICES) || (print_format & PRINT_INDEX_COUNTS))
             {
                 if (print_format & PRINT_PARTS)
                 {
                     for (u32 i = 0; i < shape_content->part_count; ++i)
                     {
-                        printf("%u, ", parts[i] + part_index);
+                        u32 start = parts[i] + part_index;
+                        u32 end = ((i + 1 < shape_content->part_count) ? parts[i + 1] : shape_content->point_count) + part_index;
+                        printf("{ %u, %u }, ", start, end);
                     }
+                }
+
+                if (print_format & PRINT_PART_COUNTS)
+                {
+                    printf("{ %u, %u }, ", part_offset, shape_content->part_count);
                 }
 
                 if (print_format & PRINT_INDICES)
@@ -101,7 +109,6 @@ void parse_shape_file(uint8_t* shape_file_buffer, size_t shape_file_size, u32 pr
                     {
                         u32 start = parts[i] + part_index;
                         u32 end = ((i + 1 < shape_content->part_count) ? parts[i + 1] : shape_content->point_count) + part_index;
-                        
                         for (u32 j = start; j + 1 < end; ++j)
                         {
                             printf("%u, %u, ", j, j + 1);
@@ -112,23 +119,10 @@ void parse_shape_file(uint8_t* shape_file_buffer, size_t shape_file_size, u32 pr
 
                 if (print_format & PRINT_INDEX_COUNTS)
                 {
-                    printf("%u, ", shape_content->point_count * 2);
+                    printf("{ %u, %u }, ", part_index * 2, shape_content->point_count * 2);
                 }
 
-                if (print_format & PRINT_MIN_MAX)
-                {
-                    printf("{ { %+3.12ff, %+3.12ff }, { %+3.12ff, %+3.12ff } }, ",
-                           shape_content->x_min,
-                           shape_content->x_max,
-                           shape_content->y_min,
-                           shape_content->y_max);
-                    // printf("{ { %+3.12ff, %+3.12ff }, { %+3.12ff, %+3.12ff } }, ",
-                    //        DEG2RAD * shape_content->x_min,
-                    //        DEG2RAD * shape_content->x_max,
-                    //        DEG2RAD * shape_content->y_min,
-                    //        DEG2RAD * shape_content->y_max);
-                }
-                
+                part_offset += shape_content->part_count;
                 part_index += shape_content->point_count;
             }
             
@@ -272,6 +266,19 @@ int main(int argc, char* argv[])
         return 1;
     }
 
+    if (print_format & PRINT_PARTS)
+    {
+        fseek(shape_file, 0, SEEK_SET);
+        printf("static u32 global_shape_parts[][2] =\n{\n");
+        parse_shape_file(shape_file_buffer, shape_file_size, PRINT_PARTS);
+        printf("\n};\n\n");
+
+        fseek(shape_file, 0, SEEK_SET);
+        printf("static u16 global_shape_part_offset_counts[][2] =\n{\n");
+        parse_shape_file(shape_file_buffer, shape_file_size, PRINT_PART_COUNTS);
+        printf("\n};\n\n");
+    }
+    
     if (print_format & PRINT_INDICES)
     {
         fseek(shape_file, 0, SEEK_SET);
@@ -280,13 +287,14 @@ int main(int argc, char* argv[])
         printf("\n};\n\n");
 
         fseek(shape_file, 0, SEEK_SET);
-        printf("static u16 global_shape_index_counts[] =\n{\n");
+        printf("static u32 global_shape_offset_index_counts[][2] =\n{\n");
         parse_shape_file(shape_file_buffer, shape_file_size, PRINT_INDEX_COUNTS);
         printf("\n};\n\n");
     }
 
     if (print_format & PRINT_VECTORS)
     {
+        fseek(shape_file, 0, SEEK_SET);
         printf("static vec3 global_shape_vectors[] =\n{\n");
         parse_shape_file(shape_file_buffer, shape_file_size, PRINT_VECTORS);
         printf("\n};\n\n");
@@ -294,16 +302,14 @@ int main(int argc, char* argv[])
 
     if (print_format & PRINT_POINTS)
     {
+        fseek(shape_file, 0, SEEK_SET);
         printf("static vec3 global_shape_points[] =\n{\n");
         parse_shape_file(shape_file_buffer, shape_file_size, PRINT_POINTS);
         printf("\n};\n\n");
 
+        fseek(shape_file, 0, SEEK_SET);
         printf("static vec2 global_shape_centers[] =\n{\n");
         parse_shape_file(shape_file_buffer, shape_file_size, PRINT_CENTERS);
-        printf("\n};\n\n");
-
-        printf("static vec2 global_shape_min_maxs[][2] =\n{\n");
-        parse_shape_file(shape_file_buffer, shape_file_size, PRINT_MIN_MAX);
         printf("\n};\n\n");
     }
 

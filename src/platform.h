@@ -2,6 +2,8 @@
 
 #include "maths.h"
 
+#define FONT_ENABLE 1
+
 typedef enum key_modifier_t
 {
     KEY_MODIFIER_CTRL = (1 << 0),

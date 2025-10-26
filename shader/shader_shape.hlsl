@@ -30,15 +30,6 @@ cbuffer global_globe_param : register(b1)
     float4 color;
 };
 
-float ease_in_out_circ(float t)
-{
-    float result = t < 0.5 ?
-        (1.0 - sqrt(1.0 - pow(2.0 * t, 2.0))) * 0.5 :
-        (sqrt(1.0 - pow(-2.0 * t + 2.0, 2.0)) + 1.0) * 0.5;
-
-    return result;
-}
-
 float ease_in_out_back(float t)
 {
     const float c1 = 1.70158;
