@@ -105,6 +105,7 @@ static LRESULT CALLBACK window_proc(HWND hwnd, UINT message, WPARAM wparam, LPAR
         case WM_SYSKEYUP:
         case WM_KEYDOWN:
         case WM_KEYUP:
+        case WM_MOUSEWHEEL:
         case WM_DESTROY:
         case WM_CLOSE:
         {
@@ -378,6 +379,7 @@ static bool process_thread_messages(window_t* window, input_t* input)
 {
     bool quit = false;
     MSG message = { 0 };
+    f32 mouse_z = 0.0f;
 
     // NOTE: These messages come from PostThreadMessage in window_proc.
     while (PeekMessage(&message, NULL, 0, 0, PM_REMOVE))
@@ -395,6 +397,11 @@ static bool process_thread_messages(window_t* window, input_t* input)
                 PostQuitMessage(0);
             } break;
 
+            case WM_MOUSEWHEEL:
+            {
+                mouse_z = (f32)GET_WHEEL_DELTA_WPARAM(message.wParam) / (f32)WHEEL_DELTA;
+            } break;
+            
             case WM_SYSKEYDOWN:
             case WM_SYSKEYUP:
             case WM_KEYDOWN:
@@ -466,7 +473,7 @@ static bool process_thread_messages(window_t* window, input_t* input)
     POINT mouse_point = { 0 };
     GetCursorPos(&mouse_point);
     ScreenToClient(window->hwnd, &mouse_point);
-    input->mouse_position = v3((f32)mouse_point.x, (f32)mouse_point.y, 0.0f);
+    input->mouse_position = v3((f32)mouse_point.x, (f32)mouse_point.y, mouse_z);
         
     return quit;
 }

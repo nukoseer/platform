@@ -136,7 +136,6 @@ typedef union mat4x4
     vec4 columns[4];
 } mat4x4;
 
-
 static inline f32 clamp(f32 min, f32 v, f32 max)
 {
     f32 result = v;
@@ -165,6 +164,13 @@ static inline u32 clamp_u32(u32 min, u32 v, u32 max)
     {
         result = max;
     }
+
+    return result;
+}
+
+static inline f32 lerp(f32 a, f32 t, f32 b)
+{
+    f32 result = a * (1.0f - t) + b * t;
 
     return result;
 }
