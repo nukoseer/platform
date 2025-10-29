@@ -72,7 +72,6 @@ PS_INPUT vs(VS_INPUT input)
     float4 clip_space = mul(projection_matrix, view_space);
 
     output.position = clip_space;
-    output.color = float4(0.1, 0.1, 0.1, 1.0);
     output.color = color;
 
     return output;

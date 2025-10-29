@@ -20,7 +20,8 @@ cbuffer global_params : register(b0)
 
 cbuffer global_sphere_params : register(b1)
 {
-    float4 color_;
+    float3 _pad0;
+    float alpha;
 };
 
 // cbuffer global_water_params : register(b2)
@@ -58,7 +59,7 @@ PS_INPUT vs(VS_INPUT input)
     float lon = -radians(input.position.x);
     float lat = radians(input.position.y);
 
-    float t = ease_in_out_circ(smoothstep(0.0, 1.0, color_.a));
+    float t = ease_in_out_circ(smoothstep(0.0, 1.0, alpha));
 
     float4 position = float4(cos(lat) * cos(lon) * t, sin(lat) * t, cos(lat) * sin(lon) * t, 1.0);
     
@@ -128,7 +129,7 @@ float4 ps(PS_INPUT input) : SV_TARGET
     // NOTE: Apply dithering to avoid banding.
     float3 dithered_color = saturate(color) + dither8x8(input.position.xy);
 
-    return float4(saturate(dithered_color), smoothstep(0.0, 1.0, color_.a));
+    return float4(saturate(dithered_color), smoothstep(0.0, 1.0, alpha));
 
     // return float4(saturate(dot(n, v) * 0.5 + 0.5).xxx, 1.0);
     // return float4(0.5 * (normalize(input.normal_world) + 1.0), 1.0);

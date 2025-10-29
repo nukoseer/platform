@@ -40,8 +40,8 @@ float4 ps(PS_INPUT input) : SV_TARGET
     float4 blur = global_glow.Sample(global_linear_sampler, uv);
     float3 core_a = global_glow_mask.Sample(global_point_sampler, uv).a;
 
-    float3 halo_only = blur.rgb * (1.0 - core_a);
-    color = color + halo_only * glow_intensity;
+    // float3 halo_only = blur.rgb * (1.0 - core_a);
+    color = color + blur.rgb * glow_intensity;
 
     if (vignette > 0.0)
     {

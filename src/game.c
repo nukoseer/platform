@@ -6,15 +6,11 @@
 #include "platform.h"
 #include "maths.h"
 
-#include "../shader/vertex_shader.h"
-#include "../shader/pixel_shader.h"
 #include "../shader/glow_mask_pixel_shader.h"
 #include "../shader/blur_vertex_shader.h"
 #include "../shader/blur_pixel_shader.h"
 #include "../shader/post_vertex_shader.h"
 #include "../shader/post_pixel_shader.h"
-
-#include "../shader/vertex_shader_3d.h"
 
 #include "../shader/vertex_shader_shape.h"
 #include "../shader/pixel_shader_shape.h"
@@ -30,12 +26,6 @@
 #define CELL_Y_COUNT    180
 #define CELL_SLOT_COUNT 10
 
-typedef struct vertex3d_t
-{
-    vec3 position;
-    vec3 color;
-} vertex3d_t;
-
 typedef struct transform_param_t
 {
     mat4x4 world;
@@ -46,7 +36,8 @@ typedef struct transform_param_t
 
 typedef struct sphere_param_t
 {
-    vec4 color;
+    vec3 _pad0;
+    f32 alpha;
 } sphere_param_t;
 
 typedef struct sphere_info_t
@@ -86,9 +77,6 @@ typedef struct shape_info_t
     graphics_program_t program;
 
     shape_param_t param;
-    f32 shape_value;
-    f32 morph_speed;
-    f32 morph_direction;
 } shape_info_t;
 
 typedef struct post_setting_t
@@ -120,9 +108,14 @@ typedef struct glow_blur_setting_t
 typedef struct camera_t
 {
     vec3 position;
-    vec3 rotation;
-    // TODO: Is scale necessary?
-    vec3 scale;
+    vec3 target;
+    vec3 up;
+
+    f32 fov_y; // NOTE: Radians.
+    f32 aspect_ratio;
+
+    mat4x4 view;
+    mat4x4 projection;
 } camera_t;
 
 typedef struct game_t
@@ -156,7 +149,6 @@ typedef struct game_t
     graphics_target_t glow_b_target;
     graphics_shader_t glow_pixel_shader;
     graphics_program_t glow_program;
-    graphics_program_t glow_program_3d;
 
     glow_blur_setting_t glow_blur_setting;
     graphics_buffer_t blur_buffer;
@@ -178,6 +170,11 @@ typedef struct game_t
     u8* cells;
     u8 country_index;
     u8 country_found;
+
+    // NOTE: 1.0f is globe map, 0.0f flat map.
+    f32 shape_value;
+    f32 shape_speed;
+    f32 shape_direction;
 } game_t;
 
  #pragma pack(push, 1)
@@ -608,7 +605,7 @@ static void init_shape(const graphics_t* graphics, shape_info_t* shape_info)
         .size = array_count(global_sphere_indices),
         .usage = USAGE_DYNAMIC,
         .bind = BIND_INDEX_BUFFER,
-        .index_format = array_count(global_shape_indices) > 0xFFFF ? FORMAT_R32_UINT : FORMAT_R16_UINT,
+        .index_format = array_count(global_sphere_indices) > 0xFFFF ? FORMAT_R32_UINT : FORMAT_R16_UINT,
     });
 
     shape_info->vertex_shader = graphics->create_shader(&(graphics_shader_desc_t)
@@ -635,9 +632,6 @@ static void init_shape(const graphics_t* graphics, shape_info_t* shape_info)
         },
         .attribute_count = 1,
     });
-
-    shape_info->shape_value = 1.0f;
-    shape_info->morph_direction = 1.0f;
 }
 
 // NOTE: [-180, 180] -> [0, 360)
@@ -732,7 +726,7 @@ static u8 cell_get_country_id(const u8* cells, f32 lon, f32 lat)
     u32 x = x_index_from_lon(lon);
     u32 y = y_index_from_lat(lat);
     u32 index = cell_index(x, y);
-    
+
     for (u32 slot_index = 0; slot_index < CELL_SLOT_COUNT; ++slot_index)
     {
         u32 country_id = cells[index + slot_index];
@@ -778,6 +772,76 @@ static void cell_get_country(game_t* game, const u8* cells, f32 lon, f32 lat)
     }
 }
 
+typedef struct ray_t
+{
+    vec3 origin;
+    vec3 direction;
+} ray_t;
+
+static ray_t make_world_ray(f32 x, f32 y, f32 width, f32 height, f32 fov_y, vec3 camera_position, mat4x4 view_matrix)
+{
+    f32 normalized_x = 2.0f * (x / width) - 1.0f;
+    f32 normalized_y = 1.0f - 2.0f * (y / height);
+
+    f32 tan_y = tanf(fov_y * 0.5f * (f32)DEG2RAD);
+    f32 tan_x = tan_y * (width / height);
+    
+    vec3 direction_view = v3_normalize(v3(normalized_x * tan_x, normalized_y * tan_y, -1.0f));
+    vec3 direction_world = v3_normalize(
+        v3_add(v3_mulf(view_matrix.columns[0].xyz, direction_view.x),
+               v3_add(v3_mulf(view_matrix.columns[1].xyz, direction_view.y),
+                      v3_mulf(view_matrix.columns[2].xyz, direction_view.z))));
+
+    return (ray_t){ .origin = camera_position, .direction = direction_world };
+}
+
+static bool ray_unit_sphere(ray_t ray, f32* t_out)
+{
+    bool hit = false;
+    vec3 l = v3_sub(v3(0.0f, 0.0f, 0.0f), ray.origin);
+    f32 tca = v3_dot(l, ray.direction);
+
+    if (tca >= 0.0f)
+    {
+        f32 d_squared = v3_dot(l, l) - (tca * tca);
+
+        if (d_squared <= 1.0f)
+        {
+            f32 thc = sqrtf(1.0f * 1.0f - d_squared);
+            f32 t0 = tca - thc;
+            f32 t1 = tca + thc;
+            f32 t = (t0 > 0.0f) ? t0 : ((t1 > 0.0f) ? t1 : -1.0f);
+            
+            if (t >= 0.0f)
+            {
+                *t_out = t0;
+                hit = true;
+            }
+        }
+    }
+
+    return hit;
+}
+
+static inline void init_camera(camera_t* camera, vec3 position, vec3 target, f32 fov_y, f32 aspect_ratio)
+{
+    *camera = (camera_t)
+    {
+        .position = position,
+        .target = target,
+        .up = v3(0.0f, 1.0f, 0.0f), // NOTE: Reference up.
+            
+        .fov_y = fov_y,
+        .aspect_ratio = aspect_ratio,
+    };
+}
+
+static inline void update_camera(camera_t* camera)
+{
+    camera->view = view_matrix(camera->up, camera->position, camera->target);
+    camera->projection = perspective_projection_fov_y(camera->fov_y, camera->aspect_ratio, 0.0001f, 100.0f);
+}
+
 init_function(init)
 {
     memory_t* memory = platform->memory;
@@ -785,13 +849,15 @@ init_function(init)
     io_t* io = platform->io;
     game_t* game = (game_t*)memory->permanent;
 
-    game->camera.position = v3(0.0f, 0.0f, 2.5f);
-    game->transform_param.world = m4x4d(1.0f);
-    game->transform_param.view = view_matrix(v3(0.0f, 1.0f, 0.0f), game->camera.position, v3(0.0f, 0.0f, 0.0f));
-    // game->transform_param.projection = projection_matrix(-1.0f, +1.0f, -1.0f, +1.0f, 0.1f, 100.0f);
-    game->transform_param.projection = perspective_projection_fov_y(60.0f, (f32)platform->width / (f32)platform->height, 0.1f, 100.0f);
+    init_camera(&game->camera, v3(0.0f, 0.0f, 2.5f), v3(0.0f, 0.0f, 0.0f),
+                60.0f, (f32)platform->width / (f32)platform->height);
+    init_sphere(graphics, &game->sphere_info);
+    init_shape(graphics, &game->shape_info);
 
-    game->default_pipeline = graphics->create_pipeline(&(graphics_pipeline_desc_t){ 0 });
+    game->shape_value = 1.0f;
+    game->shape_direction = 1.0f;
+
+    game->default_pipeline = graphics->create_pipeline(&(graphics_pipeline_desc_t){ .alpha_blend_enable = true, });
 
     game->d_test_write_pipeline = graphics->create_pipeline(&(graphics_pipeline_desc_t)
     {
@@ -832,13 +898,6 @@ init_function(init)
         .bind = BIND_CONSTANT_BUFFER,
     });
 
-    game->vertex_shader_3d = graphics->create_shader(&(graphics_shader_desc_t)
-    {
-        .bytecode = vshader_3d,
-        .bytecode_size = sizeof(vshader_3d),
-        .stage = STAGE_VERTEX_SHADER,
-    });
-
     game->glow_buffer = graphics->create_buffer(&(graphics_buffer_desc_t)
     {
         .size = 16,
@@ -853,16 +912,15 @@ init_function(init)
         .stage = STAGE_PIXEL_SHADER,
     });
 
-    game->glow_program_3d = graphics->create_program(&(graphics_program_desc_t)
+    game->glow_program = graphics->create_program(&(graphics_program_desc_t)
     {
-        .vertex_shader = game->vertex_shader_3d,
+        .vertex_shader = game->shape_info.vertex_shader,
         .pixel_shader = game->glow_pixel_shader,
         .attributes = (graphics_vertex_attribute_t[])
         {
-            { "POSITION", FORMAT_R32G32B32_FLOAT, offsetof(vertex3d_t, position), 0, 0, 0, 0 },
-            { "COLOR",    FORMAT_R32G32B32_FLOAT, offsetof(vertex3d_t, color),    0, 0, 0, 0 },
+            { "POSITION", FORMAT_R32G32B32_FLOAT, 0, 0, 0, 0, 0 },
         },
-        .attribute_count = 2,
+        .attribute_count = 1,
     });
 
     game->blur_buffer = graphics->create_buffer(&(graphics_buffer_desc_t)
@@ -934,9 +992,6 @@ init_function(init)
 
     io->release_file_memory(io->read_file("..\\src\\game.c").data);
 
-    init_sphere(graphics, &game->sphere_info);
-    init_shape(graphics, &game->shape_info);
-
     u32 total_part_count = global_shape_part_offset_counts[array_count(global_shape_part_offset_counts) - 1][0] + 1;
     f32* part_outlines = calloc(1, total_part_count * sizeof(f32) * 4);
     u32 part_outline_count = 0;
@@ -992,20 +1047,53 @@ init_function(init)
     assert(total_part_count * 4 == part_outline_count);
 
     game->cells = calloc(1, CELL_X_COUNT * CELL_Y_COUNT * CELL_SLOT_COUNT);
+    f32* outlines = part_outlines;
 
     for (u8 country_index = 0; country_index < array_count(global_shape_part_offset_counts); ++country_index)
     {
         for (u32 part_index = 0; part_index < global_shape_part_offset_counts[country_index][1]; ++part_index)
         {
-            f32 lon_min = part_outlines[0];
-            f32 lon_max = part_outlines[1];
-            f32 lat_min = part_outlines[2];
-            f32 lat_max = part_outlines[3];
-            part_outlines += 4;
+            f32 lon_min = outlines[0];
+            f32 lon_max = outlines[1];
+            f32 lat_min = outlines[2];
+            f32 lat_max = outlines[3];
+            outlines += 4;
             
             cell_insert_country(game->cells, country_index, lon_min, lon_max, lat_min, lat_max);
         }
     }
+
+    free(part_outlines);
+}
+
+static vec2 xy_to_lon_lat(f32 x, f32 y, f32 width, f32 height)
+{
+    vec2 result = { 0 };
+    vec2 normalized_position = v2(x / width, y / height);
+    // NOTE: Map to lon(-180, 180), lat(-90, 90).
+    result.x = (2.0f * normalized_position.x - 1.0f) * 180.0f;
+    result.y = (1.0f - 2.0f * normalized_position.y) * 90.0f;
+
+    return result;
+}
+
+static vec2 ray_to_lon_lat(ray_t ray)
+{
+    vec2 result = { 0 };
+    f32 t = 0.0f;
+
+    if (ray_unit_sphere(ray, &t))
+    {
+        vec3 position = v3_add(ray.origin, v3_mulf(ray.direction, t));
+
+        f32 lon = atan2f(position.z, position.x);
+        f32 lat = asinf(position.y);
+
+        result.x = (-lon + (f32)PI * 0.5f) * (180.0f / (f32)PI);
+        result.y = lat * (180.0f / (f32)PI);
+    }
+
+    return result;
 }
 
 update_function(update)
@@ -1013,25 +1101,49 @@ update_function(update)
     memory_t* memory = platform->memory;
     input_t* input = platform->input;
     game_t* game = (game_t*)memory->permanent;
+    camera_t* camera = &game->camera;
 
-    vec2 normalized_mouse = v2(input->mouse_position.x / platform->width,
-                               input->mouse_position.y / platform->height);
-    // NOTE: Map mouse to lon(-180, 180), lat(-90, 90).
-    f32 lon = (2.0f * normalized_mouse.x - 1.0f) * 180.0f;
-    f32 lat = (2.0f * normalized_mouse.y - 1.0f) * -90.0f;
+    if (input->mouse_position.z != 0.0f)
+    {
+        camera->position.z += 3.0f * platform->delta_time * -input->mouse_position.z;
+    }
 
-    cell_get_country(game, game->cells, lon, lat);
+    update_camera(camera);
+
+    vec2 xy_lon_lat = xy_to_lon_lat(input->mouse_position.x, input->mouse_position.y,
+                                    (f32)platform->width, (f32)platform->height);
     
-    fprintf(stderr, "\rx: %f, y: %f, lon: %f, lat: %f, country: %s, id: %u",
-            input->mouse_position.x, input->mouse_position.y,
-            lon, lat, global_shape_country_names[game->country_index], game->country_index);
-}
+    ray_t mouse_ray = make_world_ray(input->mouse_position.x, input->mouse_position.y,
+                                     (f32)platform->width, (f32)platform->height, camera->fov_y,
+                                     camera->position, camera->view);
+    
+    vec2 ray_lon_lat = ray_to_lon_lat(mouse_ray);
+
+    game->shape_direction = (platform->input->keys[KEY_T].action == KEY_ACTION_RELEASE ?
+                             -game->shape_direction : game->shape_direction);
+    game->shape_speed = 1.0f * platform->delta_time * game->shape_direction;
+    game->shape_value = clamp(0.0f, game->shape_value + game->shape_speed, 1.0f);
+
+    if (game->shape_value == 0.0f || game->shape_value == 1.0f)
+    {
+        f32 lon = lerp(xy_lon_lat.x, game->shape_value, ray_lon_lat.x);
+        f32 lat = lerp(xy_lon_lat.y, game->shape_value, ray_lon_lat.y);
+
+        cell_get_country(game, game->cells, lon, lat);
+
+        fprintf(stderr, "\rx: %f, y: %f, lon: %f, lat: %f, country: %s, id: %u",
+                input->mouse_position.x, input->mouse_position.y,
+                lon, lat,
+                global_shape_country_names[game->country_index], game->country_index);
+    }
+ }
 
 render_function(render)
 {
     memory_t* memory = platform->memory;
     graphics_t* graphics = platform->graphics;
     game_t* game = (game_t*)memory->permanent;
+    camera_t* camera = &game->camera;
 
     resize_offscreen_buffer(platform, game);
 
@@ -1039,30 +1151,21 @@ render_function(render)
     f32 omega_radians_per_sec = 10.0f;
     earth_angle += omega_radians_per_sec * platform->delta_time;
     mat4x4 rotation_y = rotate_y(earth_angle);
-    (void)rotation_y;
 
-    f32 fov_y = 60.0f;
-    f32 half_height = game->camera.position.z * tanf(fov_y * (f32)DEG2RAD * 0.5f);
-    f32 half_width = half_height * (f32)platform->width / (f32)platform->height;
-    f32 scale_x = half_width / (f32)PI;
-    f32 scale_y = half_height / (0.5f * (f32)PI);
-    
     game->transform_param.world = rotation_y;
     game->transform_param.world = m4x4d(1.0f);
-    game->transform_param.view = view_matrix(v3(0.0f, 1.0f, 0.0f), game->camera.position, v3(0.0f, 0.0f, 0.0f));
-    game->transform_param.projection = perspective_projection_fov_y(60.0f, platform->width / (f32)platform->height, 0.0001f, 100.0f);
-    game->transform_param.camera_world = v4v(game->camera.position, 0.0f);
+    game->transform_param.view = camera->view;
+    game->transform_param.projection = camera->projection;
+    game->transform_param.camera_world = v4v(camera->position, 0.0f);
 
-    sphere_info_t* sphere_info = &game->sphere_info;
-
-    sphere_info->param.color = v4(1.0f, 1.0f, 1.0f, game->shape_info.shape_value);
-    
     graphics->begin_pass(game->offscreen_target, &(graphics_pass_desc_t)
     {
         .clear_color = true, .clear_rgba = { 0.005f, 0.005f, 0.005f, 1.0f },
         .clear_depth = true, .clear_depth_value = 1.0f
     });
     {
+        sphere_info_t* sphere_info = &game->sphere_info;
+        sphere_info->param.alpha = game->shape_value;
         graphics->update_buffer(game->transform_buffer, &game->transform_param, 0, sizeof(game->transform_param));
         graphics->update_buffer(sphere_info->param_buffer, &sphere_info->param, 0, sizeof(sphere_info->param));
         graphics->set_buffer(game->transform_buffer, STAGE_VERTEX_SHADER, 0, 0, 0);
@@ -1082,22 +1185,23 @@ render_function(render)
     graphics->end_pass();
 
     shape_info_t* shape_info = &game->shape_info;
-    shape_info->morph_direction = (platform->input->keys[KEY_T].action == KEY_ACTION_RELEASE ?
-                                   -shape_info->morph_direction : shape_info->morph_direction);
-    shape_info->morph_speed = 1.0f * platform->delta_time * shape_info->morph_direction;
-    shape_info->shape_value = clamp(0.0f, shape_info->shape_value + shape_info->morph_speed, 1.0f);
-
     shape_param_t* shape_param = &shape_info->param;
-    shape_param->shape = shape_info->shape_value;
-    shape_param->scale = v2(scale_x, scale_y);
-    shape_param->color = v4(0.006f, 0.006f, 0.006f, 1.0f);
-
+    
     graphics->begin_pass(game->offscreen_target, &(graphics_pass_desc_t)
     {
         .clear_color = false,
         .clear_depth = false
     });
     {
+        f32 half_height = camera->position.z * tanf(camera->fov_y * (f32)DEG2RAD * 0.5f);
+        f32 half_width = half_height * camera->aspect_ratio;
+        f32 scale_x = half_width / (f32)PI;
+        f32 scale_y = half_height / (0.5f * (f32)PI);
+    
+        shape_param->shape = game->shape_value;
+        shape_param->scale = v2(scale_x, scale_y);
+        shape_param->color = v4(0.006f, 0.006f, 0.006f, 1.0f);
+
         graphics->update_buffer(game->transform_buffer, &game->transform_param, 0, sizeof(game->transform_param));
         graphics->update_buffer(shape_info->param_buffer, &shape_info->param, 0, sizeof(shape_info->param));
         graphics->set_buffer(game->transform_buffer, STAGE_VERTEX_SHADER, 0, 0, 0);
@@ -1150,26 +1254,30 @@ render_function(render)
             }
         }
 
-        shape_param->color = v4(0.0f, 0.5f, 0.0f, 1.0f);
+        shape_param->color = v4(0.2f, 0.2f, 0.2f, 1.0f);
         graphics->update_buffer(game->shape_info.param_buffer, shape_param, 0, sizeof(shape_param_t));
         graphics->set_buffer(game->shape_info.param_buffer, STAGE_VERTEX_SHADER, 1, 0, 0);
         graphics->draw_indexed(TOPOLOGY_LINE_LIST, candidate_index_count, candidate_offset, 0);
     }
     graphics->end_pass();
 
-    // graphics->begin_pass(game->glow_mask_target, &(graphics_pass_desc_t){ .clear_color = true, .clear_rgba = { 0.0f, 0.0f, 0.0f, 0.0f } });
-    // {
-    //     graphics->set_buffer(game->transform_buffer, STAGE_VERTEX_SHADER, 0, 0, 0);
-    //     graphics->set_buffer(game->shape_info.vertex_buffer, STAGE_VERTEX_SHADER, 0, sizeof(vec3), 0);
-    //     game->glow_mask_setting = (glow_mask_setting_t){ .glow_color = { 0.9964f, 0.8431f, 0.4941f, 0.0f } };
-    //     graphics->update_buffer(game->glow_buffer, &game->glow_mask_setting, 0, sizeof(game->glow_mask_setting));
-    //     graphics->set_buffer(game->glow_buffer, STAGE_PIXEL_SHADER, 0, 0, 0);
-    //     graphics->set_program(game->glow_program_3d);
-    //     graphics->set_pipeline(game->d_test_write_pipeline);
-    //     // graphics->draw(TOPOLOGY_LINE_LIST, array_count(global_shape_vectors), 0);
-    //     graphics->draw_indexed(TOPOLOGY_LINE_LIST, array_count(global_shape_indices), 0, 0);
-    // }
-    // graphics->end_pass();
+    graphics->begin_pass(game->glow_mask_target, &(graphics_pass_desc_t){ .clear_color = true, .clear_rgba = { 0.0f, 0.0f, 0.0f, 0.0f } });
+    {
+        graphics->update_buffer(game->transform_buffer, &game->transform_param, 0, sizeof(game->transform_param));
+        graphics->update_buffer(game->shape_info.param_buffer, shape_param, 0, sizeof(shape_param_t));
+        graphics->set_buffer(game->shape_info.vertex_buffer, STAGE_VERTEX_SHADER, 0, sizeof(vec3), 0);
+        graphics->set_buffer(game->shape_info.index_buffer, STAGE_VERTEX_SHADER, 0, 0, 0);
+        graphics->set_buffer(game->transform_buffer, STAGE_VERTEX_SHADER, 0, 0, 0);
+        graphics->set_buffer(game->shape_info.param_buffer, STAGE_VERTEX_SHADER, 1, 0, 0);
+        
+        game->glow_mask_setting = (glow_mask_setting_t){ .glow_color = { 0.9964f, 0.8431f, 0.4941f, 0.0f } };
+        graphics->update_buffer(game->glow_buffer, &game->glow_mask_setting, 0, sizeof(game->glow_mask_setting));
+        graphics->set_buffer(game->glow_buffer, STAGE_PIXEL_SHADER, 0, 0, 0);
+        graphics->set_program(game->glow_program);
+        graphics->set_pipeline(game->default_pipeline);
+        graphics->draw_indexed(TOPOLOGY_LINE_LIST, array_count(global_shape_indices), 0, 0);
+    }
+    graphics->end_pass();
     
     // NOTE: Horizontal blur. glow_mask -> glow_a.
     graphics->begin_pass(game->glow_a_target, &(graphics_pass_desc_t){ .clear_color = false });
