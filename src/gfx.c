@@ -1012,8 +1012,16 @@ static graphics_delete_target_function(gfx_delete_target)
 
 static graphics_set_buffer_function(gfx_set_buffer)
 {
-    usize buffer_index = (usize)buffer.platform;
+    u32 buffer_generation = get_generation(buffer.platform);
+    u32 buffer_index = get_index(buffer.platform);
     gfx_buffer_t* gfx_buffer = global_buffers + buffer_index;
+
+    if (buffer_generation != gfx_buffer->generation)
+    {
+        // TODO: Can we just silently skip?
+        assert(!"[GFX] Buffer generation does not match.");
+        return;
+    }
 
     switch (gfx_buffer->bind)
     {
@@ -1038,8 +1046,16 @@ static graphics_set_buffer_function(gfx_set_buffer)
 
 static graphics_set_vertex_buffer_function(gfx_set_vertex_buffer)
 {
-    usize buffer_index = (usize)buffer.platform;
+    u32 buffer_generation = get_generation(buffer.platform);
+    u32 buffer_index = get_index(buffer.platform);
     gfx_buffer_t* gfx_buffer = global_buffers + buffer_index;
+
+    if (buffer_generation != gfx_buffer->generation)
+    {
+        // TODO: Can we just silently skip?
+        assert(!"[GFX] Buffer generation does not match.");
+        return;
+    }
 
     assert((gfx_buffer->bind & D3D11_BIND_VERTEX_BUFFER) && "[GFX] Invalid vertex buffer.");
     
@@ -1048,8 +1064,16 @@ static graphics_set_vertex_buffer_function(gfx_set_vertex_buffer)
 
 static graphics_set_index_buffer_function(gfx_set_index_buffer)
 {
-    usize buffer_index = (usize)buffer.platform;
+    u32 buffer_generation = get_generation(buffer.platform);
+    u32 buffer_index = get_index(buffer.platform);
     gfx_buffer_t* gfx_buffer = global_buffers + buffer_index;
+
+    if (buffer_generation != gfx_buffer->generation)
+    {
+        // TODO: Can we just silently skip?
+        assert(!"[GFX] Buffer generation does not match.");
+        return;
+    }
 
     assert((gfx_buffer->bind & D3D11_BIND_INDEX_BUFFER) && "[GFX] Invalid index buffer.");
 
