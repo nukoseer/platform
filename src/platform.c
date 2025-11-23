@@ -534,6 +534,8 @@ static DWORD WINAPI main_thread(void* param)
         .delete_texture_2d = gfx_delete_texture_2d,
         .delete_target = gfx_delete_target,
         .set_buffer = gfx_set_buffer,
+        .set_vertex_buffer = gfx_set_vertex_buffer,
+        .set_index_buffer = gfx_set_index_buffer,
         .set_srvs = gfx_set_srvs,
         .set_samplers = gfx_set_samplers,
         .set_program = gfx_set_program,

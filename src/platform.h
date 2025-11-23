@@ -355,6 +355,12 @@ typedef graphics_delete_target_function(graphics_delete_target_f);
 #define graphics_set_buffer_function(name) void name(graphics_buffer_t buffer, graphics_stage_t stage, u32 slot, u32 stride, u32 offset)
 typedef graphics_set_buffer_function(graphics_set_buffer_f);
 
+#define graphics_set_vertex_buffer_function(name) void name(graphics_buffer_t buffer, u32 slot, u32 stride, u32 offset)
+typedef graphics_set_vertex_buffer_function(graphics_set_vertex_buffer_f);
+
+#define graphics_set_index_buffer_function(name) void name(graphics_buffer_t buffer, u32 offset)
+typedef graphics_set_index_buffer_function(graphics_set_index_buffer_f);
+
 #define graphics_set_program_function(name) void name(graphics_program_t program)
 typedef graphics_set_program_function(graphics_set_program_f);
 
@@ -446,6 +452,8 @@ typedef struct graphics_t
             graphics_delete_texture_2d_f* delete_texture_2d;
             graphics_delete_target_f* delete_target;
             graphics_set_buffer_f* set_buffer;
+            graphics_set_vertex_buffer_f* set_vertex_buffer;
+            graphics_set_index_buffer_f* set_index_buffer;
             graphics_set_srvs_f* set_srvs;
             graphics_set_samplers_f* set_samplers;
             graphics_set_program_f* set_program;

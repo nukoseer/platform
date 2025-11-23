@@ -1172,8 +1172,8 @@ render_function(render)
         graphics->set_buffer(game->transform_buffer, STAGE_PIXEL_SHADER, 0, 0, 0);
         graphics->set_buffer(sphere_info->param_buffer, STAGE_VERTEX_SHADER, 1, 0, 0);
         graphics->set_buffer(sphere_info->param_buffer, STAGE_PIXEL_SHADER, 1, 0, 0);
-        graphics->set_buffer(sphere_info->vertex_buffer, STAGE_VERTEX_SHADER, 0, sizeof(vec3), 0);
-        graphics->set_buffer(sphere_info->index_buffer, STAGE_VERTEX_SHADER, 0, 0, 0);
+        graphics->set_vertex_buffer(sphere_info->vertex_buffer, 0, sizeof(vec3), 0);
+        graphics->set_index_buffer(sphere_info->index_buffer, 0);
         graphics->set_program(sphere_info->program);
         graphics->set_pipeline(game->d_test_write_pipeline);
         // graphics_sampler_t samplers[] = { game->linear_wrap_sampler };
@@ -1207,8 +1207,8 @@ render_function(render)
         graphics->set_buffer(game->transform_buffer, STAGE_VERTEX_SHADER, 0, 0, 0);
         graphics->set_buffer(game->transform_buffer, STAGE_PIXEL_SHADER, 0, 0, 0);
         graphics->set_buffer(shape_info->param_buffer, STAGE_VERTEX_SHADER, 1, 0, 0);
-        graphics->set_buffer(shape_info->vertex_buffer_sphere, STAGE_VERTEX_SHADER, 0, sizeof(vec3), 0);
-        graphics->set_buffer(shape_info->index_buffer_sphere, STAGE_VERTEX_SHADER, 0, 0, 0);
+        graphics->set_vertex_buffer(shape_info->vertex_buffer_sphere, 0, sizeof(vec3), 0);
+        graphics->set_index_buffer(shape_info->index_buffer_sphere, 0);
         graphics->set_program(shape_info->program);
         graphics->set_pipeline(game->d_test_pipeline);
         // graphics_sampler_t samplers[] = { game->linear_wrap_sampler };
@@ -1223,8 +1223,8 @@ render_function(render)
     {
         graphics->update_buffer(game->transform_buffer, &game->transform_param, 0, sizeof(game->transform_param));
         graphics->set_buffer(game->transform_buffer, STAGE_VERTEX_SHADER, 0, 0, 0);
-        graphics->set_buffer(game->shape_info.vertex_buffer, STAGE_VERTEX_SHADER, 0, sizeof(vec3), 0);
-        graphics->set_buffer(game->shape_info.index_buffer, STAGE_VERTEX_SHADER, 0, 0, 0);
+        graphics->set_vertex_buffer(game->shape_info.vertex_buffer, 0, sizeof(vec3), 0);
+        graphics->set_index_buffer(game->shape_info.index_buffer, 0);
         graphics->set_program(game->shape_info.program);
         graphics->set_pipeline(game->d_test_pipeline);
 
@@ -1265,8 +1265,8 @@ render_function(render)
     {
         graphics->update_buffer(game->transform_buffer, &game->transform_param, 0, sizeof(game->transform_param));
         graphics->update_buffer(game->shape_info.param_buffer, shape_param, 0, sizeof(shape_param_t));
-        graphics->set_buffer(game->shape_info.vertex_buffer, STAGE_VERTEX_SHADER, 0, sizeof(vec3), 0);
-        graphics->set_buffer(game->shape_info.index_buffer, STAGE_VERTEX_SHADER, 0, 0, 0);
+        graphics->set_vertex_buffer(game->shape_info.vertex_buffer, 0, sizeof(vec3), 0);
+        graphics->set_index_buffer(game->shape_info.index_buffer, 0);
         graphics->set_buffer(game->transform_buffer, STAGE_VERTEX_SHADER, 0, 0, 0);
         graphics->set_buffer(game->shape_info.param_buffer, STAGE_VERTEX_SHADER, 1, 0, 0);
         

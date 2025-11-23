@@ -1017,16 +1017,6 @@ static graphics_set_buffer_function(gfx_set_buffer)
 
     switch (gfx_buffer->bind)
     {
-        case D3D11_BIND_VERTEX_BUFFER:
-        {
-            ID3D11DeviceContext_IASetVertexBuffers(global_d3d11.context, slot, 1, &gfx_buffer->buffer, &stride, &offset);
-        } break;
-
-        case D3D11_BIND_INDEX_BUFFER:
-        {
-            ID3D11DeviceContext_IASetIndexBuffer(global_d3d11.context, gfx_buffer->buffer, map_dxgi_ib_format(gfx_buffer->index_format), offset);
-        } break;
-
         case D3D11_BIND_CONSTANT_BUFFER:
         {
             if (stage == STAGE_VERTEX_SHADER)
@@ -1044,6 +1034,26 @@ static graphics_set_buffer_function(gfx_set_buffer)
             assert(!"[GFX] Failed to set buffer.");
         } break;
     }
+}
+
+static graphics_set_vertex_buffer_function(gfx_set_vertex_buffer)
+{
+    usize buffer_index = (usize)buffer.platform;
+    gfx_buffer_t* gfx_buffer = global_buffers + buffer_index;
+
+    assert((gfx_buffer->bind & D3D11_BIND_VERTEX_BUFFER) && "[GFX] Invalid vertex buffer.");
+    
+    ID3D11DeviceContext_IASetVertexBuffers(global_d3d11.context, slot, 1, &gfx_buffer->buffer, &stride, &offset);
+}
+
+static graphics_set_index_buffer_function(gfx_set_index_buffer)
+{
+    usize buffer_index = (usize)buffer.platform;
+    gfx_buffer_t* gfx_buffer = global_buffers + buffer_index;
+
+    assert((gfx_buffer->bind & D3D11_BIND_INDEX_BUFFER) && "[GFX] Invalid index buffer.");
+
+    ID3D11DeviceContext_IASetIndexBuffer(global_d3d11.context, gfx_buffer->buffer, map_dxgi_ib_format(gfx_buffer->index_format), offset);
 }
 
 static graphics_set_program_function(gfx_set_program)
