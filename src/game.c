@@ -169,7 +169,6 @@ typedef struct game_t
 
     u8* cells;
     u8 country_index;
-    u8 country_found;
 
     // NOTE: 1.0f is globe map, 0.0f flat map.
     f32 shape_value;
@@ -758,18 +757,17 @@ static u8 cell_get_country_id(const u8* cells, f32 lon, f32 lat)
     return result;
 }
 
-static void cell_get_country(game_t* game, const u8* cells, f32 lon, f32 lat)
+static u8 cell_get_country(const u8* cells, f32 lon, f32 lat)
 {
-    u32 country_id = cell_get_country_id(cells, lon, lat);
-
-    game->country_found = false;
-    game->country_index = 0;
+    u8 country_id = cell_get_country_id(cells, lon, lat);
+    u8 country_index = 0xFF;
     
     if (country_id)
     {
-        game->country_found = true;
-        game->country_index = country_id - 1;
+        country_index = country_id - 1;
     }
+
+    return country_index;
 }
 
 typedef struct ray_t
@@ -1129,14 +1127,17 @@ update_function(update)
         f32 lon = lerp(xy_lon_lat.x, game->shape_value, ray_lon_lat.x);
         f32 lat = lerp(xy_lon_lat.y, game->shape_value, ray_lon_lat.y);
 
-        cell_get_country(game, game->cells, lon, lat);
+        game->country_index = cell_get_country(game->cells, lon, lat);
 
-        fprintf(stderr, "\rx: %f, y: %f, lon: %f, lat: %f, country: %s, id: %u",
-                input->mouse_position.x, input->mouse_position.y,
-                lon, lat,
-                global_shape_country_names[game->country_index], game->country_index);
+        if (game->country_index != 0xFF && game->country_index < array_count(global_shape_country_names))
+        {
+            fprintf(stderr, "\rx: %f, y: %f, lon: %f, lat: %f, country: %s, id: %u",
+                    input->mouse_position.x, input->mouse_position.y,
+                    lon, lat,
+                    global_shape_country_names[game->country_index], game->country_index);   
+        }
     }
- }
+}
 
 render_function(render)
 {
@@ -1228,36 +1229,24 @@ render_function(render)
         graphics->set_program(game->shape_info.program);
         graphics->set_pipeline(game->d_test_pipeline);
 
-        u32 candidate_offset = 0;
-        u32 candidate_index_count = 0;
+        shape_param->center_enable = false;
+        shape_param->center = (vec2){ 0 };
+        shape_param->depth_nudge = 0.0f;
+        shape_param->color = v4(0.04f, 0.04f, 0.04f, 1.0f);
 
-        for (u32 country_index = 0; country_index < array_count(global_shape_offset_index_counts); ++country_index)
-        {
-            u32 index_offset = global_shape_offset_index_counts[country_index][0];
-            u32 index_count = global_shape_offset_index_counts[country_index][1];
-
-            shape_param->center_enable = false;
-            shape_param->center = (vec2){ 0 };
-            shape_param->depth_nudge = 0.0f;
-            shape_param->color = v4(0.04f, 0.04f, 0.04f, 1.0f);
-
-            if (game->country_found && country_index == game->country_index)
-            {
-                candidate_offset = index_offset;
-                candidate_index_count = index_count;
-            }
-            else
-            {
-                graphics->update_buffer(game->shape_info.param_buffer, shape_param, 0, sizeof(shape_param_t));
-                graphics->set_buffer(game->shape_info.param_buffer, STAGE_VERTEX_SHADER, 1, 0, 0);
-                graphics->draw_indexed(TOPOLOGY_LINE_LIST, index_count, index_offset, 0);
-            }
-        }
-
-        shape_param->color = v4(0.2f, 0.2f, 0.2f, 1.0f);
         graphics->update_buffer(game->shape_info.param_buffer, shape_param, 0, sizeof(shape_param_t));
         graphics->set_buffer(game->shape_info.param_buffer, STAGE_VERTEX_SHADER, 1, 0, 0);
-        graphics->draw_indexed(TOPOLOGY_LINE_LIST, candidate_index_count, candidate_offset, 0);
+        graphics->draw_indexed(TOPOLOGY_LINE_LIST, array_count(global_shape_indices), 0, 0);
+ 
+        if (game->country_index != 0xFF)
+        {
+            shape_param->color = v4(0.2f, 0.2f, 0.2f, 0.7f);
+            graphics->update_buffer(game->shape_info.param_buffer, shape_param, 0, sizeof(shape_param_t));
+            graphics->set_buffer(game->shape_info.param_buffer, STAGE_VERTEX_SHADER, 1, 0, 0);
+            graphics->draw_indexed(TOPOLOGY_LINE_LIST,
+                                   global_shape_offset_index_counts[game->country_index][1],
+                                   global_shape_offset_index_counts[game->country_index][0], 0);   
+        }
     }
     graphics->end_pass();
 
@@ -1366,7 +1355,7 @@ render_function(render)
                                 frame_ms_text, frame_ms_length);   
         }
 
-        if (game->country_found)
+        if (game->country_index != 0xFF)
         {
             graphics->draw_text(game->font, game->font_color, TEXT_ALIGNMENT_LEADING,
                                 8.0f, 8.0f, (f32)platform->width, (f32)platform->height,
