@@ -93,6 +93,14 @@ typedef enum D2D1_DRAW_TEXT_OPTIONS
     D2D1_DRAW_TEXT_OPTIONS_FORCE_DWORD = 0xffffffff
 } D2D1_DRAW_TEXT_OPTIONS;
 
+typedef enum D2D1_ANTIALIAS_MODE
+{
+    
+    D2D1_ANTIALIAS_MODE_PER_PRIMITIVE = 0,
+    D2D1_ANTIALIAS_MODE_ALIASED = 1,
+    D2D1_ANTIALIAS_MODE_FORCE_DWORD = 0xffffffff
+} D2D1_ANTIALIAS_MODE;
+
 typedef enum D2D1_TEXT_ANTIALIAS_MODE
 {
     D2D1_TEXT_ANTIALIAS_MODE_DEFAULT = 0,
@@ -221,6 +229,16 @@ static inline void ID2D1RenderTarget_DrawTextLayout(ID2D1RenderTarget* self,
                                                     D2D1_DRAW_TEXT_OPTIONS options)
 {
     ((void (WINAPI*)(ID2D1RenderTarget*, D2D1_POINT_2F, IDWriteTextLayout*, ID2D1Brush*, D2D1_DRAW_TEXT_OPTIONS))self->vtbl->table[28])(self, origin, textLayout, defaultFillBrush, options);
+}
+
+static inline void ID2D1RenderTarget_SetAntialiasMode(ID2D1RenderTarget* self, D2D1_ANTIALIAS_MODE antialiasMode)
+{
+    ((void (WINAPI*)(ID2D1RenderTarget*, D2D1_ANTIALIAS_MODE))self->vtbl->table[32])(self, antialiasMode);
+}
+
+static inline D2D1_ANTIALIAS_MODE ID2D1RenderTarget_GetAntialiasMode(ID2D1RenderTarget* self)
+{
+    return ((D2D1_ANTIALIAS_MODE (WINAPI*)(ID2D1RenderTarget*))self->vtbl->table[33])(self);
 }
 
 static inline void ID2D1RenderTarget_SetTextAntialiasMode(ID2D1RenderTarget* self, D2D1_TEXT_ANTIALIAS_MODE textAntialiasMode)

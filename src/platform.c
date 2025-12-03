@@ -356,9 +356,13 @@ static bool resize_back_buffer(window_t* window)
             fatal_system(SUCCEEDED(result), "[D2D1] Failed to create render target.");
 
             // NOTE: This looks like it works but I am not sure we really do anti-aliasing?
-            ID2D1RenderTarget_SetTextAntialiasMode(window->d2d1->render_target, D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);
+            ID2D1RenderTarget_SetAntialiasMode(window->d2d1->render_target, D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+            D2D1_ANTIALIAS_MODE antialias_mode = ID2D1RenderTarget_GetAntialiasMode(window->d2d1->render_target);
+            fatal(antialias_mode == D2D1_ANTIALIAS_MODE_PER_PRIMITIVE, "[D2D1] Failed to set anti-alias mode.");
+            
+            ID2D1RenderTarget_SetTextAntialiasMode(window->d2d1->render_target, D2D1_TEXT_ANTIALIAS_MODE_CLEARTYPE);
             D2D1_TEXT_ANTIALIAS_MODE text_antialias_mode = ID2D1RenderTarget_GetTextAntialiasMode(window->d2d1->render_target);
-            fatal(text_antialias_mode == D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE, "[D2D1] Failed to set text anti-alias mode.");
+            fatal(text_antialias_mode == D2D1_TEXT_ANTIALIAS_MODE_CLEARTYPE, "[D2D1] Failed to set text anti-alias mode.");
 
             IDXGISurface_Release(dxgi_surface);
 #endif
