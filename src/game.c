@@ -700,6 +700,9 @@ static void cell_insert_country(u8* cells, u8 country_index, f32 lon_min, f32 lo
     }
 }
 
+// static float earth_angle = 180.0f;
+static float earth_angle = 0.0f;
+
 static bool inside_country(const vec3* points, u32 point_count, f32 lon, f32 lat)
 {
     bool inside = false;
@@ -983,9 +986,10 @@ init_function(init)
     });
 
 #if FONT_ENABLE
-    game->font = graphics->create_font("Consolas", 24);
+    game->font = graphics->create_font("Consolas", 12);
     // game->font_color = graphics->create_font_color(0.8313f, 0.0f, 0.4705f, 1.0f);
-    game->font_color = graphics->create_font_color(0.38f, 0.38f, 0.38f, 1.0f);
+    // game->font_color = graphics->create_font_color(0.38f, 0.38f, 0.38f, 1.0f);
+    game->font_color = graphics->create_font_color(0.6862f, 0.6862f, 0.6862f, 1.0f);
 #endif
 
     io->release_file_memory(io->read_file("..\\src\\game.c").data);
@@ -1108,6 +1112,11 @@ update_function(update)
 
     update_camera(camera);
 
+    if (earth_angle >= 180.0f)
+    {
+        earth_angle -= 360.0f;
+    }
+
     vec2 xy_lon_lat = xy_to_lon_lat(input->mouse_position.x, input->mouse_position.y,
                                     (f32)platform->width, (f32)platform->height);
     
@@ -1124,17 +1133,20 @@ update_function(update)
 
     if (game->shape_value == 0.0f || game->shape_value == 1.0f)
     {
-        f32 lon = lerp(xy_lon_lat.x, game->shape_value, ray_lon_lat.x);
+        f32 lon = lerp(xy_lon_lat.x, game->shape_value, ray_lon_lat.x) - earth_angle;
         f32 lat = lerp(xy_lon_lat.y, game->shape_value, ray_lon_lat.y);
 
         game->country_index = cell_get_country(game->cells, lon, lat);
 
-        if (game->country_index != 0xFF && game->country_index < array_count(global_shape_country_names))
+        // if (game->country_index != 0xFF && game->country_index < array_count(global_shape_country_names))
         {
-            fprintf(stderr, "\rx: %f, y: %f, lon: %f, lat: %f, country: %s, id: %u",
+            // fprintf(stderr, "\rx: %f, y: %f, lon: %f, lat: %f, country: %s, id: %u",
+            //         input->mouse_position.x, input->mouse_position.y,
+            //         lon, lat,
+            //         global_shape_country_names[game->country_index], game->country_index);
+            fprintf(stderr, "\rx: %f, y: %f, lon: %f, lat: %f, earth_angle: %f",
                     input->mouse_position.x, input->mouse_position.y,
-                    lon, lat,
-                    global_shape_country_names[game->country_index], game->country_index);   
+                    lon, lat, -earth_angle);
         }
     }
 }
@@ -1148,13 +1160,12 @@ render_function(render)
 
     resize_offscreen_buffer(platform, game);
 
-    static float earth_angle = 0.0f;
     f32 omega_radians_per_sec = 10.0f;
-    earth_angle += omega_radians_per_sec * platform->delta_time;
+    // earth_angle += omega_radians_per_sec * platform->delta_time;
     mat4x4 rotation_y = rotate_y(earth_angle);
 
     game->transform_param.world = rotation_y;
-    game->transform_param.world = m4x4d(1.0f);
+    // game->transform_param.world = m4x4d(1.0f);
     game->transform_param.view = camera->view;
     game->transform_param.projection = camera->projection;
     game->transform_param.camera_world = v4v(camera->position, 0.0f);
