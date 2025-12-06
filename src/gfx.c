@@ -1294,3 +1294,15 @@ static graphics_draw_indexed_function(gfx_draw_indexed)
     ID3D11DeviceContext_IASetPrimitiveTopology(global_d3d11.context, map_primitive_topology(topology));
     ID3D11DeviceContext_DrawIndexed(global_d3d11.context, index_count, start_index, base_vertex);
 }
+
+static graphics_draw_instanced_function(gfx_draw_instanced)
+{
+    ID3D11DeviceContext_IASetPrimitiveTopology(global_d3d11.context, map_primitive_topology(topology));
+    ID3D11DeviceContext_DrawInstanced(global_d3d11.context, vertex_count, instance_count, start_vertex, start_instance);
+}
+
+static graphics_draw_indexed_instanced_function(gfx_draw_indexed_instanced)
+{
+    ID3D11DeviceContext_IASetPrimitiveTopology(global_d3d11.context, map_primitive_topology(topology));
+    ID3D11DeviceContext_DrawIndexedInstanced(global_d3d11.context, index_count, instance_count, start_index, base_vertex, start_instance);
+}

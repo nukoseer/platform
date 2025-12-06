@@ -140,12 +140,12 @@ void parse_shape_file(uint8_t* shape_file_buffer, size_t shape_file_size, u32 pr
                     f32 lon = (f32)points[i].x;
                     f32 lat = (f32)points[i].y;
 
-                    f32 lon_rad = -lon * (f32)DEG2RAD;
+                    f32 lon_rad = lon * (f32)DEG2RAD;
                     f32 lat_rad = lat * (f32)DEG2RAD;
 
-                    f32 x = cosf(lat_rad) * cosf(lon_rad) /* radius */;
+                    f32 x = cosf(lat_rad) * sinf(lon_rad) /* radius */;
                     f32 y = sinf(lat_rad) /* radius */;
-                    f32 z = cosf(lat_rad) * sinf(lon_rad) /* radius */;
+                    f32 z = cosf(lat_rad) * cosf(lon_rad) /* radius */;
                     
                     if (print_format & PRINT_VECTORS)
                     {

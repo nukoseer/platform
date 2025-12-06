@@ -105,6 +105,8 @@ static LRESULT CALLBACK window_proc(HWND hwnd, UINT message, WPARAM wparam, LPAR
         case WM_SYSKEYUP:
         case WM_KEYDOWN:
         case WM_KEYUP:
+        case WM_LBUTTONDOWN:
+        case WM_LBUTTONUP:
         case WM_MOUSEWHEEL:
         case WM_DESTROY:
         case WM_CLOSE:
@@ -401,6 +403,18 @@ static bool process_thread_messages(window_t* window, input_t* input)
                 PostQuitMessage(0);
             } break;
 
+            case WM_LBUTTONDOWN:
+            {
+                SetCapture(window->hwnd);
+                input->keys[KEY_MOUSE_LEFT].action = (message.wParam & MK_LBUTTON) ? KEY_ACTION_PRESS : KEY_ACTION_NULL;
+            } break;
+
+            case WM_LBUTTONUP:
+            {
+                input->keys[KEY_MOUSE_LEFT].action = (message.wParam & MK_LBUTTON) ? KEY_ACTION_RELEASE : KEY_ACTION_NULL;
+                ReleaseCapture();
+            } break;
+            
             case WM_MOUSEWHEEL:
             {
                 mouse_z = (f32)GET_WHEEL_DELTA_WPARAM(message.wParam) / (f32)WHEEL_DELTA;
@@ -474,11 +488,25 @@ static bool process_thread_messages(window_t* window, input_t* input)
                         (shift_is_down * KEY_MODIFIER_SHIFT) |
                         (ctrl_is_down * KEY_MODIFIER_CTRL));
 
+    static POINT prev_mouse_point = { 0 };
     POINT mouse_point = { 0 };
     GetCursorPos(&mouse_point);
     ScreenToClient(window->hwnd, &mouse_point);
+
     input->mouse_position = v3((f32)mouse_point.x, (f32)mouse_point.y, mouse_z);
-        
+    input->mouse_delta = v2((f32)mouse_point.x - (f32)prev_mouse_point.x, (f32)mouse_point.y - prev_mouse_point.y);
+
+    if (input->mouse_position.x < 0.0f || input->mouse_position.x > (f32)window->width ||
+        input->mouse_position.y < 0.0f || input->mouse_position.y > (f32)window->height)
+    {
+        input->mouse_position.x = clamp(0.0f, input->mouse_position.x, (f32)window->width);
+        input->mouse_position.y = clamp(0.0f, input->mouse_position.y, (f32)window->height);
+        input->keys[KEY_MOUSE_LEFT] = (key_input_t){ 0 };
+        input->mouse_delta = (vec2){ 0 };
+    }
+
+    prev_mouse_point = mouse_point;
+    
     return quit;
 }
 
@@ -550,6 +578,8 @@ static DWORD WINAPI main_thread(void* param)
         .end_pass = gfx_end_pass,
         .draw = gfx_draw,
         .draw_indexed = gfx_draw_indexed,
+        .draw_instanced = gfx_draw_instanced,
+        .draw_indexed_instanced = gfx_draw_indexed_instanced,
 
         // NOTE: 2D functions for text rendering.
 

@@ -115,6 +115,7 @@ typedef struct input_t
     key_input_t keys[KEY_COUNT];
     key_modifier_t modifiers;
     vec3 mouse_position;
+    vec2 mouse_delta;
 } input_t;
 
 typedef struct memory_t
@@ -391,6 +392,12 @@ typedef graphics_draw_function(graphics_draw_f);
 #define graphics_draw_indexed_function(name) void name(graphics_topology_t topology, u32 index_count, u32 start_index, u32 base_vertex)
 typedef graphics_draw_indexed_function(graphics_draw_indexed_f);
 
+#define graphics_draw_instanced_function(name) void name(graphics_topology_t topology, u32 vertex_count, u32 instance_count, u32 start_vertex, u32 start_instance)
+typedef graphics_draw_instanced_function(graphics_draw_instanced_f);
+
+#define graphics_draw_indexed_instanced_function(name) void name(graphics_topology_t topology, u32 index_count, u32 instance_count, u32 start_index, u32 base_vertex, u32 start_instance)
+typedef graphics_draw_indexed_instanced_function(graphics_draw_indexed_instanced_f);
+
 
 // NOTE: 2D graphics functions for text drawing.
 
@@ -464,6 +471,8 @@ typedef struct graphics_t
             graphics_end_pass_f* end_pass;
             graphics_draw_f* draw;
             graphics_draw_indexed_f* draw_indexed;
+            graphics_draw_instanced_f* draw_instanced;
+            graphics_draw_indexed_instanced_f* draw_indexed_instanced;
         };
 
         // IMPORTANT: As far as I remember function pointers are not guaranteed
