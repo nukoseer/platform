@@ -371,8 +371,8 @@ static inline mat4x4 rotate_x(f32 angle)
         .columns =
         {
             [0] = v4(1.0f, 0.0f,       0.0f,      0.0f),
-            [1] = v4(0.0f, cosf(rad), -sinf(rad), 0.0f),
-            [2] = v4(0.0f, sinf(rad),  cosf(rad), 0.0f),
+            [1] = v4(0.0f, cosf(rad), sinf(rad), 0.0f),
+            [2] = v4(0.0f, -sinf(rad),  cosf(rad), 0.0f),
             [3] = v4(0.0f, 0.0f,       0.0f,      1.0f)
         },
     };
@@ -392,9 +392,9 @@ static inline mat4x4 rotate_y(f32 angle)
     {
         .columns =
         {
-            [0] = v4(cosf(rad), 0.0f, -sinf(rad), 0.0f),
+            [0] = v4(cosf(rad), 0.0f, sinf(rad), 0.0f),
             [1] = v4(0.0f,      1.0f,  0.0f,      0.0f),
-            [2] = v4(sinf(rad), 0.0f,  cosf(rad), 0.0f),
+            [2] = v4(-sinf(rad), 0.0f,  cosf(rad), 0.0f),
             [3] = v4(0.0f,      0.0f,  0.0f,      1.0f)
         },
     };
@@ -414,8 +414,8 @@ static inline mat4x4 rotate_z(f32 angle)
     {
         .columns =
         {
-            [0] = v4(cosf(rad),  -sinf(rad),  0.0f, 0.0f),
-            [1] = v4(sinf(rad),   cosf(rad),  0.0f, 0.0f),
+            [0] = v4(cosf(rad),  sinf(rad),  0.0f, 0.0f),
+            [1] = v4(-sinf(rad),   cosf(rad),  0.0f, 0.0f),
             [2] = v4(0.0f,        0.0f,       1.0f, 0.0f),
             [3] = v4(0.0f,        0.0f,       0.0f, 1.0f)
         },
@@ -1070,10 +1070,25 @@ static vec2 ray_to_lon_lat(ray_t ray)
 
     if (ray_unit_sphere(ray, &t))
     {
-        vec3 position = v3_add(ray.origin, v3_mulf(ray.direction, t));
+        vec3 hit_position = v3_normalize(v3_add(ray.origin, v3_mulf(ray.direction, t)));
 
+        // NOTE: Undo pitch angle.
+        f32 pitch_rad = -global_earth_pitch * (f32)DEG2RAD;
+        vec3 position = (vec3)
+        {
+            .x = hit_position.x,
+            .y = cosf(pitch_rad) * hit_position.y + sinf(pitch_rad) * hit_position.z,
+            .z = -sinf(pitch_rad) * hit_position.y + cosf(pitch_rad) * hit_position.z,
+        };
+        
         f32 lon = atan2f(position.x, position.z);
         f32 lat = asinf(position.y);
+
+        // NOTE: Undo yaw angle.
+        lon -= global_earth_yaw * (f32)DEG2RAD;
+        
+        while (lon > (f32)PI)  lon -= 2.0f * (f32)PI;
+        while (lon < (f32)-PI) lon += 2.0f * (f32)PI;
 
         result.x = lon / (f32)DEG2RAD;
         result.y = lat / (f32)DEG2RAD;
@@ -1099,12 +1114,7 @@ update_function(update)
     if (input->keys[KEY_MOUSE_LEFT].action == KEY_ACTION_PRESS)
     {
         global_earth_yaw += 3.0f * input->mouse_delta.x * platform->delta_time;
-        global_earth_pitch -= 3.0f * input->mouse_delta.y * platform->delta_time;
-    }
-
-    if (global_earth_yaw >= 180.0f)
-    {
-        global_earth_yaw -= 360.0f;
+        global_earth_pitch += 3.0f * -input->mouse_delta.y * platform->delta_time;
     }
 
     global_earth_pitch = clamp(-90.0f, global_earth_pitch, 90.0f);
@@ -1125,16 +1135,16 @@ update_function(update)
 
     if (game->shape_value == 0.0f || (game->shape_value == 1.0f && (ray_lon_lat.x != 0.0f || ray_lon_lat.y != 0.0f)))
     {
-        f32 lon = lerp(xy_lon_lat.x, game->shape_value, ray_lon_lat.x - global_earth_yaw);
-        f32 lat = lerp(xy_lon_lat.y, game->shape_value, ray_lon_lat.y - global_earth_pitch);
+        f32 lon = lerp(xy_lon_lat.x, game->shape_value, ray_lon_lat.x);
+        f32 lat = lerp(xy_lon_lat.y, game->shape_value, ray_lon_lat.y);
 
         game->country_index = cell_get_country(game->cells, lon, lat);
 
         if (game->country_index != 0xFF && game->country_index < array_count(global_shape_country_names))
         {
-            fprintf(stderr, "\rx: %f, y: %f, lon: %f, lat: %f, country: %s, id: %u",
+            fprintf(stderr, "\rx: %f, y: %f, lon: %f, lat: %f, yaw: %f, pitch: %f, country: %s, id: %u",
                     input->mouse_position.x, input->mouse_position.y,
-                    lon, lat,
+                    lon, lat, global_earth_yaw, global_earth_pitch,
                     global_shape_country_names[game->country_index], game->country_index);
         }
     }
