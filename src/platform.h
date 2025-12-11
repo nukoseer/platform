@@ -160,6 +160,14 @@ typedef enum graphics_bind_t
     BIND_DEPTH_STENCIL = (1 << 5),
 } graphics_bind_t;
 
+typedef enum graphics_misc_t
+{
+    MISC_NULL,
+    
+    MISC_GENERATE_MIPS = (1 << 0),
+    MISC_TEXTURE_CUBE = (1 << 1),
+} graphics_misc_t;
+
 typedef enum graphics_stage_t
 {
     STAGE_NULL,
@@ -187,7 +195,7 @@ typedef enum graphics_texture_address_t
 typedef struct graphics_buffer_desc_t
 {
     const void* data;
-    usize size;
+    u32 size;
     graphics_usage_t usage;
     graphics_bind_t bind;
     graphics_format_t index_format;
@@ -195,7 +203,8 @@ typedef struct graphics_buffer_desc_t
 
 typedef struct graphics_buffer_t
 {
-    usize platform;
+    u64 platform;
+    u32 size;
 } graphics_buffer_t;
 
 typedef struct graphics_texture_2d_desc_t
@@ -204,6 +213,8 @@ typedef struct graphics_texture_2d_desc_t
     graphics_bind_t bind;
     u32 width;
     u32 height;
+    u32 array_size;
+    graphics_misc_t misc;
 } graphics_texture_2d_desc_t;
 
 typedef struct graphics_texture_t
@@ -317,7 +328,7 @@ typedef enum graphics_topology_t
 #define graphics_create_buffer_function(name) graphics_buffer_t name(const graphics_buffer_desc_t* buffer_desc)
 typedef graphics_create_buffer_function(graphics_create_buffer_f);
 
-#define graphics_create_texture_2d_function(name) graphics_texture_t name(const graphics_texture_2d_desc_t* texture_2d_desc, const void* initial_data, u32 pitch)
+#define graphics_create_texture_2d_function(name) graphics_texture_t name(const graphics_texture_2d_desc_t* texture_2d_desc, const void** initial_data, const u32* pitches)
 typedef graphics_create_texture_2d_function(graphics_create_texture_2d_f);
 
 #define graphics_create_sampler_function(name) graphics_sampler_t name(const graphics_sampler_desc_t* sampler_desc)

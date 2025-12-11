@@ -25,6 +25,8 @@ typedef struct gfx_texture_t
     graphics_bind_t bind;
     UINT width;
     UINT height;
+    u32 array_size;
+    graphics_misc_t misc;
     u32 next_free_index;
 } gfx_texture_t;
 
@@ -470,6 +472,7 @@ static D3D11_PRIMITIVE_TOPOLOGY map_primitive_topology(graphics_topology_t topol
         {
             primitive_topology = D3D11_PRIMITIVE_TOPOLOGY_POINTLIST;
         } break;
+        
         case TOPOLOGY_LINE_LIST:
         {
             primitive_topology = D3D11_PRIMITIVE_TOPOLOGY_LINELIST;
@@ -509,6 +512,28 @@ static D3D11_PRIMITIVE_TOPOLOGY map_primitive_topology(graphics_topology_t topol
     return primitive_topology;
 }
 
+static D3D11_RESOURCE_MISC_FLAG map_resource_misc(graphics_misc_t misc)
+{
+    D3D11_RESOURCE_MISC_FLAG resource_misc = 0;
+
+    switch (misc)
+    {
+        case MISC_NULL: {} break;
+        
+        case MISC_TEXTURE_CUBE:
+        {
+            resource_misc = D3D11_RESOURCE_MISC_TEXTURECUBE;
+        } break;
+     
+        default:
+        {
+            assert(!"[GFX] Failed to map misc.");
+        } break;
+    }
+
+    return resource_misc;
+}
+
 static gfx_target_t* get_gfx_target(usize target_index)
 {
     gfx_target_t* gfx_target = (target_index == GFX_BACKBUFFER_TARGET_INDEX ?
@@ -522,7 +547,7 @@ static graphics_create_buffer_function(gfx_create_buffer)
     graphics_buffer_t graphics_buffer = { 0 };
     D3D11_USAGE usage = map_usage(buffer_desc->usage);
     D3D11_BIND_FLAG bind = map_bind(buffer_desc->bind);
-    usize size = 0;
+    u32 size = 0;
     DXGI_FORMAT index_format = 0;
     
     if (bind == D3D11_BIND_INDEX_BUFFER)
@@ -575,6 +600,7 @@ static graphics_create_buffer_function(gfx_create_buffer)
     };
     
     graphics_buffer.platform = pack_generation_index(buffer_generation, buffer_index);
+    graphics_buffer.size = size;
 
     return graphics_buffer;
 }
@@ -592,7 +618,7 @@ static graphics_create_texture_2d_function(gfx_create_texture_2d)
         .Width = texture_2d_desc->width,
         .Height = texture_2d_desc->height,
         .MipLevels = 1,
-        .ArraySize = 1,
+        .ArraySize = texture_2d_desc->array_size ? texture_2d_desc->array_size : 1,
         .Format = map_dxgi_resource_format(texture_2d_desc->format),
         // NOTE: No AA.
         .SampleDesc =
@@ -603,17 +629,25 @@ static graphics_create_texture_2d_function(gfx_create_texture_2d)
         .Usage = D3D11_USAGE_DEFAULT,
         .BindFlags = map_bind(texture_2d_desc->bind),
         .CPUAccessFlags = 0,
-        .MiscFlags = 0,
+        .MiscFlags = map_resource_misc(texture_2d_desc->misc),
     };
     
-    D3D11_SUBRESOURCE_DATA initial = { 0 };
+    D3D11_SUBRESOURCE_DATA initials[16] = { 0 };
     D3D11_SUBRESOURCE_DATA* ptr_initial = 0;
+
+    assert(texture_2d_desc->array_size < array_count(initials) && "[GFX] Invalid texture array size.");
 
     if (initial_data)
     {
-        initial.pSysMem = initial_data;
-        initial.SysMemPitch = pitch;
-        ptr_initial = &initial;
+        ptr_initial = initials;
+
+        for (u32 i = 0; i < texture_2d_desc->array_size; ++i)
+        {
+            assert(initial_data[i] && pitches[i] && "[GFX] Invalid initial data for texture.");
+
+            initials[i].pSysMem = initial_data[i];
+            initials[i].SysMemPitch = pitches[i];
+        }
     }
     
     ID3D11Texture2D* texture_2d = 0;
@@ -634,16 +668,51 @@ static graphics_create_texture_2d_function(gfx_create_texture_2d)
         .bind = texture_2d_desc->bind,
         .width = desc.Width,
         .height = desc.Height,
+        .array_size = texture_2d_desc->array_size,
+        .misc = texture_2d_desc->misc,
     };
 
     if (texture_2d_desc->bind & BIND_SHADER_RESOURCE)
     {
-        D3D11_SHADER_RESOURCE_VIEW_DESC srv_desc =
+        D3D11_SHADER_RESOURCE_VIEW_DESC srv_desc = { 0 };
+
+        if (texture_2d_desc->misc == MISC_TEXTURE_CUBE && texture_2d_desc->array_size > 0)
         {
-            .Format = map_dxgi_srv_format(texture_2d_desc->format),
-            .ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D,
-            .Texture2D = { .MostDetailedMip = 0, .MipLevels = 1, },
-        };
+            srv_desc = (D3D11_SHADER_RESOURCE_VIEW_DESC)
+            {
+                .Format = map_dxgi_srv_format(texture_2d_desc->format),
+                .ViewDimension = D3D11_SRV_DIMENSION_TEXTURECUBE,
+                .TextureCube =
+                {
+                    .MostDetailedMip = 0,
+                    .MipLevels = 1,
+                },
+            };
+        }
+        else if (texture_2d_desc->array_size > 0)
+        {
+            srv_desc = (D3D11_SHADER_RESOURCE_VIEW_DESC)
+            {
+                .Format = map_dxgi_srv_format(texture_2d_desc->format),
+                .ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2DARRAY,
+                .Texture2DArray =
+                {
+                    .MostDetailedMip = 0,
+                    .MipLevels = 1,
+                    .FirstArraySlice = 0,
+                    .ArraySize = texture_2d_desc->array_size
+                },
+            };
+        }
+        else
+        {
+            srv_desc = (D3D11_SHADER_RESOURCE_VIEW_DESC)
+            {
+                .Format = map_dxgi_srv_format(texture_2d_desc->format),
+                .ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D,
+                .Texture2D = { .MostDetailedMip = 0, .MipLevels = 1, },
+            };   
+        }
 
         result = ID3D11Device_CreateShaderResourceView(global_d3d11.device, (ID3D11Resource*)texture_2d, &srv_desc, &gfx_texture->srv);
         // TODO: Maybe this is not fatal but leave it for checking.
