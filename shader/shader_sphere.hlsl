@@ -37,14 +37,12 @@ PS_INPUT vs(VS_INPUT input)
 {
     PS_INPUT output;
 
-    const float PI = 3.14159265358979323846;
-    
-    float lon = -radians(input.position.x);
+    float lon = radians(input.position.x);
     float lat = radians(input.position.y);
 
     float t = ease_in_out_circ(smoothstep(0.0, 1.0, alpha));
 
-    float4 position = float4(cos(lat) * cos(lon) * t, sin(lat) * t, cos(lat) * sin(lon) * t, 1.0);
+    float4 position = float4(cos(lat) * sin(lon) * t, sin(lat) * t, cos(lat) * cos(lon) * t, 1.0);
     
     float4 world_space = mul(world_matrix, position);
     float4 view_space = mul(view_matrix, world_space);
@@ -90,6 +88,7 @@ float4 ps(PS_INPUT input) : SV_TARGET
     float3 l = normalize(float3(0.0, 4.0, 2.0));
     // float3 l = normalize(float3(2.0, 2.0, 1.5));
     float3 albedo = float3(0.18, 0.18, 0.18);
+    // float3 albedo = float3(0.01, 0.01, 0.01);
     float3 diffuse_color = float3(0.02, 0.02, 0.02);
     float diffuse_intensity = 1.0;
     float3 light_color = float3(1.0, 1.0, 1.0);
@@ -98,6 +97,8 @@ float4 ps(PS_INPUT input) : SV_TARGET
     float ks = 0.08;
 
     // float3 hit_color = albedo / 3.14159265358979323846 * light_intensity * light_color * max(0.0, dot(n, l));
+    // float3 dithered_color = saturate(hit_color) + dither8x8(input.position.xy);
+    // return float4(dithered_color, smoothstep(0.0, 1.0, alpha));
 
     float n_dot_l = saturate(dot(n, l));
     float visibility = step(0.0, n_dot_l);
@@ -113,7 +114,4 @@ float4 ps(PS_INPUT input) : SV_TARGET
     float3 dithered_color = saturate(color) + dither8x8(input.position.xy);
 
     return float4(saturate(dithered_color), smoothstep(0.0, 1.0, alpha));
-
-    // return float4(saturate(dot(n, v) * 0.5 + 0.5).xxx, 1.0);
-    // return float4(0.5 * (normalize(input.normal_world) + 1.0), 1.0);
 }

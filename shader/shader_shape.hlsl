@@ -62,8 +62,6 @@ PS_INPUT vs(VS_INPUT input)
 {
     PS_INPUT output;
 
-    const float PI = 3.14159265358979323846;
-    
     float lon = radians(input.position.x);
     float lat = radians(input.position.y);
 

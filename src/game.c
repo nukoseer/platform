@@ -18,6 +18,9 @@
 #include "../shader/vertex_shader_sphere.h"
 #include "../shader/pixel_shader_sphere.h"
 
+#include "../shader/skybox_vertex_shader.h"
+#include "../shader/skybox_pixel_shader.h"
+
 #include "shape_meta_data.inl"
 #include "shape_data.inl"
 #include "sphere_data.inl"
@@ -33,6 +36,16 @@ typedef struct transform_param_t
     mat4x4 projection;
     vec4 camera_world;
 } transform_param_t;
+
+typedef struct skybox_param_t
+{
+    mat4x4 view_no_translation;
+    mat4x4 projection;
+    f32 yaw;
+    f32 pitch;
+    f32 shape;
+    f32 _pad;
+} skybox_param_t;
 
 typedef struct sphere_param_t
 {
@@ -114,7 +127,14 @@ typedef struct camera_t
 
     mat4x4 view;
     mat4x4 projection;
+
+    mat4x4 view_no_translation;
 } camera_t;
+
+typedef struct skybox_vertex_t
+{
+    vec3 position;
+} skybox_vertex_t;
 
 typedef struct game_t
 {
@@ -159,6 +179,14 @@ typedef struct game_t
     graphics_shader_t post_pixel_shader;
     graphics_program_t post_program;
     post_setting_t post_setting;
+
+    graphics_texture_t skybox_texture;
+    graphics_buffer_t skybox_param_buffer;
+    graphics_buffer_t skybox_vertex_buffer;
+    graphics_buffer_t skybox_index_buffer;
+    graphics_shader_t skybox_vertex_shader;
+    graphics_shader_t skybox_pixel_shader;
+    graphics_program_t skybox_program;
 
 #if FONT_ENABLE
     graphics_2d_font_t font;
@@ -219,8 +247,11 @@ static bmp_image_t load_bmp_image(const io_t* io, const char* file_name)
     {
         bmp_header_t* header = (bmp_header_t*)read_result.data;
         u32* pixels = (u32*)((u8*)read_result.data + header->bitmap_offset);
+        u32* memory = malloc(header->width * header->height * header->bits_per_pixel);
 
-        result.data = (u8*)pixels;
+        memset(memory, 0, header->width * header->height * header->bits_per_pixel);
+
+        result.data = (u8*)memory;
         result.width = header->width;
         result.height = header->height;
 
@@ -254,23 +285,23 @@ static bmp_image_t load_bmp_image(const io_t* io, const char* file_name)
         assert(blue_found  && "[BMP] Invalid blue channel mask.");
         assert(alpha_found && "[BMP] Invalud alpha channel mask.");
     
-        u32* memory = pixels;
-
         for (u32 y = 0; y < header->height; ++y)
         {
+            u32 flipped_y = (header->height - 1) - y;
+            
             for (u32 x = 0; x < header->width; ++x)
             {
-    	        u32 color = *memory;
+    	        u32 color = pixels[y * header->width + x];
 
     	        f32 r = (f32)((color & red_mask) >> red_index);
     	        f32 g = (f32)((color & green_mask) >> green_index);
     	        f32 b = (f32)((color & blue_mask) >> blue_index);
     	        f32 a = (f32)((color & alpha_mask) >> alpha_index);
 
-    	        *memory++ = (((u32)(a + 0.5f) << 24) |
-                             ((u32)(b + 0.5f) << 16) |
-                             ((u32)(g + 0.5f) << 8)  |
-                             ((u32)(r + 0.5f) << 0));
+    	        memory[flipped_y * header->width + x] = (((u32)(a + 0.5f) << 24) |
+                                                         ((u32)(b + 0.5f) << 16) |
+                                                         ((u32)(g + 0.5f) << 8)  |
+                                                         ((u32)(r + 0.5f) << 0));
             }
         }
     }
@@ -280,11 +311,13 @@ static bmp_image_t load_bmp_image(const io_t* io, const char* file_name)
     }
 
     result.pitch = result.width * 4;
-
+    
 #if 0
     result.memory = (u8*)result.memory + result.pitch * (result.height - 1);
     result.pitch = -result.pitch;
 #endif
+
+    io->release_file_memory(read_result.data);
 
     return result;
 }
@@ -362,10 +395,6 @@ static inline mat4x4 rotate_x(f32 angle)
 {
     f32 rad = angle * (f32)DEG2RAD;
 
-    // result.x = position.x;
-    // result.y = cosf(rad) * position.y - sinf(rad) * position.z;
-    // result.z = sinf(rad) * position.y + cosf(rad) * position.z;
-
     mat4x4 rotation_matrix =
     {
         .columns =
@@ -384,10 +413,6 @@ static inline mat4x4 rotate_y(f32 angle)
 {
     f32 rad = angle * (f32)DEG2RAD;
 
-    // result.x = cosf(rad) * position.x - sinf(rad) * position.z;
-    // result.y = position.y;
-    // result.z = sinf(rad) * position.x + cosf(rad) * position.z;
-
     mat4x4 rotation_matrix =
     {
         .columns =
@@ -405,10 +430,6 @@ static inline mat4x4 rotate_y(f32 angle)
 static inline mat4x4 rotate_z(f32 angle)
 {
     f32 rad = angle * (f32)DEG2RAD;
-
-    // result.x = cosf(rad) * position.x - sinf(rad) * position.y;
-    // result.y = sinf(rad) * position.x + cosf(rad) * position.y;
-    // result.z = position.z;
 
     mat4x4 rotation_matrix =
     {
@@ -531,7 +552,7 @@ static void init_sphere(const graphics_t* graphics, sphere_info_t* sphere_info)
     {
         .data = global_sphere_indices,
         .size = array_count(global_sphere_indices),
-        .usage = USAGE_DYNAMIC,
+        .usage = USAGE_IMMUTABLE,
         .bind = BIND_INDEX_BUFFER,
         .index_format = array_count(global_sphere_indices) > 0xFFFF ? FORMAT_R32_UINT : FORMAT_R16_UINT,
     });
@@ -683,6 +704,7 @@ static void cell_insert_country(u8* cells, u8 country_index, f32 lon_min, f32 lo
 
 static f32 global_earth_yaw;
 static f32 global_earth_pitch;
+static bool global_earth_reset;
 
 static bool inside_country(const vec3* points, u32 point_count, f32 lon, f32 lat)
 {
@@ -822,6 +844,10 @@ static inline void update_camera(camera_t* camera)
 {
     camera->view = view_matrix(camera->up, camera->position, camera->target);
     camera->projection = perspective_projection_fov_y(camera->fov_y, camera->aspect_ratio, 0.0001f, 100.0f);
+    camera->view_no_translation = camera->view;
+    camera->view_no_translation.columns[3].x = 0.0f;
+    camera->view_no_translation.columns[3].y = 0.0f;
+    camera->view_no_translation.columns[3].z = 0.0f;
 }
 
 init_function(init)
@@ -1050,6 +1076,111 @@ init_function(init)
     }
 
     free(part_outlines);
+
+    // TODO: Probably we can be more clever.
+    // This affects start up time drastically of course...
+    // We also do not support any other image type. BMPs are pretty large files.
+    bmp_image_t px_space = load_bmp_image(io, "..\\resources\\px_bmp.bmp");
+    bmp_image_t nx_space = load_bmp_image(io, "..\\resources\\nx_bmp.bmp");
+    bmp_image_t py_space = load_bmp_image(io, "..\\resources\\py_bmp.bmp");
+    bmp_image_t ny_space = load_bmp_image(io, "..\\resources\\ny_bmp.bmp");
+    bmp_image_t pz_space = load_bmp_image(io, "..\\resources\\pz_bmp.bmp");
+    bmp_image_t nz_space = load_bmp_image(io, "..\\resources\\nz_bmp.bmp");
+
+    void* skybox_data[6]  = { px_space.data,  nx_space.data,  py_space.data,  ny_space.data,  pz_space.data,  nz_space.data };
+    u32 skybox_pitches[6] = { px_space.pitch, nx_space.pitch, py_space.pitch, ny_space.pitch, pz_space.pitch, nz_space.pitch };
+
+    game->skybox_texture = graphics->create_texture_2d(&(graphics_texture_2d_desc_t)
+    {
+        .format = FORMAT_R8G8B8A8_UNORM_SRGB,
+        .bind = BIND_SHADER_RESOURCE,
+        .width = (u32)(px_space.width),
+        .height = (u32)(px_space.height),
+        .array_size = array_count(skybox_data),
+        .misc = MISC_TEXTURE_CUBE,
+    }, skybox_data, skybox_pitches);
+
+    for (u32 skybox_index = 0; skybox_index < array_count(skybox_data); ++skybox_index)
+    {
+        // TODO: malloc / free was never the right way... 
+        free(skybox_data[skybox_index]);
+    }
+    
+    // NOTE: Unit cube centered at origin.
+    static const skybox_vertex_t skybox_vertices[] =
+    {
+        // +X
+        { +1.0f, -1.0f, -1.0f }, { +1.0f, -1.0f, +1.0f }, { +1.0f, +1.0f, +1.0f }, { +1.0f, +1.0f, -1.0f },
+        // -X
+        { -1.0f, -1.0f, +1.0f }, { -1.0f, -1.0f, -1.0f }, { -1.0f, +1.0f, -1.0f }, { -1.0f, +1.0f, +1.0f },
+        // +Y
+        { -1.0f, +1.0f, -1.0f }, { +1.0f, +1.0f, -1.0f }, { +1.0f, +1.0f, +1.0f }, { -1.0f, +1.0f, +1.0f },
+        // -Y
+        { -1.0f, -1.0f, +1.0f }, { +1.0f, -1.0f, +1.0f }, { +1.0f, -1.0f, -1.0f }, { -1.0f, -1.0f, -1.0f },
+        // +Z
+        { -1.0f, -1.0f, +1.0f }, { -1.0f, +1.0f, +1.0f }, { +1.0f, +1.0f, +1.0f }, { +1.0f, -1.0f, +1.0f },
+        // -Z
+        { +1.0f, -1.0f, -1.0f }, { +1.0f, +1.0f, -1.0f }, { -1.0f, +1.0f, -1.0f }, { -1.0f, -1.0f, -1.0f },
+    };
+    
+    static const u16 skybox_indices[] =
+    {
+         0,  1, 2,    0,  2,  3, // +X
+         4,  5, 6,    4,  6,  7, // -X
+         8,  9, 10,   8, 10, 11, // +Y
+        12, 13, 14,  12, 14, 15, // -Y
+        16, 17, 18,  16, 18, 19, // +Z
+        20, 21, 22,  20, 22, 23  // -Z
+    };
+
+    game->skybox_param_buffer = graphics->create_buffer(&(graphics_buffer_desc_t)
+    {
+        .size = sizeof(skybox_param_t),
+        .usage = USAGE_DYNAMIC,
+        .bind = BIND_CONSTANT_BUFFER,
+    });
+
+    game->skybox_vertex_buffer = graphics->create_buffer(&(graphics_buffer_desc_t)
+    {
+        .data = skybox_vertices,
+        .size = sizeof(skybox_vertices),
+        .usage = USAGE_IMMUTABLE,
+        .bind = BIND_VERTEX_BUFFER,
+    });
+
+    game->skybox_index_buffer = graphics->create_buffer(&(graphics_buffer_desc_t)
+    {
+        .data = skybox_indices,
+        .size = array_count(skybox_indices),
+        .usage = USAGE_IMMUTABLE,
+        .bind = BIND_INDEX_BUFFER,
+        .index_format = FORMAT_R16_UINT,
+    });
+
+    game->skybox_vertex_shader = graphics->create_shader(&(graphics_shader_desc_t)
+    {
+        .bytecode = skybox_vshader,
+        .bytecode_size = sizeof(skybox_vshader),
+        .stage = STAGE_VERTEX_SHADER,
+    });
+
+    game->skybox_pixel_shader = graphics->create_shader(&(graphics_shader_desc_t)
+    {
+        .bytecode = skybox_pshader,
+        .bytecode_size = sizeof(skybox_pshader),
+        .stage = STAGE_PIXEL_SHADER,
+    });
+    
+    game->skybox_program = graphics->create_program(&(graphics_program_desc_t)
+    {
+        .vertex_shader = game->skybox_vertex_shader,
+        .pixel_shader = game->skybox_pixel_shader,
+        .attributes = (graphics_vertex_attribute_t[])
+        {
+            { "POSITION", FORMAT_R32G32B32_FLOAT, 0, 0, 0, 0, 0 },
+        },
+        .attribute_count = 1,
+    });
 }
 
 static vec2 xy_to_lon_lat(f32 x, f32 y, f32 width, f32 height)
@@ -1111,7 +1242,7 @@ update_function(update)
 
     update_camera(camera);
 
-    if (input->keys[KEY_MOUSE_LEFT].action == KEY_ACTION_PRESS)
+    if (input->keys[KEY_MOUSE_LEFT].action == KEY_ACTION_PRESS && game->shape_value == 1.0f)
     {
         global_earth_yaw += 3.0f * input->mouse_delta.x * platform->delta_time;
         global_earth_pitch += 3.0f * -input->mouse_delta.y * platform->delta_time;
@@ -1128,7 +1259,67 @@ update_function(update)
     
     vec2 ray_lon_lat = ray_to_lon_lat(mouse_ray);
 
-    game->shape_direction = (platform->input->keys[KEY_T].action == KEY_ACTION_RELEASE ?
+    if (input->keys[KEY_R].action == KEY_ACTION_RELEASE)
+    {
+        global_earth_reset = !global_earth_reset;
+    }
+
+    f32 speed = 200.0f * platform->delta_time;
+    
+    if (global_earth_reset)
+    {
+        if (global_earth_yaw != 0.0f)
+        {
+            if (global_earth_yaw > 0.0f && global_earth_yaw < speed)
+            {
+                global_earth_yaw = 0.0f;
+            }
+        
+            if (global_earth_yaw > 0.0f)
+            {
+                global_earth_yaw -= speed;
+            }
+
+            if (global_earth_yaw < 0.0f && global_earth_yaw > -speed)
+            {
+                global_earth_yaw = 0.0f;
+            }
+        
+            if (global_earth_yaw < 0.0f)
+            {
+                global_earth_yaw += speed;
+            }
+        }
+        if (global_earth_pitch != 0.0f)
+        {
+            if (global_earth_pitch > 0.0f && global_earth_pitch < speed)
+            {
+                global_earth_pitch = 0.0f;
+            }
+        
+            if (global_earth_pitch > 0.0f)
+            {
+                global_earth_pitch -= speed;
+            }
+
+            if (global_earth_pitch < 0.0f && global_earth_pitch > -speed)
+            {
+                global_earth_pitch = 0.0f;
+            }
+        
+            if (global_earth_pitch < 0.0f)
+            {
+                global_earth_pitch += speed;
+            }
+        }
+
+        if (global_earth_yaw == 0.0f && global_earth_pitch == 0.0f)
+        {
+            global_earth_reset = false;
+        }
+    }
+
+    game->shape_direction = (input->keys[KEY_T].action == KEY_ACTION_RELEASE ?
                              -game->shape_direction : game->shape_direction);
     game->shape_speed = 1.0f * platform->delta_time * game->shape_direction;
     game->shape_value = clamp(0.0f, game->shape_value + game->shape_speed, 1.0f);
@@ -1170,6 +1361,33 @@ render_function(render)
         .clear_depth = true, .clear_depth_value = 1.0f
     });
     {
+        skybox_param_t skybox_param =
+        {
+            .view_no_translation = camera->view_no_translation,
+            .projection = camera->projection,
+            .yaw = global_earth_yaw,
+            .pitch = global_earth_pitch,
+            .shape = game->shape_value,
+        };
+
+        graphics->update_buffer(game->skybox_param_buffer, &skybox_param, 0, sizeof(skybox_param_t));
+        graphics->set_buffer(game->skybox_param_buffer, STAGE_VERTEX_SHADER, 0, 0, 0);
+        graphics->set_buffer(game->skybox_param_buffer, STAGE_PIXEL_SHADER, 0, 0, 0);
+        graphics->set_vertex_buffer(game->skybox_vertex_buffer, 0, sizeof(skybox_vertex_t), 0);
+        graphics->set_index_buffer(game->skybox_index_buffer, 0);
+        graphics->set_program(game->skybox_program);
+        graphics->set_srvs(STAGE_PIXEL_SHADER, &game->skybox_texture, 1, 0);
+        graphics->set_samplers(STAGE_PIXEL_SHADER, &game->linear_sampler, 1, 0);
+        graphics->set_pipeline(game->default_pipeline);
+        graphics->draw_indexed(TOPOLOGY_TRIANGLE_LIST, game->skybox_index_buffer.size, 0, 0);
+    }
+    graphics->end_pass();
+    
+    graphics->begin_pass(game->offscreen_target, &(graphics_pass_desc_t)
+    {
+        .clear_color = false, .clear_depth = false,
+    });
+    {
         sphere_info_t* sphere_info = &game->sphere_info;
         sphere_info->param.alpha = game->shape_value;
         graphics->update_buffer(game->transform_buffer, &game->transform_param, 0, sizeof(game->transform_param));
@@ -1182,7 +1400,7 @@ render_function(render)
         graphics->set_index_buffer(sphere_info->index_buffer, 0);
         graphics->set_program(sphere_info->program);
         graphics->set_pipeline(game->d_test_write_pipeline);
-        graphics->draw_indexed(TOPOLOGY_TRIANGLE_LIST, array_count(global_sphere_indices), 0, 0);
+        graphics->draw_indexed(TOPOLOGY_TRIANGLE_LIST, sphere_info->index_buffer.size, 0, 0);
     }
     graphics->end_pass();
 
@@ -1216,7 +1434,7 @@ render_function(render)
         graphics->set_index_buffer(shape_info->index_buffer_sphere, 0);
         graphics->set_program(shape_info->program);
         graphics->set_pipeline(game->d_test_pipeline);
-        graphics->draw_indexed(TOPOLOGY_LINE_LIST, array_count(global_sphere_indices), 0, 0);
+        graphics->draw_indexed(TOPOLOGY_LINE_LIST, shape_info->index_buffer_sphere.size, 0, 0);
     }
     graphics->end_pass();
 
@@ -1224,16 +1442,16 @@ render_function(render)
     {
         graphics->update_buffer(game->transform_buffer, &game->transform_param, 0, sizeof(game->transform_param));
         graphics->set_buffer(game->transform_buffer, STAGE_VERTEX_SHADER, 0, 0, 0);
-        graphics->set_vertex_buffer(game->shape_info.vertex_buffer, 0, sizeof(vec3), 0);
-        graphics->set_index_buffer(game->shape_info.index_buffer, 0);
-        graphics->set_program(game->shape_info.program);
+        graphics->set_vertex_buffer(shape_info->vertex_buffer, 0, sizeof(vec3), 0);
+        graphics->set_index_buffer(shape_info->index_buffer, 0);
+        graphics->set_program(shape_info->program);
         graphics->set_pipeline(game->d_test_pipeline);
 
         shape_param->color = v4(0.04f, 0.04f, 0.04f, 1.0f);
 
-        graphics->update_buffer(game->shape_info.param_buffer, shape_param, 0, sizeof(shape_param_t));
-        graphics->set_buffer(game->shape_info.param_buffer, STAGE_VERTEX_SHADER, 1, 0, 0);
-        graphics->draw_indexed(TOPOLOGY_LINE_LIST, array_count(global_shape_indices), 0, 0);
+        graphics->update_buffer(shape_info->param_buffer, shape_param, 0, sizeof(shape_param_t));
+        graphics->set_buffer(shape_info->param_buffer, STAGE_VERTEX_SHADER, 1, 0, 0);
+        graphics->draw_indexed(TOPOLOGY_LINE_LIST, shape_info->index_buffer.size, 0, 0);
  
         if (game->country_index != 0xFF)
         {
@@ -1250,18 +1468,18 @@ render_function(render)
     graphics->begin_pass(game->glow_mask_target, &(graphics_pass_desc_t){ .clear_color = true, .clear_rgba = { 0.0f, 0.0f, 0.0f, 0.0f } });
     {
         graphics->update_buffer(game->transform_buffer, &game->transform_param, 0, sizeof(game->transform_param));
-        graphics->update_buffer(game->shape_info.param_buffer, shape_param, 0, sizeof(shape_param_t));
-        graphics->set_vertex_buffer(game->shape_info.vertex_buffer, 0, sizeof(vec3), 0);
-        graphics->set_index_buffer(game->shape_info.index_buffer, 0);
+        graphics->update_buffer(shape_info->param_buffer, shape_param, 0, sizeof(shape_param_t));
+        graphics->set_vertex_buffer(shape_info->vertex_buffer, 0, sizeof(vec3), 0);
+        graphics->set_index_buffer(shape_info->index_buffer, 0);
         graphics->set_buffer(game->transform_buffer, STAGE_VERTEX_SHADER, 0, 0, 0);
-        graphics->set_buffer(game->shape_info.param_buffer, STAGE_VERTEX_SHADER, 1, 0, 0);
+        graphics->set_buffer(shape_info->param_buffer, STAGE_VERTEX_SHADER, 1, 0, 0);
         
         game->glow_mask_setting = (glow_mask_setting_t){ .glow_color = { 0.9964f, 0.8431f, 0.4941f, 0.0f } };
         graphics->update_buffer(game->glow_buffer, &game->glow_mask_setting, 0, sizeof(game->glow_mask_setting));
         graphics->set_buffer(game->glow_buffer, STAGE_PIXEL_SHADER, 0, 0, 0);
         graphics->set_program(game->glow_program);
         graphics->set_pipeline(game->default_pipeline);
-        graphics->draw_indexed(TOPOLOGY_LINE_LIST, array_count(global_shape_indices), 0, 0);
+        graphics->draw_indexed(TOPOLOGY_LINE_LIST, shape_info->index_buffer.size, 0, 0);
     }
     graphics->end_pass();
     

@@ -1,2 +1,7 @@
+.clangd
+.projectile
+compile_commands*
+
 build/
 shader/*.h
+*.inl
