@@ -41,23 +41,29 @@ typedef struct gfx_target_t
     u32 next_free_index;
 } gfx_target_t;
 
+typedef struct gfx_shader_t
+{
+    u32 generation;
+    void* shader;
+    const void* bytecode;
+    usize bytecode_size;
+    graphics_stage_t stage;
+    u32 next_free_index;
+} gfx_shader_t;
+
 typedef struct gfx_sampler_t
 {
     ID3D11SamplerState* sampler_state;
 } gfx_sampler_t;
 
-typedef struct gfx_shader_t
-{
-    void* shader;
-    const void* bytecode;
-    usize bytecode_size;
-} gfx_shader_t;
-
 typedef struct gfx_program_t
 {
+    u32 generation;
     ID3D11VertexShader* vertex_shader;
     ID3D11PixelShader* pixel_shader;
+    ID3D11GeometryShader* geometry_shader;
     ID3D11InputLayout* input_layout;
+    u32 next_free_index;
 } gfx_program_t;
 
 typedef struct gfx_pipeline_t
@@ -72,17 +78,17 @@ typedef struct gfx_pipeline_t
 static gfx_buffer_t global_buffers[GFX_MAX_RESOUCE];
 static gfx_texture_t global_textures[GFX_MAX_RESOUCE];
 static gfx_target_t global_targets[GFX_MAX_RESOUCE];
-static gfx_sampler_t global_samplers[GFX_MAX_RESOUCE];
 static gfx_shader_t global_shaders[GFX_MAX_RESOUCE];
 static gfx_program_t global_programs[GFX_MAX_RESOUCE];
+static gfx_sampler_t global_samplers[GFX_MAX_RESOUCE];
 static gfx_pipeline_t global_pipelines[GFX_MAX_RESOUCE];
 
 static u32 global_buffer_count = 1;
 static u32 global_texture_count = 1;
 static u32 global_target_count = 1;
+static u32 global_shader_count = 1;
+static u32 global_program_count = 1;
 static u32 global_sampler_count;
-static u32 global_shader_count;
-static u32 global_program_count;
 static u32 global_pipeline_count;
 static u32 global_pass_count;
 
@@ -123,10 +129,14 @@ static inline void free_##name##_index(u32 free_index)                          
 next_index_function(buffer);
 next_index_function(texture);
 next_index_function(target);
+next_index_function(shader);
+next_index_function(program);
 
 free_index_function(buffer);
 free_index_function(texture);
 free_index_function(target);
+free_index_function(shader);
+free_index_function(program);
 
 static inline u32 get_generation(u64 packed)
 {
@@ -842,8 +852,11 @@ static graphics_create_sampler_function(gfx_create_sampler)
 static graphics_create_shader_function(gfx_create_shader)
 {
     graphics_shader_t graphics_shader = { 0 };
-    usize shader_index = global_shader_count++;
+    u32 shader_index = next_shader_index();
     gfx_shader_t* gfx_shader = global_shaders + shader_index;
+    u32 shader_generation = gfx_shader->generation;
+
+    *gfx_shader = (gfx_shader_t){ 0 };
 
     if (shader_desc->stage == STAGE_VERTEX_SHADER)
     {
@@ -854,11 +867,21 @@ static graphics_create_shader_function(gfx_create_shader)
     {
         ID3D11Device_CreatePixelShader(global_d3d11.device, shader_desc->bytecode, shader_desc->bytecode_size, 0, (ID3D11PixelShader**)&gfx_shader->shader);
     }
+    else if (shader_desc->stage == STAGE_GEOMETRY_SHADER)
+    {
+        ID3D11Device_CreateGeometryShader(global_d3d11.device, shader_desc->bytecode, shader_desc->bytecode_size, 0, (ID3D11GeometryShader**)&gfx_shader->shader);
+    }
+    else
+    {
+        assert(!"[GFX] Invalid shader stage.");
+    }
 
     gfx_shader->bytecode = shader_desc->bytecode;
     gfx_shader->bytecode_size = shader_desc->bytecode_size;
+    gfx_shader->stage = shader_desc->stage;
+    gfx_shader->generation = shader_generation;
 
-    graphics_shader.platform = shader_index;
+    graphics_shader.platform = pack_generation_index(shader_generation, shader_index);
     
     return graphics_shader;
 }
@@ -866,12 +889,36 @@ static graphics_create_shader_function(gfx_create_shader)
 static graphics_create_program_function(gfx_create_program)
 {
     graphics_program_t graphics_program = { 0 };
-    usize program_index = global_program_count++;
+    u32 program_index = next_program_index();
     gfx_program_t* gfx_program = global_programs + program_index;
-    usize vertex_shader_index = (usize)program_desc->vertex_shader.platform;
-    usize pixel_shader_index = (usize)program_desc->pixel_shader.platform;
+    u32 program_generation = gfx_program->generation;
+    u32 vertex_shader_index = get_index(program_desc->vertex_shader.platform);
+    u32 pixel_shader_index = get_index(program_desc->pixel_shader.platform);
+    u32 geometry_shader_index = get_index(program_desc->geometry_shader.platform);
     gfx_shader_t* vertex_shader = global_shaders + vertex_shader_index;
     gfx_shader_t* pixel_shader = global_shaders + pixel_shader_index;
+    gfx_shader_t* geometry_shader = global_shaders + geometry_shader_index;
+    u32 vertex_shader_generation = get_generation(program_desc->vertex_shader.platform);
+    u32 pixel_shader_generation = get_generation(program_desc->pixel_shader.platform);
+    u32 geometry_shader_generation = get_generation(program_desc->geometry_shader.platform);
+
+    if (vertex_shader->generation != vertex_shader_generation)
+    {
+        // TODO: Can we just silently skip?
+        assert(!"[GFX] Vertex shader generation does not match.");
+    }
+
+    if (pixel_shader->generation != pixel_shader_generation)
+    {
+        // TODO: Can we just silently skip?
+        assert(!"[GFX] Pixel shader generation does not match.");
+    }
+
+    if (geometry_shader->generation != geometry_shader_generation)
+    {
+        // TODO: Can we just silently skip?
+        assert(!"[GFX] Geometry shader generation does not match.");
+    }
 
     D3D11_INPUT_ELEMENT_DESC descs[32] = { 0 };
     assert(program_desc->attribute_count <= sizeof(descs) && "[GFX] Failed to map program attributes.");
@@ -889,8 +936,11 @@ static graphics_create_program_function(gfx_create_program)
         desc->InputSlotClass = attribute->per_instance ? D3D11_INPUT_PER_INSTANCE_DATA : D3D11_INPUT_PER_VERTEX_DATA;
     }
 
+    *gfx_program = (gfx_program_t){ 0 };
+    gfx_program->generation = program_generation;
     gfx_program->vertex_shader = vertex_shader->shader;
     gfx_program->pixel_shader = pixel_shader->shader;
+    gfx_program->geometry_shader = geometry_shader->shader;
 
     if (program_desc->attributes && program_desc->attribute_count > 0)
     {
@@ -898,7 +948,7 @@ static graphics_create_program_function(gfx_create_program)
         assert(SUCCEEDED(result) && "[GFX] Failed to create input layout.");
     }
 
-    graphics_program.platform = program_index;
+    graphics_program.platform = pack_generation_index(program_generation, program_index);
 
     return graphics_program;
 }
@@ -1008,7 +1058,13 @@ static graphics_delete_buffer_function(gfx_delete_buffer)
         return;
     }
 
-    ID3D11Buffer_Release(gfx_buffer->buffer);
+    // TODO: For now we assert.
+    assert(gfx_buffer->buffer && "[GFX] Invalid buffer.");
+
+    if (gfx_buffer->buffer)
+    {
+        ID3D11Buffer_Release(gfx_buffer->buffer);        
+    }
 
     *gfx_buffer = (gfx_buffer_t){ 0 };
     gfx_buffer->generation = buffer_generation + 1;
@@ -1077,6 +1133,73 @@ static graphics_delete_target_function(gfx_delete_target)
     gfx_target->generation = target_generation + 1;
 
     free_target_index(target_index);
+}
+
+static graphics_delete_shader_function(gfx_delete_shader)
+{
+    u32 shader_generation = get_generation(shader.platform);
+    u32 shader_index = get_index(shader.platform);
+    gfx_shader_t* gfx_shader = global_shaders + shader_index;
+
+    if (shader_generation != gfx_shader->generation)
+    {
+        // TODO: Can we just silently skip?
+        assert(!"[GFX] Shader generation does not match.");
+        return;
+    }
+
+    if (gfx_shader->stage == STAGE_VERTEX_SHADER)
+    {
+        ID3D11VertexShader_Release((ID3D11VertexShader*)gfx_shader->shader);
+    }
+    else if (gfx_shader->stage == STAGE_PIXEL_SHADER)
+    {
+        ID3D11PixelShader_Release((ID3D11PixelShader*)gfx_shader->shader);
+    }
+    else if (gfx_shader->stage == STAGE_GEOMETRY_SHADER)
+    {
+        ID3D11GeometryShader_Release((ID3D11GeometryShader*)gfx_shader->shader);
+    }
+    else
+    {
+        assert(!"[GFX] Invalid shader stage.");
+    }
+
+    *gfx_shader = (gfx_shader_t){ 0 };
+    gfx_shader->generation = shader_generation + 1;
+
+    free_target_index(shader_index);
+}
+
+static graphics_delete_program_function(gfx_delete_program)
+{
+    u32 program_generation = get_generation(program.platform);
+    u32 program_index = get_index(program.platform);
+    gfx_program_t* gfx_program = global_programs + program_index;
+
+    if (program_generation != gfx_program->generation)
+    {
+        // TODO: Can we just silently skip?
+        assert(!"[GFX] Program generation does not match.");
+        return;
+    }
+
+    assert(gfx_program->input_layout && "[GFX] Invalid input layout.");
+
+    // TODO: Should we also delete shaders when we delete program?
+    // At first it does not make sense, there may be multiple programs
+    // which uses the same shaders. Additinally, I am not sure how I often
+    // we would need to delete shaders or programs unless we program something
+    // really big??
+    if (gfx_program->input_layout)
+    {
+        ID3D11InputLayout_Release(gfx_program->input_layout);
+    }
+
+    *gfx_program = (gfx_program_t){ 0 };
+    gfx_program->generation = program_generation + 1;
+
+    free_target_index(program_index);
 }
 
 static graphics_set_buffer_function(gfx_set_buffer)
@@ -1151,11 +1274,19 @@ static graphics_set_index_buffer_function(gfx_set_index_buffer)
 
 static graphics_set_program_function(gfx_set_program)
 {
-    usize program_index = (usize)program.platform;
+    u32 program_index = get_index(program.platform);
+    u32 program_generation = get_generation(program.platform);
     gfx_program_t* gfx_program = global_programs + program_index;
 
+    if (program_generation != gfx_program->generation)
+    {
+        assert(!"[GFX] Program generation does not match.");
+    }
+
+    // TODO: Probably need to check shaders generations?
     ID3D11DeviceContext_VSSetShader(global_d3d11.context, gfx_program->vertex_shader, 0, 0);
     ID3D11DeviceContext_PSSetShader(global_d3d11.context, gfx_program->pixel_shader, 0, 0);
+    ID3D11DeviceContext_GSSetShader(global_d3d11.context, gfx_program->geometry_shader, 0, 0);
     ID3D11DeviceContext_IASetInputLayout(global_d3d11.context, gfx_program->input_layout);
 }
 

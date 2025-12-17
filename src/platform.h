@@ -171,8 +171,9 @@ typedef enum graphics_misc_t
 typedef enum graphics_stage_t
 {
     STAGE_NULL,
-    STAGE_VERTEX_SHADER,
-    STAGE_PIXEL_SHADER,
+    STAGE_VERTEX_SHADER = (1 << 0),
+    STAGE_PIXEL_SHADER = (1 << 1),
+    STAGE_GEOMETRY_SHADER = (1 << 2),
 } graphics_stage_t;
 
 // NOTE: We can add as we need.
@@ -264,6 +265,7 @@ typedef struct graphics_program_desc_t
 {
     graphics_shader_t vertex_shader;
     graphics_shader_t pixel_shader;
+    graphics_shader_t geometry_shader;
     graphics_vertex_attribute_t* attributes;
     usize attribute_count;
 } graphics_program_desc_t;
@@ -363,6 +365,12 @@ typedef graphics_delete_texture_2d_function(graphics_delete_texture_2d_f);
 
 #define graphics_delete_target_function(name) void name(graphics_target_t target)
 typedef graphics_delete_target_function(graphics_delete_target_f);
+
+#define graphics_delete_shader_function(name) void name(graphics_shader_t shader)
+typedef graphics_delete_shader_function(graphics_delete_shader_f);
+
+#define graphics_delete_program_function(name) void name(graphics_program_t program)
+typedef graphics_delete_program_function(graphics_delete_program_f);
 
 #define graphics_set_buffer_function(name) void name(graphics_buffer_t buffer, graphics_stage_t stage, u32 slot, u32 stride, u32 offset)
 typedef graphics_set_buffer_function(graphics_set_buffer_f);
@@ -469,6 +477,8 @@ typedef struct graphics_t
             graphics_delete_buffer_f* delete_buffer;
             graphics_delete_texture_2d_f* delete_texture_2d;
             graphics_delete_target_f* delete_target;
+            graphics_delete_shader_f* delete_shader;
+            graphics_delete_program_f* delete_program;
             graphics_set_buffer_f* set_buffer;
             graphics_set_vertex_buffer_f* set_vertex_buffer;
             graphics_set_index_buffer_f* set_index_buffer;

@@ -565,6 +565,8 @@ static DWORD WINAPI main_thread(void* param)
         .delete_buffer = gfx_delete_buffer,
         .delete_texture_2d = gfx_delete_texture_2d,
         .delete_target = gfx_delete_target,
+        .delete_shader = gfx_delete_shader,
+        .delete_program = gfx_delete_program,
         .set_buffer = gfx_set_buffer,
         .set_vertex_buffer = gfx_set_vertex_buffer,
         .set_index_buffer = gfx_set_index_buffer,
