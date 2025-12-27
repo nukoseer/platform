@@ -14,6 +14,7 @@
 
 #include "../shader/vertex_shader_shape.h"
 #include "../shader/pixel_shader_shape.h"
+#include "../shader/geometry_shader_shape.h"
 
 #include "../shader/vertex_shader_sphere.h"
 #include "../shader/pixel_shader_sphere.h"
@@ -72,7 +73,7 @@ typedef struct shape_param_t
     f32 pitch;
     f32 _pad0;
     vec2 scale;
-    f32 _pad1[2];
+    vec2 viewport_size;
     vec4 color;
 } shape_param_t;
 
@@ -85,6 +86,7 @@ typedef struct shape_info_t
     graphics_buffer_t index_buffer_sphere;
     graphics_shader_t vertex_shader;
     graphics_shader_t pixel_shader;
+    graphics_shader_t geometry_shader;
     graphics_program_t program;
 
     shape_param_t param;
@@ -623,10 +625,18 @@ static void init_shape(const graphics_t* graphics, shape_info_t* shape_info)
         .stage = STAGE_PIXEL_SHADER,
     });
 
+    shape_info->geometry_shader = graphics->create_shader(&(graphics_shader_desc_t)
+    {
+        .bytecode = gshader_shape,
+        .bytecode_size = sizeof(gshader_shape),
+        .stage = STAGE_GEOMETRY_SHADER,
+    });
+
     shape_info->program = graphics->create_program(&(graphics_program_desc_t)
     {
         .vertex_shader = shape_info->vertex_shader,
         .pixel_shader = shape_info->pixel_shader,
+        .geometry_shader = shape_info->geometry_shader,
         .attributes = (graphics_vertex_attribute_t[])
         {
             { "POSITION", FORMAT_R32G32B32_FLOAT, 0, 0, 0, 0, 0 },
@@ -880,7 +890,7 @@ init_function(init)
 
     game->d_test_pipeline = graphics->create_pipeline(&(graphics_pipeline_desc_t)
     {
-        .cull = true,
+        .cull = false,
         .depth_test = true,
         .depth_write = false,
         .alpha_blend_enable = true,
@@ -1416,27 +1426,27 @@ render_function(render)
     shape_param->yaw = global_earth_yaw;
     shape_param->pitch = global_earth_pitch;
     shape_param->scale = v2(scale_x, scale_y);
+    shape_param->viewport_size = v2((f32)game->offscreen_scene.width, (f32)game->offscreen_scene.height);
 
-    graphics->begin_pass(game->offscreen_target, &(graphics_pass_desc_t)
-    {
-        .clear_color = false,
-        .clear_depth = false
-    });
-    {
-        shape_param->color = v4(0.006f, 0.006f, 0.006f, 1.0f);
+    // graphics->begin_pass(game->offscreen_target, &(graphics_pass_desc_t)
+    // {
+    //     .clear_color = false,
+    //     .clear_depth = false
+    // });
+    // {
+    //     shape_param->color = v4(0.006f, 0.006f, 0.006f, 1.0f);
 
-        graphics->update_buffer(game->transform_buffer, &game->transform_param, 0, sizeof(game->transform_param));
-        graphics->update_buffer(shape_info->param_buffer, &shape_info->param, 0, sizeof(shape_info->param));
-        graphics->set_buffer(game->transform_buffer, STAGE_VERTEX_SHADER, 0, 0, 0);
-        graphics->set_buffer(game->transform_buffer, STAGE_PIXEL_SHADER, 0, 0, 0);
-        graphics->set_buffer(shape_info->param_buffer, STAGE_VERTEX_SHADER, 1, 0, 0);
-        graphics->set_vertex_buffer(shape_info->vertex_buffer_sphere, 0, sizeof(vec3), 0);
-        graphics->set_index_buffer(shape_info->index_buffer_sphere, 0);
-        graphics->set_program(shape_info->program);
-        graphics->set_pipeline(game->d_test_pipeline);
-        graphics->draw_indexed(TOPOLOGY_LINE_LIST, shape_info->index_buffer_sphere.size, 0, 0);
-    }
-    graphics->end_pass();
+    //     graphics->update_buffer(game->transform_buffer, &game->transform_param, 0, sizeof(game->transform_param));
+    //     graphics->update_buffer(shape_info->param_buffer, &shape_info->param, 0, sizeof(shape_info->param));
+    //     graphics->set_buffer(game->transform_buffer, STAGE_VERTEX_SHADER | STAGE_PIXEL_SHADER, 0, 0, 0);
+    //     graphics->set_buffer(shape_info->param_buffer, STAGE_VERTEX_SHADER | STAGE_GEOMETRY_SHADER | STAGE_PIXEL_SHADER, 1, 0, 0);
+    //     graphics->set_vertex_buffer(shape_info->vertex_buffer_sphere, 0, sizeof(vec3), 0);
+    //     graphics->set_index_buffer(shape_info->index_buffer_sphere, 0);
+    //     graphics->set_program(shape_info->program);
+    //     graphics->set_pipeline(game->d_test_pipeline);
+    //     graphics->draw_indexed(TOPOLOGY_LINE_LIST, shape_info->index_buffer_sphere.size, 0, 0);
+    // }
+    // graphics->end_pass();
 
     graphics->begin_pass(game->offscreen_target, &(graphics_pass_desc_t){ .clear_color = false });
     {
@@ -1450,14 +1460,15 @@ render_function(render)
         shape_param->color = v4(0.04f, 0.04f, 0.04f, 1.0f);
 
         graphics->update_buffer(shape_info->param_buffer, shape_param, 0, sizeof(shape_param_t));
-        graphics->set_buffer(shape_info->param_buffer, STAGE_VERTEX_SHADER, 1, 0, 0);
+        graphics->set_buffer(shape_info->param_buffer, STAGE_VERTEX_SHADER | STAGE_GEOMETRY_SHADER | STAGE_PIXEL_SHADER, 1, 0, 0);
+
         graphics->draw_indexed(TOPOLOGY_LINE_LIST, shape_info->index_buffer.size, 0, 0);
  
         if (game->country_index != 0xFF)
         {
             shape_param->color = v4(0.2f, 0.2f, 0.2f, 0.7f);
-            graphics->update_buffer(game->shape_info.param_buffer, shape_param, 0, sizeof(shape_param_t));
-            graphics->set_buffer(game->shape_info.param_buffer, STAGE_VERTEX_SHADER, 1, 0, 0);
+            graphics->update_buffer(shape_info->param_buffer, shape_param, 0, sizeof(shape_param_t));
+            graphics->set_buffer(shape_info->param_buffer, STAGE_VERTEX_SHADER | STAGE_GEOMETRY_SHADER | STAGE_PIXEL_SHADER, 1, 0, 0);
             graphics->draw_indexed(TOPOLOGY_LINE_LIST,
                                    global_shape_offset_index_counts[game->country_index][1],
                                    global_shape_offset_index_counts[game->country_index][0], 0);   
@@ -1465,23 +1476,23 @@ render_function(render)
     }
     graphics->end_pass();
 
-    graphics->begin_pass(game->glow_mask_target, &(graphics_pass_desc_t){ .clear_color = true, .clear_rgba = { 0.0f, 0.0f, 0.0f, 0.0f } });
-    {
-        graphics->update_buffer(game->transform_buffer, &game->transform_param, 0, sizeof(game->transform_param));
-        graphics->update_buffer(shape_info->param_buffer, shape_param, 0, sizeof(shape_param_t));
-        graphics->set_vertex_buffer(shape_info->vertex_buffer, 0, sizeof(vec3), 0);
-        graphics->set_index_buffer(shape_info->index_buffer, 0);
-        graphics->set_buffer(game->transform_buffer, STAGE_VERTEX_SHADER, 0, 0, 0);
-        graphics->set_buffer(shape_info->param_buffer, STAGE_VERTEX_SHADER, 1, 0, 0);
+    // graphics->begin_pass(game->glow_mask_target, &(graphics_pass_desc_t){ .clear_color = true, .clear_rgba = { 0.0f, 0.0f, 0.0f, 0.0f } });
+    // {
+    //     graphics->update_buffer(game->transform_buffer, &game->transform_param, 0, sizeof(game->transform_param));
+    //     graphics->update_buffer(shape_info->param_buffer, shape_param, 0, sizeof(shape_param_t));
+    //     graphics->set_vertex_buffer(shape_info->vertex_buffer, 0, sizeof(vec3), 0);
+    //     graphics->set_index_buffer(shape_info->index_buffer, 0);
+    //     graphics->set_buffer(game->transform_buffer, STAGE_VERTEX_SHADER, 0, 0, 0);
+    //     graphics->set_buffer(shape_info->param_buffer, STAGE_VERTEX_SHADER, 1, 0, 0);
         
-        game->glow_mask_setting = (glow_mask_setting_t){ .glow_color = { 0.9964f, 0.8431f, 0.4941f, 0.0f } };
-        graphics->update_buffer(game->glow_buffer, &game->glow_mask_setting, 0, sizeof(game->glow_mask_setting));
-        graphics->set_buffer(game->glow_buffer, STAGE_PIXEL_SHADER, 0, 0, 0);
-        graphics->set_program(game->glow_program);
-        graphics->set_pipeline(game->default_pipeline);
-        graphics->draw_indexed(TOPOLOGY_LINE_LIST, shape_info->index_buffer.size, 0, 0);
-    }
-    graphics->end_pass();
+    //     game->glow_mask_setting = (glow_mask_setting_t){ .glow_color = { 0.9964f, 0.8431f, 0.4941f, 0.0f } };
+    //     graphics->update_buffer(game->glow_buffer, &game->glow_mask_setting, 0, sizeof(game->glow_mask_setting));
+    //     graphics->set_buffer(game->glow_buffer, STAGE_PIXEL_SHADER, 0, 0, 0);
+    //     graphics->set_program(game->glow_program);
+    //     graphics->set_pipeline(game->default_pipeline);
+    //     graphics->draw_indexed(TOPOLOGY_LINE_LIST, shape_info->index_buffer.size, 0, 0);
+    // }
+    // graphics->end_pass();
     
     // NOTE: Horizontal blur. glow_mask -> glow_a.
     graphics->begin_pass(game->glow_a_target, &(graphics_pass_desc_t){ .clear_color = false });

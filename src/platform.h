@@ -2,7 +2,7 @@
 
 #include "maths.h"
 
-#define FONT_ENABLE 1
+#define FONT_ENABLE 0
 
 typedef enum key_modifier_t
 {

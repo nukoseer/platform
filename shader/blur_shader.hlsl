@@ -22,8 +22,11 @@ PS_INPUT vs(uint id: SV_VertexID)
     return output;
 }
 
-static const uint weight_count = 7;
-static const float w[weight_count] = { 0.155285, 0.144214, 0.115516, 0.079805, 0.047552, 0.024438, 0.010832 };
+// static const uint weight_count = 7;
+// static const float w[weight_count] = { 0.155285, 0.144214, 0.115516, 0.079805, 0.047552, 0.024438, 0.010832 };
+
+static const uint weight_count = 3;
+static const float w[weight_count] = { 0.251379, 0.221841, 0.152469 };
 
 float3 gaussian_blur_13tap_1d(float2 uv)
 {

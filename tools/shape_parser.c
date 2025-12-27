@@ -109,13 +109,35 @@ void parse_shape_file(uint8_t* shape_file_buffer, size_t shape_file_size, u32 pr
                     {
                         u32 start = parts[i] + part_index;
                         u32 end = ((i + 1 < shape_content->part_count) ? parts[i + 1] : shape_content->point_count) + part_index;
+
                         for (u32 j = start; j + 1 < end; ++j)
                         {
                             printf("%u, %u, ", j, j + 1);
                         }
                         printf("%u, %u, ", end - 1, start);
+                        
+                        // for (u32 j = start; j + 1 < end; ++j)
+                        // {
+                        //     u32 num_points = end - start;
+
+                        //     for (u32 k = 0; k < num_points; ++k)
+                        //     {
+                        //         u32 current = start + k;
+                        //         u32 next = start + ((k + 1) % num_points);
+                                
+                        //         u32 current_left = 2 * current + 0;
+                        //         u32 current_right = 2 * current + 1;
+                        //         u32 next_left = 2 * next + 0;
+                        //         u32 next_right = 2 * next + 1;
+
+                        //         printf("%u, %u, %u, %u, %u, %u, ", current_left, current_right, next_left, next_left, current_right, next_right);
+                                
+                        //     }
+                        // }
                     }
                 }
+
+                // break;
 
                 if (print_format & PRINT_INDEX_COUNTS)
                 {
@@ -134,11 +156,24 @@ void parse_shape_file(uint8_t* shape_file_buffer, size_t shape_file_size, u32 pr
                 f32 sum_x = 0.0f;
                 f32 sum_y = 0.0f;
                 f32 sum_z = 0.0f;
+
+                // printf("point_count: %u\n", shape_content->point_count);
                 
                 for (u32 i = 0; i < shape_content->point_count; ++i)
                 {
-                    f32 lon = (f32)points[i].x;
-                    f32 lat = (f32)points[i].y;
+                    u32 p_i = (i == 0) ? shape_content->point_count - 1 : i - 1;
+                    u32 c_i = i;
+                    u32 n_i = (i + 1) % shape_content->point_count;
+
+                    // printf("p_i: %u, i: %u, n_i: %u\n", p_i, i, n_i);
+
+                    f32 p_lon = (f32)points[p_i].x;
+                    f32 p_lat = (f32)points[p_i].y;
+                    f32 n_lon = (f32)points[n_i].x;
+                    f32 n_lat = (f32)points[n_i].y;
+                    
+                    f32 lon = (f32)points[c_i].x;
+                    f32 lat = (f32)points[c_i].y;
 
                     f32 lon_rad = lon * (f32)DEG2RAD;
                     f32 lat_rad = lat * (f32)DEG2RAD;
@@ -161,7 +196,10 @@ void parse_shape_file(uint8_t* shape_file_buffer, size_t shape_file_size, u32 pr
                         }
                         else if (print_format & PRINT_POINTS)
                         {
-                            printf("{ %+3.12ff, %+3.12ff, %+3.12ff }, ", lon, lat, 0.0f);
+                            // printf("{ %+3.12ff, %+3.12ff, %+3.12ff }, ", lon, lat, 0.0f);
+
+                            printf("{ { %+3.12ff, %+3.12ff, %+3.12ff }, { %+3.12ff, %+3.12ff, %+3.12ff }, { %+3.12ff, %+3.12ff, %+3.12ff }, %f },\n", p_lon, p_lat, 0.0f, lon, lat, 0.0f, n_lon, n_lat, 0.0f, -1.0f);
+                            printf("{ { %+3.12ff, %+3.12ff, %+3.12ff }, { %+3.12ff, %+3.12ff, %+3.12ff }, { %+3.12ff, %+3.12ff, %+3.12ff }, %f },\n", p_lon, p_lat, 0.0f, lon, lat, 0.0f, n_lon, n_lat, 0.0f, +1.0f);
                         }
                     }
                 }
@@ -268,12 +306,10 @@ int main(int argc, char* argv[])
 
     if (print_format & PRINT_PARTS)
     {
-        fseek(shape_file, 0, SEEK_SET);
         printf("static u32 global_shape_parts[][2] =\n{\n");
         parse_shape_file(shape_file_buffer, shape_file_size, PRINT_PARTS);
         printf("\n};\n\n");
 
-        fseek(shape_file, 0, SEEK_SET);
         printf("static u16 global_shape_part_offset_counts[][2] =\n{\n");
         parse_shape_file(shape_file_buffer, shape_file_size, PRINT_PART_COUNTS);
         printf("\n};\n\n");
@@ -281,12 +317,10 @@ int main(int argc, char* argv[])
     
     if (print_format & PRINT_INDICES)
     {
-        fseek(shape_file, 0, SEEK_SET);
         printf("static u16 global_shape_indices[] =\n{\n");
         parse_shape_file(shape_file_buffer, shape_file_size, PRINT_INDICES);
         printf("\n};\n\n");
 
-        fseek(shape_file, 0, SEEK_SET);
         printf("static u32 global_shape_offset_index_counts[][2] =\n{\n");
         parse_shape_file(shape_file_buffer, shape_file_size, PRINT_INDEX_COUNTS);
         printf("\n};\n\n");
@@ -294,7 +328,6 @@ int main(int argc, char* argv[])
 
     if (print_format & PRINT_VECTORS)
     {
-        fseek(shape_file, 0, SEEK_SET);
         printf("static vec3 global_shape_vectors[] =\n{\n");
         parse_shape_file(shape_file_buffer, shape_file_size, PRINT_VECTORS);
         printf("\n};\n\n");
@@ -302,12 +335,19 @@ int main(int argc, char* argv[])
 
     if (print_format & PRINT_POINTS)
     {
-        fseek(shape_file, 0, SEEK_SET);
-        printf("static vec3 global_shape_points[] =\n{\n");
+        printf("typedef struct border_vertex_t border_vertex_t;\n");
+        printf("""struct border_vertex_t\n"""
+            """{\n"""
+            """    vec3 prev;\n"""
+            """    vec3 current;\n"""
+            """    vec3 next;\n"""
+            """    f32 side;\n"""
+            """} static global_shape_points[] =\n"""
+            """{\n"""
+        );
         parse_shape_file(shape_file_buffer, shape_file_size, PRINT_POINTS);
         printf("\n};\n\n");
 
-        fseek(shape_file, 0, SEEK_SET);
         printf("static vec2 global_shape_centers[] =\n{\n");
         parse_shape_file(shape_file_buffer, shape_file_size, PRINT_CENTERS);
         printf("\n};\n\n");

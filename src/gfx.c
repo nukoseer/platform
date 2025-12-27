@@ -876,10 +876,10 @@ static graphics_create_shader_function(gfx_create_shader)
         assert(!"[GFX] Invalid shader stage.");
     }
 
+    gfx_shader->generation = shader_generation;
     gfx_shader->bytecode = shader_desc->bytecode;
     gfx_shader->bytecode_size = shader_desc->bytecode_size;
     gfx_shader->stage = shader_desc->stage;
-    gfx_shader->generation = shader_generation;
 
     graphics_shader.platform = pack_generation_index(shader_generation, shader_index);
     
@@ -1219,13 +1219,19 @@ static graphics_set_buffer_function(gfx_set_buffer)
     {
         case D3D11_BIND_CONSTANT_BUFFER:
         {
-            if (stage == STAGE_VERTEX_SHADER)
+            if (stage & STAGE_VERTEX_SHADER)
             {
                 ID3D11DeviceContext_VSSetConstantBuffers(global_d3d11.context, slot, 1, &gfx_buffer->buffer);
             }
-            else if (stage == STAGE_PIXEL_SHADER)
+            
+            if (stage & STAGE_PIXEL_SHADER)
             {
                 ID3D11DeviceContext_PSSetConstantBuffers(global_d3d11.context, slot, 1, &gfx_buffer->buffer);
+            }
+
+            if (stage & STAGE_GEOMETRY_SHADER)
+            {
+                ID3D11DeviceContext_GSSetConstantBuffers(global_d3d11.context, slot, 1, &gfx_buffer->buffer);
             }
         } break;
 
@@ -1466,6 +1472,10 @@ static graphics_end_pass_function(gfx_end_pass)
     assert(global_pass_count == 1 && "[GFX] Multiple begin pass.");
     --global_pass_count;
 
+    ID3D11DeviceContext_VSSetConstantBuffers(global_d3d11.context, 0, 0, 0);
+    ID3D11DeviceContext_GSSetConstantBuffers(global_d3d11.context, 0, 0, 0);
+    ID3D11DeviceContext_PSSetConstantBuffers(global_d3d11.context, 0, 0, 0);
+    
     ID3D11ShaderResourceView* null_srvs[16] = { 0 };
     ID3D11DeviceContext_VSSetShaderResources(global_d3d11.context, 0, 16, null_srvs);
     ID3D11DeviceContext_PSSetShaderResources(global_d3d11.context, 0, 16, null_srvs);
