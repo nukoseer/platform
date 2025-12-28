@@ -110,34 +110,32 @@ void parse_shape_file(uint8_t* shape_file_buffer, size_t shape_file_size, u32 pr
                         u32 start = parts[i] + part_index;
                         u32 end = ((i + 1 < shape_content->part_count) ? parts[i + 1] : shape_content->point_count) + part_index;
 
-                        for (u32 j = start; j + 1 < end; ++j)
-                        {
-                            printf("%u, %u, ", j, j + 1);
-                        }
-                        printf("%u, %u, ", end - 1, start);
-                        
                         // for (u32 j = start; j + 1 < end; ++j)
                         // {
-                        //     u32 num_points = end - start;
-
-                        //     for (u32 k = 0; k < num_points; ++k)
-                        //     {
-                        //         u32 current = start + k;
-                        //         u32 next = start + ((k + 1) % num_points);
-                                
-                        //         u32 current_left = 2 * current + 0;
-                        //         u32 current_right = 2 * current + 1;
-                        //         u32 next_left = 2 * next + 0;
-                        //         u32 next_right = 2 * next + 1;
-
-                        //         printf("%u, %u, %u, %u, %u, %u, ", current_left, current_right, next_left, next_left, current_right, next_right);
-                                
-                        //     }
+                        //     printf("%u, %u, ", j, j + 1);
                         // }
+                        // printf("%u, %u, ", end - 1, start);
+                        
+                        for (u32 j = start; j + 1 < end; ++j)
+                        {
+                            u32 num_points = end - start;
+
+                            for (u32 k = 0; k < num_points; ++k)
+                            {
+                                u32 current = start + k;
+                                u32 next = start + ((k + 1) % num_points);
+                                
+                                u32 current_left = 2 * current + 0;
+                                u32 current_right = 2 * current + 1;
+                                u32 next_left = 2 * next + 0;
+                                u32 next_right = 2 * next + 1;
+
+                                printf("%u, %u, %u, %u, %u, %u, ", current_left, current_right, next_left, next_left, current_right, next_right);
+                                
+                            }
+                        }
                     }
                 }
-
-                // break;
 
                 if (print_format & PRINT_INDEX_COUNTS)
                 {
@@ -317,7 +315,7 @@ int main(int argc, char* argv[])
     
     if (print_format & PRINT_INDICES)
     {
-        printf("static u16 global_shape_indices[] =\n{\n");
+        printf("static u32 global_shape_indices[] =\n{\n");
         parse_shape_file(shape_file_buffer, shape_file_size, PRINT_INDICES);
         printf("\n};\n\n");
 

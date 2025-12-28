@@ -331,6 +331,11 @@ static DXGI_FORMAT map_dxgi_ia_format(graphics_format_t format)
     
     switch (format)
     {
+        case FORMAT_R32_FLOAT:
+        {
+            dxgi_format = DXGI_FORMAT_R32_FLOAT;
+        } break;
+        
         case FORMAT_R32G32_FLOAT:
         {
             dxgi_format = DXGI_FORMAT_R32G32_FLOAT;
@@ -610,7 +615,7 @@ static graphics_create_buffer_function(gfx_create_buffer)
     };
     
     graphics_buffer.platform = pack_generation_index(buffer_generation, buffer_index);
-    graphics_buffer.size = size;
+    graphics_buffer.size = buffer_desc->size;
 
     return graphics_buffer;
 }
