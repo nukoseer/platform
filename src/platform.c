@@ -554,6 +554,7 @@ static DWORD WINAPI main_thread(void* param)
     {
         .create_buffer = gfx_create_buffer,
         .create_texture_2d = gfx_create_texture_2d,
+        .resolve_texture = gfx_resolve_texture,
         .create_sampler = gfx_create_sampler,
         .create_target = gfx_create_target,
         .create_shader = gfx_create_shader,

@@ -9,6 +9,7 @@
 #include "../shader/glow_mask_pixel_shader.h"
 #include "../shader/blur_vertex_shader.h"
 #include "../shader/blur_pixel_shader.h"
+#include "../shader/glow_merge_pixel_shader.h"
 #include "../shader/post_vertex_shader.h"
 #include "../shader/post_pixel_shader.h"
 
@@ -17,6 +18,9 @@
 
 #include "../shader/vertex_shader_sphere.h"
 #include "../shader/pixel_shader_sphere.h"
+
+#include "../shader/vertex_shader_sphere_grid.h"
+#include "../shader/pixel_shader_sphere_grid.h"
 
 #include "../shader/skybox_vertex_shader.h"
 #include "../shader/skybox_pixel_shader.h"
@@ -60,7 +64,10 @@ typedef struct sphere_info_t
     graphics_buffer_t index_buffer;
     graphics_shader_t vertex_shader;
     graphics_shader_t pixel_shader;
+    graphics_shader_t vertex_shader_grid;
+    graphics_shader_t pixel_shader_grid;
     graphics_program_t program;
+    graphics_program_t program_grid;
 
     sphere_param_t param;
 } sphere_info_t;
@@ -70,7 +77,7 @@ typedef struct shape_param_t
     f32 shape;
     f32 yaw;
     f32 pitch;
-    f32 _pad0;
+    f32 line_thickness;
     vec2 scale;
     vec2 viewport_size;
     vec4 color;
@@ -81,8 +88,6 @@ typedef struct shape_info_t
     graphics_buffer_t param_buffer;
     graphics_buffer_t vertex_buffer;
     graphics_buffer_t index_buffer;
-    graphics_buffer_t vertex_buffer_sphere;
-    graphics_buffer_t index_buffer_sphere;
     graphics_shader_t vertex_shader;
     graphics_shader_t pixel_shader;
     graphics_program_t program;
@@ -90,25 +95,29 @@ typedef struct shape_info_t
     shape_param_t param;
 } shape_info_t;
 
-typedef struct post_setting_t
+typedef struct glow_merge_param_t
 {
-    f32 inverse_dst_size[2];
-    f32 inverse_src_size[2];
-    f32 aspect_ratio;
+    vec2 viewport_size;
+    f32 intensity;
+    f32 _pad;
+} glow_merge_param_t;
 
+typedef struct post_param_t
+{
+    vec2 viewport_size;
+    f32 aspect_ratio;
     f32 invert;
 
     f32 vignette;
     f32 vignette_soft;
 
-    f32 glow_intensity;
-    f32 _pad[3];
-} post_setting_t;
+    f32 _pad[2];
+} post_param_t;
 
-typedef struct glow_mask_setting_t
+typedef struct glow_mask_param_t
 {
-    f32 glow_color[4];
-} glow_mask_setting_t;
+    vec4 glow_color;
+} glow_mask_param_t;
 
 typedef struct glow_blur_setting_t
 {
@@ -139,10 +148,13 @@ typedef struct skybox_vertex_t
 typedef struct game_t
 {
     graphics_texture_t offscreen_scene;
-    graphics_texture_t offscreen_depth;
-    graphics_target_t offscreen_target;
+    graphics_texture_t offscreen_scene_msaa;
+    graphics_texture_t offscreen_depth_msaa;
+    graphics_target_t offscreen_target_msaa;
     
     graphics_pipeline_t default_pipeline;
+    graphics_pipeline_t alphaoff_pipeline;
+    graphics_pipeline_t additive_pipeline;
     graphics_pipeline_t d_test_write_pipeline;
     graphics_pipeline_t d_test_pipeline;
 
@@ -157,16 +169,17 @@ typedef struct game_t
     sphere_info_t sphere_info;
     shape_info_t shape_info;
 
-    glow_mask_setting_t glow_mask_setting;
-    graphics_buffer_t glow_buffer;
+    glow_mask_param_t glow_mask_setting;
+    graphics_buffer_t glow_mask_buffer;
+    graphics_texture_t glow_mask_msaa;
     graphics_texture_t glow_mask;
     graphics_texture_t glow_a;
     graphics_texture_t glow_b;
-    graphics_target_t glow_mask_target;
+    graphics_target_t glow_mask_msaa_target;
     graphics_target_t glow_a_target;
     graphics_target_t glow_b_target;
-    graphics_shader_t glow_pixel_shader;
-    graphics_program_t glow_program;
+    graphics_shader_t glow_mask_pixel_shader;
+    graphics_program_t glow_mask_program;
 
     glow_blur_setting_t glow_blur_setting;
     graphics_buffer_t blur_buffer;
@@ -174,11 +187,16 @@ typedef struct game_t
     graphics_shader_t blur_pixel_shader;
     graphics_program_t blur_program;
 
-    graphics_buffer_t post_buffer;
+    glow_merge_param_t glow_merge_param;
+    graphics_buffer_t glow_merge_param_buffer;
+    graphics_shader_t glow_merge_pixel_shader;
+    graphics_program_t glow_merge_program;
+
+    post_param_t post_param;
+    graphics_buffer_t post_param_buffer;
     graphics_shader_t post_vertex_shader;
     graphics_shader_t post_pixel_shader;
     graphics_program_t post_program;
-    post_setting_t post_setting;
 
     graphics_texture_t skybox_texture;
     graphics_buffer_t skybox_param_buffer;
@@ -326,16 +344,18 @@ static void resize_offscreen_buffer(platform_t* platform, game_t* game)
 {
     graphics_t* graphics = platform->graphics;
     bool resized = platform->resized;
-    bool is_valid = graphics->is_valid_target(game->offscreen_target);
+    bool is_valid = graphics->is_valid_target(game->offscreen_target_msaa);
 
     if (is_valid && resized)
     {
-        graphics->delete_target(game->offscreen_target);
-        graphics->delete_target(game->glow_mask_target);
+        graphics->delete_target(game->offscreen_target_msaa);
+        graphics->delete_target(game->glow_mask_msaa_target);
         graphics->delete_target(game->glow_a_target);
         graphics->delete_target(game->glow_b_target);
         graphics->delete_texture_2d(game->offscreen_scene);
-        graphics->delete_texture_2d(game->offscreen_depth);
+        graphics->delete_texture_2d(game->offscreen_scene_msaa);
+        graphics->delete_texture_2d(game->offscreen_depth_msaa);
+        graphics->delete_texture_2d(game->glow_mask_msaa);
         graphics->delete_texture_2d(game->glow_mask);
         graphics->delete_texture_2d(game->glow_a);
         graphics->delete_texture_2d(game->glow_b);
@@ -350,26 +370,46 @@ static void resize_offscreen_buffer(platform_t* platform, game_t* game)
             .width = platform->width,
             .height = platform->height,
         }, 0, 0);
+        
+        game->offscreen_scene_msaa = graphics->create_texture_2d(&(graphics_texture_2d_desc_t)
+        {
+            .format = FORMAT_R16G16B16A16_FLOAT,
+            .bind = BIND_SHADER_RESOURCE | BIND_RENDER_TARGET,
+            .width = platform->width,
+            .height = platform->height,
+            .sample_count = 4,
+        }, 0, 0);
 
-        game->offscreen_depth = graphics->create_texture_2d(&(graphics_texture_2d_desc_t)
+        game->offscreen_depth_msaa = graphics->create_texture_2d(&(graphics_texture_2d_desc_t)
         {
             .format = FORMAT_D24_UNORM_S8_UINT,
             .bind = BIND_DEPTH_STENCIL,
             .width = platform->width,
             .height = platform->height,
+            .sample_count = 4,
+        }, 0, 0);
+
+        game->glow_mask_msaa = graphics->create_texture_2d(&(graphics_texture_2d_desc_t)
+        {
+            .format = FORMAT_R16G16B16A16_FLOAT,
+            .bind = BIND_SHADER_RESOURCE | BIND_RENDER_TARGET,
+            .width = platform->width,
+            .height = platform->height,
+            .sample_count = 4,
         }, 0, 0);
 
         game->glow_mask = graphics->create_texture_2d(&(graphics_texture_2d_desc_t)
         {
-            .format = FORMAT_R8G8B8A8_UNORM,
+            .format = FORMAT_R16G16B16A16_FLOAT,
             .bind = BIND_SHADER_RESOURCE | BIND_RENDER_TARGET,
-            .width = (u32)(platform->width * 0.5f),
-            .height = (u32)(platform->height * 0.5f),
+            .width = platform->width,
+            .height = platform->height,
         }, 0, 0);
 
         game->glow_a = graphics->create_texture_2d(&(graphics_texture_2d_desc_t)
         {
-            .format = FORMAT_R8G8B8A8_UNORM,
+            .format = FORMAT_R16G16B16A16_FLOAT,
+            // FORMAT_R8G8B8A8_UNORM,
             .bind = BIND_SHADER_RESOURCE | BIND_RENDER_TARGET,
             .width = (u32)(platform->width * 0.5f),
             .height = (u32)(platform->height * 0.5f),
@@ -377,15 +417,16 @@ static void resize_offscreen_buffer(platform_t* platform, game_t* game)
 
         game->glow_b = graphics->create_texture_2d(&(graphics_texture_2d_desc_t)
         {
-            .format = FORMAT_R8G8B8A8_UNORM,
+            .format = FORMAT_R16G16B16A16_FLOAT,
+            //FORMAT_R8G8B8A8_UNORM,
             .bind = BIND_SHADER_RESOURCE | BIND_RENDER_TARGET,
             .width = (u32)(platform->width * 0.5f),
             .height = (u32)(platform->height * 0.5f),
         }, 0, 0);
 
         // NOTE: Create RenderTargetView for offscreen_scene to render.
-        game->offscreen_target = graphics->create_target(&(graphics_target_desc_t){ .color = game->offscreen_scene, .depth = game->offscreen_depth });
-        game->glow_mask_target = graphics->create_target(&(graphics_target_desc_t){ .color = game->glow_mask });
+        game->offscreen_target_msaa = graphics->create_target(&(graphics_target_desc_t){ .color = game->offscreen_scene_msaa, .depth = game->offscreen_depth_msaa });
+        game->glow_mask_msaa_target = graphics->create_target(&(graphics_target_desc_t){ .color = game->glow_mask_msaa, .depth = game->offscreen_depth_msaa });
         game->glow_a_target = graphics->create_target(&(graphics_target_desc_t){ .color = game->glow_a });
         game->glow_b_target = graphics->create_target(&(graphics_target_desc_t){ .color = game->glow_b });
     }
@@ -554,7 +595,7 @@ static void init_sphere(const graphics_t* graphics, sphere_info_t* sphere_info)
         .size = array_count(global_sphere_indices),
         .usage = USAGE_IMMUTABLE,
         .bind = BIND_INDEX_BUFFER,
-        .index_format = array_count(global_sphere_indices) > 0xFFFF ? FORMAT_R32_UINT : FORMAT_R16_UINT,
+        .index_format = FORMAT_R16_UINT,
     });
 
     sphere_info->vertex_shader = graphics->create_shader(&(graphics_shader_desc_t)
@@ -575,6 +616,31 @@ static void init_sphere(const graphics_t* graphics, sphere_info_t* sphere_info)
     {
         .vertex_shader = sphere_info->vertex_shader,
         .pixel_shader = sphere_info->pixel_shader,
+        .attributes = (graphics_vertex_attribute_t[])
+        {
+            { "POSITION", FORMAT_R32G32B32_FLOAT, 0, 0, 0, 0, 0 },
+        },
+        .attribute_count = 1,
+    });
+
+    sphere_info->vertex_shader_grid = graphics->create_shader(&(graphics_shader_desc_t)
+    {
+        .bytecode = vshader_sphere_grid,
+        .bytecode_size = sizeof(vshader_sphere_grid),
+        .stage = STAGE_VERTEX_SHADER,
+    });
+
+    sphere_info->pixel_shader_grid = graphics->create_shader(&(graphics_shader_desc_t)
+    {
+        .bytecode = pshader_sphere_grid,
+        .bytecode_size = sizeof(pshader_sphere_grid),
+        .stage = STAGE_PIXEL_SHADER,
+    });
+
+    sphere_info->program_grid = graphics->create_program(&(graphics_program_desc_t)
+    {
+        .vertex_shader = sphere_info->vertex_shader_grid,
+        .pixel_shader = sphere_info->pixel_shader_grid,
         .attributes = (graphics_vertex_attribute_t[])
         {
             { "POSITION", FORMAT_R32G32B32_FLOAT, 0, 0, 0, 0, 0 },
@@ -606,7 +672,7 @@ static void init_shape(const graphics_t* graphics, shape_info_t* shape_info)
         .size = array_count(global_shape_indices),
         .usage = USAGE_DYNAMIC,
         .bind = BIND_INDEX_BUFFER,
-        .index_format = array_count(global_shape_indices) > 0xFFFF ? FORMAT_R32_UINT : FORMAT_R16_UINT,
+        .index_format = FORMAT_R16_UINT,
     });
 
     shape_info->vertex_shader = graphics->create_shader(&(graphics_shader_desc_t)
@@ -709,16 +775,16 @@ static f32 global_earth_yaw;
 static f32 global_earth_pitch;
 static bool global_earth_reset;
 
-static bool inside_country(const vec3* points, u32 point_count, f32 lon, f32 lat)
+static bool inside_country(const border_vertex_t* points, u32 point_count, f32 lon, f32 lat)
 {
     bool inside = false;
 
     for (u32 i = 0, j = point_count - 1; i < point_count; j = i++)
     {
-        f32 xi = points[i].x;
-        f32 yi = points[i].y;
-        f32 xj = points[j].x;
-        f32 yj = points[j].y;
+        f32 xi = points[i].current.x;
+        f32 yi = points[i].current.y;
+        f32 xj = points[j].current.x;
+        f32 yj = points[j].current.y;
 
         bool hit = ((yi > lat) != (yj > lat)) && (lon < (xj - xi) * (lat - yi) / (yj - yi) + xi);
 
@@ -747,15 +813,14 @@ static u8 cell_get_country_id(const u8* cells, f32 lon, f32 lat)
 
             for (u32 part_index = 0; part_index < part_count; ++part_index)
             {
-                u32 start = global_shape_parts[part_offset + part_index][0];
-                u32 end = global_shape_parts[part_offset + part_index][1];
+                u32 start = global_shape_parts[part_offset + part_index][0] * 2;
+                u32 end = global_shape_parts[part_offset + part_index][1] * 2;
 
-                // if (inside_country(global_shape_points + start, end - start, lon, lat))
-                // {
-                //     result = country_id;
-                //     break;
-                // }
-                
+                if (inside_country(global_shape_points + start, end - start, lon, lat))
+                {
+                    result = country_id;
+                    break;
+                }
             }
         }
         else
@@ -866,20 +931,19 @@ init_function(init)
     init_sphere(graphics, &game->sphere_info);
     init_shape(graphics, &game->shape_info);
 
-    game->shape_info.vertex_buffer_sphere = game->sphere_info.vertex_buffer;
-    game->shape_info.index_buffer_sphere = game->sphere_info.index_buffer;
-
     game->shape_value = 1.0f;
     game->shape_direction = 1.0f;
 
-    game->default_pipeline = graphics->create_pipeline(&(graphics_pipeline_desc_t){ .alpha_blend_enable = true, });
+    game->default_pipeline = graphics->create_pipeline(&(graphics_pipeline_desc_t){ .blend = BLEND_ALPHA, });
+    game->alphaoff_pipeline = graphics->create_pipeline(&(graphics_pipeline_desc_t){ .depth_test = true, });
+    game->additive_pipeline = graphics->create_pipeline(&(graphics_pipeline_desc_t){ .depth_test = true, .blend = BLEND_ADDITIVE });
 
     game->d_test_write_pipeline = graphics->create_pipeline(&(graphics_pipeline_desc_t)
     {
         .cull = true,
         .depth_test = true,
         .depth_write = true,
-        .alpha_blend_enable = true,
+        .blend = BLEND_ALPHA,
     });
 
     game->d_test_pipeline = graphics->create_pipeline(&(graphics_pipeline_desc_t)
@@ -887,7 +951,7 @@ init_function(init)
         .cull = false,
         .depth_test = true,
         .depth_write = false,
-        .alpha_blend_enable = true,
+        .blend = BLEND_ALPHA,
     });
 
     game->linear_sampler = graphics->create_sampler(&(graphics_sampler_desc_t)
@@ -913,30 +977,33 @@ init_function(init)
         .bind = BIND_CONSTANT_BUFFER,
     });
 
-    game->glow_buffer = graphics->create_buffer(&(graphics_buffer_desc_t)
+    game->glow_mask_buffer = graphics->create_buffer(&(graphics_buffer_desc_t)
     {
         .size = 16,
         .usage = USAGE_DYNAMIC,
         .bind = BIND_CONSTANT_BUFFER,
     });
 
-    game->glow_pixel_shader = graphics->create_shader(&(graphics_shader_desc_t)
+    game->glow_mask_pixel_shader = graphics->create_shader(&(graphics_shader_desc_t)
     {
         .bytecode = glow_mask_pshader,
         .bytecode_size = sizeof(glow_mask_pshader),
         .stage = STAGE_PIXEL_SHADER,
     });
 
-    // game->glow_program = graphics->create_program(&(graphics_program_desc_t)
-    // {
-    //     .vertex_shader = game->shape_info.vertex_shader,
-    //     .pixel_shader = game->glow_pixel_shader,
-    //     .attributes = (graphics_vertex_attribute_t[])
-    //     {
-    //         { "POSITION", FORMAT_R32G32B32_FLOAT, 0, 0, 0, 0, 0 },
-    //     },
-    //     .attribute_count = 1,
-    // });
+    game->glow_mask_program = graphics->create_program(&(graphics_program_desc_t)
+    {
+        .vertex_shader = game->shape_info.vertex_shader,
+        .pixel_shader = game->glow_mask_pixel_shader,
+        .attributes = (graphics_vertex_attribute_t[])
+        {
+            { "TEXCOORD", FORMAT_R32G32B32_FLOAT, offsetof(border_vertex_t, prev), 0, 0, 0, 0 },
+            { "POSITION", FORMAT_R32G32B32_FLOAT, offsetof(border_vertex_t, current), 0, 0, 0, 0 },
+            { "TEXCOORD", FORMAT_R32G32B32_FLOAT, offsetof(border_vertex_t, next), 1, 0, 0, 0 },
+            { "TEXCOORD", FORMAT_R32_FLOAT,       offsetof(border_vertex_t, side), 2, 0, 0, 0 },
+        },
+        .attribute_count = 4,
+    });
 
     game->blur_buffer = graphics->create_buffer(&(graphics_buffer_desc_t)
     {
@@ -968,10 +1035,33 @@ init_function(init)
         .attribute_count = 0,
     });
 
-    // NOTE: Post shaders and pipeline.
-    game->post_buffer = graphics->create_buffer(&(graphics_buffer_desc_t)
+    game->glow_merge_param_buffer = graphics->create_buffer(&(graphics_buffer_desc_t)
     {
-        .size = sizeof(post_setting_t),
+        .size = sizeof(glow_merge_param_t),
+        .usage = USAGE_DYNAMIC,
+        .bind = BIND_CONSTANT_BUFFER,
+    });
+    
+    game->glow_merge_pixel_shader = graphics->create_shader(&(graphics_shader_desc_t)
+    {
+        .bytecode = glow_merge_pshader,
+        .bytecode_size = sizeof(glow_merge_pshader),
+        .stage = STAGE_PIXEL_SHADER,
+    });
+
+    game->glow_merge_program = graphics->create_program(&(graphics_program_desc_t)
+    {
+        .vertex_shader = game->blur_vertex_shader,
+        .pixel_shader = game->glow_merge_pixel_shader,
+        // NOTE: No input layout.
+        .attributes = 0,
+        .attribute_count = 0,
+    });
+
+    // NOTE: Post shaders and pipeline.
+    game->post_param_buffer = graphics->create_buffer(&(graphics_buffer_desc_t)
+    {
+        .size = sizeof(post_param_t),
         .usage = USAGE_DYNAMIC,
         .bind = BIND_CONSTANT_BUFFER,
     });
@@ -1008,78 +1098,78 @@ init_function(init)
 
     io->release_file_memory(io->read_file("..\\src\\game.c").data);
 
-    // u32 total_part_count = global_shape_part_offset_counts[array_count(global_shape_part_offset_counts) - 1][0] + 1;
-    // f32* part_outlines = calloc(1, total_part_count * sizeof(f32) * 4);
-    // u32 part_outline_count = 0;
+    u32 total_part_count = global_shape_part_offset_counts[array_count(global_shape_part_offset_counts) - 1][0] + 1;
+    f32* part_outlines = calloc(1, total_part_count * sizeof(f32) * 4);
+    u32 part_outline_count = 0;
 
-    // for (u8 country_index = 0; country_index < array_count(global_shape_part_offset_counts); ++country_index)
-    // {
-    //     u32 part_offset = global_shape_part_offset_counts[country_index][0];
-    //     u32 part_count = global_shape_part_offset_counts[country_index][1];
+    for (u8 country_index = 0; country_index < array_count(global_shape_part_offset_counts); ++country_index)
+    {
+        u32 part_offset = global_shape_part_offset_counts[country_index][0];
+        u32 part_count = global_shape_part_offset_counts[country_index][1];
 
-    //     for (u32 part_index = 0; part_index < part_count; ++part_index)
-    //     {
-    //         u32 start = global_shape_parts[part_offset + part_index][0];
-    //         u32 end = global_shape_parts[part_offset + part_index][1];
+        for (u32 part_index = 0; part_index < part_count; ++part_index)
+        {
+            u32 start = global_shape_parts[part_offset + part_index][0] * 2;
+            u32 end = global_shape_parts[part_offset + part_index][1] * 2;
 
-    //         f32 lon_min = 1000.0f;
-    //         f32 lon_max = -1000.0f;
-    //         f32 lat_min = 1000.0f;
-    //         f32 lat_max = -1000.0f;
+            f32 lon_min = 1000.0f;
+            f32 lon_max = -1000.0f;
+            f32 lat_min = 1000.0f;
+            f32 lat_max = -1000.0f;
 
-    //         for (u32 k = start; k < end; ++k)
-    //         {
-    //             vec3 point = global_shape_points[k];
+            for (u32 k = start; k < end; ++k)
+            {
+                vec3 point = global_shape_points[k].current;
 
-    //             if (point.x < lon_min)
-    //             {
-    //                 lon_min = point.x;
-    //             }
+                if (point.x < lon_min)
+                {
+                    lon_min = point.x;
+                }
 
-    //             if (point.y < lat_min)
-    //             {
-    //                 lat_min = point.y;
-    //             }
+                if (point.y < lat_min)
+                {
+                    lat_min = point.y;
+                }
 
-    //             if (point.x > lon_max)
-    //             {
-    //                 lon_max = point.x;
-    //             }
+                if (point.x > lon_max)
+                {
+                    lon_max = point.x;
+                }
 
-    //             if (point.y > lat_max)
-    //             {
-    //                 lat_max = point.y;
-    //             }
-    //         }
+                if (point.y > lat_max)
+                {
+                    lat_max = point.y;
+                }
+            }
 
-    //         part_outlines[part_outline_count + 0] = lon_min;
-    //         part_outlines[part_outline_count + 1] = lon_max;
-    //         part_outlines[part_outline_count + 2] = lat_min;
-    //         part_outlines[part_outline_count + 3] = lat_max;
-    //         part_outline_count += 4;
-    //     }
-    // }
+            part_outlines[part_outline_count + 0] = lon_min;
+            part_outlines[part_outline_count + 1] = lon_max;
+            part_outlines[part_outline_count + 2] = lat_min;
+            part_outlines[part_outline_count + 3] = lat_max;
+            part_outline_count += 4;
+        }
+    }
 
-    // assert(total_part_count * 4 == part_outline_count);
+    assert(total_part_count * 4 == part_outline_count);
 
-    // game->cells = calloc(1, CELL_X_COUNT * CELL_Y_COUNT * CELL_SLOT_COUNT);
-    // f32* outlines = part_outlines;
+    game->cells = calloc(1, CELL_X_COUNT * CELL_Y_COUNT * CELL_SLOT_COUNT);
+    f32* outlines = part_outlines;
 
-    // for (u8 country_index = 0; country_index < array_count(global_shape_part_offset_counts); ++country_index)
-    // {
-    //     for (u32 part_index = 0; part_index < global_shape_part_offset_counts[country_index][1]; ++part_index)
-    //     {
-    //         f32 lon_min = outlines[0];
-    //         f32 lon_max = outlines[1];
-    //         f32 lat_min = outlines[2];
-    //         f32 lat_max = outlines[3];
-    //         outlines += 4;
+    for (u8 country_index = 0; country_index < array_count(global_shape_part_offset_counts); ++country_index)
+    {
+        for (u32 part_index = 0; part_index < global_shape_part_offset_counts[country_index][1]; ++part_index)
+        {
+            f32 lon_min = outlines[0];
+            f32 lon_max = outlines[1];
+            f32 lat_min = outlines[2];
+            f32 lat_max = outlines[3];
+            outlines += 4;
             
-    //         cell_insert_country(game->cells, country_index, lon_min, lon_max, lat_min, lat_max);
-    //     }
-    // }
+            cell_insert_country(game->cells, country_index, lon_min, lon_max, lat_min, lat_max);
+        }
+    }
 
-    // free(part_outlines);
+    free(part_outlines);
 
     // TODO: Probably we can be more clever.
     // This affects start up time drastically of course...
@@ -1333,16 +1423,38 @@ update_function(update)
         f32 lon = lerp(xy_lon_lat.x, game->shape_value, ray_lon_lat.x);
         f32 lat = lerp(xy_lon_lat.y, game->shape_value, ray_lon_lat.y);
 
-        // game->country_index = cell_get_country(game->cells, lon, lat);
+        game->country_index = cell_get_country(game->cells, lon, lat);
 
-        // if (game->country_index != 0xFF && game->country_index < array_count(global_shape_country_names))
-        // {
-        //     fprintf(stderr, "\rx: %f, y: %f, lon: %f, lat: %f, yaw: %f, pitch: %f, country: %s, id: %u",
-        //             input->mouse_position.x, input->mouse_position.y,
-        //             lon, lat, global_earth_yaw, global_earth_pitch,
-        //             global_shape_country_names[game->country_index], game->country_index);
-        // }
+        if (game->country_index != 0xFF && game->country_index < array_count(global_shape_country_names))
+        {
+            fprintf(stderr, "\rx: %f, y: %f, lon: %f, lat: %f, yaw: %f, pitch: %f, country: %s, id: %u",
+                    input->mouse_position.x, input->mouse_position.y,
+                    lon, lat, global_earth_yaw, global_earth_pitch,
+                    global_shape_country_names[game->country_index], game->country_index);
+        }
     }
+}
+
+static inline vec3 srgb_to_linear(vec3 srgb)
+{
+    vec3 linear;
+
+    linear.x = (srgb.x <= 0.04045f) ? (srgb.x / 12.92f) : powf((srgb.x + 0.055f) / 1.055f, 2.4f);
+    linear.y = (srgb.y <= 0.04045f) ? (srgb.y / 12.92f) : powf((srgb.y + 0.055f) / 1.055f, 2.4f);
+    linear.z = (srgb.z <= 0.04045f) ? (srgb.z / 12.92f) : powf((srgb.z + 0.055f) / 1.055f, 2.4f);
+
+    return linear;
+}
+
+static inline vec3 linear_to_srgb(vec3 linear)
+{
+    vec3 srgb;
+
+    srgb.x = (linear.x <= 0.0031308f) ? (linear.x * 12.92f) : (1.055f * powf(linear.x, 1.0f / 2.4f) - 0.055f);
+    srgb.y = (linear.y <= 0.0031308f) ? (linear.y * 12.92f) : (1.055f * powf(linear.y, 1.0f / 2.4f) - 0.055f);
+    srgb.z = (linear.z <= 0.0031308f) ? (linear.z * 12.92f) : (1.055f * powf(linear.z, 1.0f / 2.4f) - 0.055f);
+
+    return srgb;
 }
 
 render_function(render)
@@ -1359,7 +1471,7 @@ render_function(render)
     game->transform_param.projection = camera->projection;
     game->transform_param.camera_world = v4v(camera->position, 0.0f);
 
-    graphics->begin_pass(game->offscreen_target, &(graphics_pass_desc_t)
+    graphics->begin_pass(game->offscreen_target_msaa, &(graphics_pass_desc_t)
     {
         .clear_color = true, .clear_rgba = { 0.005f, 0.005f, 0.005f, 1.0f },
         .clear_depth = true, .clear_depth_value = 1.0f
@@ -1387,7 +1499,7 @@ render_function(render)
     }
     graphics->end_pass();
     
-    graphics->begin_pass(game->offscreen_target, &(graphics_pass_desc_t)
+    graphics->begin_pass(game->offscreen_target_msaa, &(graphics_pass_desc_t)
     {
         .clear_color = false, .clear_depth = false,
     });
@@ -1419,74 +1531,85 @@ render_function(render)
     shape_param->shape = game->shape_value;
     shape_param->yaw = global_earth_yaw;
     shape_param->pitch = global_earth_pitch;
+    shape_param->line_thickness = 1.0f;
     shape_param->scale = v2(scale_x, scale_y);
     shape_param->viewport_size = v2((f32)game->offscreen_scene.width, (f32)game->offscreen_scene.height);
 
-    // graphics->begin_pass(game->offscreen_target, &(graphics_pass_desc_t)
-    // {
-    //     .clear_color = false,
-    //     .clear_depth = false
-    // });
-    // {
-    //     shape_param->color = v4(0.006f, 0.006f, 0.006f, 1.0f);
-
-    //     graphics->update_buffer(game->transform_buffer, &game->transform_param, 0, sizeof(game->transform_param));
-    //     graphics->update_buffer(shape_info->param_buffer, &shape_info->param, 0, sizeof(shape_info->param));
-    //     graphics->set_buffer(game->transform_buffer, STAGE_VERTEX_SHADER | STAGE_PIXEL_SHADER, 0, 0, 0);
-    //     graphics->set_buffer(shape_info->param_buffer, STAGE_VERTEX_SHADER | STAGE_GEOMETRY_SHADER | STAGE_PIXEL_SHADER, 1, 0, 0);
-    //     graphics->set_vertex_buffer(shape_info->vertex_buffer_sphere, 0, sizeof(vec3), 0);
-    //     graphics->set_index_buffer(shape_info->index_buffer_sphere, 0);
-    //     graphics->set_program(shape_info->program);
-    //     graphics->set_pipeline(game->d_test_pipeline);
-    //     graphics->draw_indexed(TOPOLOGY_LINE_LIST, shape_info->index_buffer_sphere.size, 0, 0);
-    // }
-    // graphics->end_pass();
-
-    graphics->begin_pass(game->offscreen_target, &(graphics_pass_desc_t){ .clear_color = false });
+    graphics->begin_pass(game->offscreen_target_msaa, &(graphics_pass_desc_t)
     {
+        .clear_color = false,
+        .clear_depth = false
+    });
+    {
+        shape_param->color = v4(0.006f, 0.006f, 0.006f, 1.0f);
+
+        sphere_info_t* sphere_info = &game->sphere_info;
+
         graphics->update_buffer(game->transform_buffer, &game->transform_param, 0, sizeof(game->transform_param));
+        graphics->update_buffer(shape_info->param_buffer, &shape_info->param, 0, sizeof(shape_info->param));
         graphics->set_buffer(game->transform_buffer, STAGE_VERTEX_SHADER, 0, 0, 0);
-        graphics->set_vertex_buffer(shape_info->vertex_buffer, 0, sizeof(border_vertex_t), 0);
-        graphics->set_index_buffer(shape_info->index_buffer, 0);
-        graphics->set_program(shape_info->program);
-        graphics->set_pipeline(game->d_test_pipeline);
-
-        shape_param->color = v4(0.04f, 0.04f, 0.04f, 1.0f);
-
-        graphics->update_buffer(shape_info->param_buffer, shape_param, 0, sizeof(shape_param_t));
         graphics->set_buffer(shape_info->param_buffer, STAGE_VERTEX_SHADER | STAGE_PIXEL_SHADER, 1, 0, 0);
-
-        graphics->draw_indexed(TOPOLOGY_LINE_LIST, shape_info->index_buffer.size, 0, 0);
- 
-        // if (game->country_index != 0xFF)
-        // {
-        //     shape_param->color = v4(0.2f, 0.2f, 0.2f, 0.7f);
-        //     graphics->update_buffer(shape_info->param_buffer, shape_param, 0, sizeof(shape_param_t));
-        //     graphics->set_buffer(shape_info->param_buffer, STAGE_VERTEX_SHADER | STAGE_GEOMETRY_SHADER | STAGE_PIXEL_SHADER, 1, 0, 0);
-        //     graphics->draw_indexed(TOPOLOGY_LINE_LIST,
-        //                            global_shape_offset_index_counts[game->country_index][1],
-        //                            global_shape_offset_index_counts[game->country_index][0], 0);   
-        // }
+        graphics->set_vertex_buffer(sphere_info->vertex_buffer, 0, sizeof(vec3), 0);
+        graphics->set_index_buffer(sphere_info->index_buffer, 0);
+        graphics->set_program(sphere_info->program_grid);
+        graphics->set_pipeline(game->d_test_pipeline);
+        graphics->draw_indexed(TOPOLOGY_LINE_LIST, sphere_info->index_buffer.size, 0, 0);
     }
     graphics->end_pass();
 
-    // graphics->begin_pass(game->glow_mask_target, &(graphics_pass_desc_t){ .clear_color = true, .clear_rgba = { 0.0f, 0.0f, 0.0f, 0.0f } });
+    // graphics->begin_pass(game->offscreen_target_msaa, &(graphics_pass_desc_t){ .clear_color = false });
     // {
     //     graphics->update_buffer(game->transform_buffer, &game->transform_param, 0, sizeof(game->transform_param));
-    //     graphics->update_buffer(shape_info->param_buffer, shape_param, 0, sizeof(shape_param_t));
-    //     graphics->set_vertex_buffer(shape_info->vertex_buffer, 0, sizeof(vec3), 0);
-    //     graphics->set_index_buffer(shape_info->index_buffer, 0);
     //     graphics->set_buffer(game->transform_buffer, STAGE_VERTEX_SHADER, 0, 0, 0);
-    //     graphics->set_buffer(shape_info->param_buffer, STAGE_VERTEX_SHADER, 1, 0, 0);
-        
-    //     game->glow_mask_setting = (glow_mask_setting_t){ .glow_color = { 0.9964f, 0.8431f, 0.4941f, 0.0f } };
-    //     graphics->update_buffer(game->glow_buffer, &game->glow_mask_setting, 0, sizeof(game->glow_mask_setting));
-    //     graphics->set_buffer(game->glow_buffer, STAGE_PIXEL_SHADER, 0, 0, 0);
-    //     graphics->set_program(game->glow_program);
-    //     graphics->set_pipeline(game->default_pipeline);
-    //     graphics->draw_indexed(TOPOLOGY_LINE_LIST, shape_info->index_buffer.size, 0, 0);
+    //     graphics->set_vertex_buffer(shape_info->vertex_buffer, 0, sizeof(border_vertex_t), 0);
+    //     graphics->set_index_buffer(shape_info->index_buffer, 0);
+    //     graphics->set_program(shape_info->program);
+    //     graphics->set_pipeline(game->d_test_pipeline);
+
+    //     shape_param->color = v4(0.04f, 0.04f, 0.04f, 1.0f);
+
+    //     graphics->update_buffer(shape_info->param_buffer, shape_param, 0, sizeof(shape_param_t));
+    //     graphics->set_buffer(shape_info->param_buffer, STAGE_VERTEX_SHADER | STAGE_PIXEL_SHADER, 1, 0, 0);
+
+    //     graphics->draw_indexed(TOPOLOGY_TRIANGLE_LIST, shape_info->index_buffer.size, 0, 0);
+ 
+    //     if (game->country_index != 0xFF)
+    //     {
+    //         shape_param->color = v4(0.2f, 0.2f, 0.2f, 0.7f);
+    //         graphics->update_buffer(shape_info->param_buffer, shape_param, 0, sizeof(shape_param_t));
+    //         graphics->set_buffer(shape_info->param_buffer, STAGE_VERTEX_SHADER | STAGE_PIXEL_SHADER, 1, 0, 0);
+    //         graphics->draw_indexed(TOPOLOGY_TRIANGLE_LIST,
+    //                                global_shape_offset_index_counts[game->country_index][1],
+    //                                global_shape_offset_index_counts[game->country_index][0], 0);
+    //     }
     // }
     // graphics->end_pass();
+
+    graphics->begin_pass(game->glow_mask_msaa_target, &(graphics_pass_desc_t)
+    {
+        .clear_color = true,
+        .clear_rgba = { 0.0f, 0.0f, 0.0f, 0.0f },
+    });
+    {
+        shape_info->param.line_thickness = 2.0f;
+        graphics->update_buffer(game->transform_buffer, &game->transform_param, 0, sizeof(game->transform_param));
+        graphics->update_buffer(shape_info->param_buffer, shape_param, 0, sizeof(shape_param_t));
+        graphics->set_vertex_buffer(shape_info->vertex_buffer, 0, sizeof(border_vertex_t), 0);
+        graphics->set_index_buffer(shape_info->index_buffer, 0);
+        graphics->set_buffer(game->transform_buffer, STAGE_VERTEX_SHADER, 0, 0, 0);
+        graphics->set_buffer(shape_info->param_buffer, STAGE_VERTEX_SHADER, 1, 0, 0);
+        
+        // game->glow_mask_setting.glow_color = v4v(srgb_to_linear(v3(0.9964f, 0.8431f, 0.4941f)), 1.0f);
+        game->glow_mask_setting.glow_color = v4v(srgb_to_linear(v3(0.1058f, 0.9921f, 0.6117f)), 1.0f);
+        graphics->update_buffer(game->glow_mask_buffer, &game->glow_mask_setting, 0, sizeof(game->glow_mask_setting));
+        graphics->set_buffer(game->glow_mask_buffer, STAGE_PIXEL_SHADER, 0, 0, 0);
+        graphics->set_program(game->glow_mask_program);
+        graphics->set_pipeline(game->alphaoff_pipeline);
+        graphics->draw_indexed(TOPOLOGY_TRIANGLE_LIST, shape_info->index_buffer.size, 0, 0);
+    }
+    graphics->end_pass();
+
+    graphics->resolve_texture(game->glow_mask, game->glow_mask_msaa);
     
     // NOTE: Horizontal blur. glow_mask -> glow_a.
     graphics->begin_pass(game->glow_a_target, &(graphics_pass_desc_t){ .clear_color = false });
@@ -1499,7 +1622,7 @@ render_function(render)
         graphics->update_buffer(game->blur_buffer, &game->glow_blur_setting, 0, sizeof(game->glow_blur_setting));
         graphics->set_buffer(game->blur_buffer, STAGE_PIXEL_SHADER, 0, 0, 0);
         graphics->set_program(game->blur_program);
-        graphics->set_pipeline(game->default_pipeline);
+        graphics->set_pipeline(game->alphaoff_pipeline);
         graphics->set_samplers(STAGE_PIXEL_SHADER, &game->linear_sampler, 1, 0);
         graphics->set_srvs(STAGE_PIXEL_SHADER, &game->glow_mask, 1, 0);
         graphics->draw(TOPOLOGY_TRIANGLE_LIST, 3, 0);
@@ -1517,47 +1640,90 @@ render_function(render)
         graphics->update_buffer(game->blur_buffer, &game->glow_blur_setting, 0, sizeof(game->glow_blur_setting));
         graphics->set_buffer(game->blur_buffer, STAGE_PIXEL_SHADER, 0, 0, 0);
         graphics->set_program(game->blur_program);
-        graphics->set_pipeline(game->default_pipeline);
+        graphics->set_pipeline(game->alphaoff_pipeline);
         graphics->set_samplers(STAGE_PIXEL_SHADER, &game->linear_sampler, 1, 0);
         graphics->set_srvs(STAGE_PIXEL_SHADER, &game->glow_a, 1, 0);
         graphics->draw(TOPOLOGY_TRIANGLE_LIST, 3, 0);
     }
     graphics->end_pass();
 
+    // // NOTE: Merge pass. offscreen_scene + glow -> offscreen_scene.
+    graphics->begin_pass(game->offscreen_target_msaa, &(graphics_pass_desc_t){ .clear_color = false });
+    {
+        game->glow_merge_param.viewport_size = (vec2){ (f32)platform->width, (f32)platform->height };
+
+        if (platform->input->keys[KEY_G].action == KEY_ACTION_RELEASE)
+        {
+            game->glow_merge_param.intensity = game->glow_merge_param.intensity == 0.0f ? 1.0f : 0.0f;
+        }
+
+        graphics->update_buffer(game->glow_merge_param_buffer, &game->glow_merge_param, 0, sizeof(game->glow_merge_param));
+        graphics->set_buffer(game->glow_merge_param_buffer, STAGE_PIXEL_SHADER, 0, 0, 0);
+        graphics->set_program(game->glow_merge_program);
+        graphics->set_pipeline(game->additive_pipeline);
+        graphics->set_samplers(STAGE_PIXEL_SHADER, &game->linear_sampler, 1, 0);
+        graphics->set_srvs(STAGE_PIXEL_SHADER, &game->glow_b, 1, 0);
+        graphics->draw(TOPOLOGY_TRIANGLE_LIST, 3, 0);
+    }
+    graphics->end_pass();
+
+    graphics->begin_pass(game->offscreen_target_msaa, &(graphics_pass_desc_t){ .clear_color = false });
+    {
+        graphics->update_buffer(game->transform_buffer, &game->transform_param, 0, sizeof(game->transform_param));
+        graphics->set_buffer(game->transform_buffer, STAGE_VERTEX_SHADER, 0, 0, 0);
+        graphics->set_vertex_buffer(shape_info->vertex_buffer, 0, sizeof(border_vertex_t), 0);
+        graphics->set_index_buffer(shape_info->index_buffer, 0);
+        graphics->set_program(shape_info->program);
+        graphics->set_pipeline(game->d_test_pipeline);
+
+        // shape_param->color = v4(0.011f, 0.982f, 0.332f, 1.0f);
+        // shape_param->color = v4v(srgb_to_linear(v3(0.9964f, 0.8431f, 0.4941f)), 1.0f);
+        shape_param->color = v4v(srgb_to_linear(v3(0.1058f, 0.9921f, 0.6117f)), 1.0f);
+        shape_param->line_thickness = 2.0f;
+
+        graphics->update_buffer(shape_info->param_buffer, shape_param, 0, sizeof(shape_param_t));
+        graphics->set_buffer(shape_info->param_buffer, STAGE_VERTEX_SHADER | STAGE_PIXEL_SHADER, 1, 0, 0);
+
+        graphics->draw_indexed(TOPOLOGY_TRIANGLE_LIST, shape_info->index_buffer.size, 0, 0);
+
+        if (game->country_index != 0xFF)
+        {
+            // shape_param->color = v4(0.2f, 0.2f, 0.2f, 0.7f);
+            shape_param->color = v4(1.0f, 1.0f, 1.0f, 1.0f);
+            graphics->update_buffer(shape_info->param_buffer, shape_param, 0, sizeof(shape_param_t));
+            graphics->set_buffer(shape_info->param_buffer, STAGE_VERTEX_SHADER | STAGE_PIXEL_SHADER, 1, 0, 0);
+            graphics->draw_indexed(TOPOLOGY_TRIANGLE_LIST,
+                                   global_shape_offset_index_counts[game->country_index][1],
+                                   global_shape_offset_index_counts[game->country_index][0], 0);
+        }
+    }
+    graphics->end_pass();
+
+    graphics->resolve_texture(game->offscreen_scene, game->offscreen_scene_msaa);
+    
     // NOTE: Post pass rendering to backbuffer.
     graphics->begin_pass(graphics->get_backbuffer_target(), &(graphics_pass_desc_t){ .clear_color = false });
     {
-        game->post_setting.inverse_dst_size[0] = 1.0f / platform->width;
-        game->post_setting.inverse_dst_size[1] = 1.0f / platform->height;
-        game->post_setting.inverse_src_size[0] = 1.0f / platform->width;
-        game->post_setting.inverse_src_size[1] = 1.0f / platform->height;
-        game->post_setting.aspect_ratio = (f32)platform->width / (f32)platform->height;
-        game->post_setting.vignette_soft = 0.45f;
+        game->post_param.viewport_size = (vec2){ (f32)platform->width, (f32)platform->height };
+        game->post_param.aspect_ratio = (f32)platform->width / (f32)platform->height;
+        game->post_param.vignette_soft = 0.45f;
 
         if (platform->input->keys[KEY_I].action == KEY_ACTION_RELEASE)
         {
-            game->post_setting.invert = game->post_setting.invert == 0.0f ? 1.0f : 0.0f;
+            game->post_param.invert = game->post_param.invert == 0.0f ? 1.0f : 0.0f;
         }
 
         if (platform->input->keys[KEY_V].action == KEY_ACTION_RELEASE)
         {
-            game->post_setting.vignette = game->post_setting.vignette == 0.0f ? 1.0f : 0.0f;
+            game->post_param.vignette = game->post_param.vignette == 0.0f ? 1.0f : 0.0f;
         }
 
-        if (platform->input->keys[KEY_G].action == KEY_ACTION_RELEASE)
-        {
-            game->post_setting.glow_intensity = game->post_setting.glow_intensity == 0.0f ? 1.0f : 0.0f;
-        }
-
-        graphics->update_buffer(game->post_buffer, &game->post_setting, 0, sizeof(game->post_setting));
-        graphics->set_buffer(game->post_buffer, STAGE_PIXEL_SHADER, 0, 0, 0);
+        graphics->update_buffer(game->post_param_buffer, &game->post_param, 0, sizeof(game->post_param));
+        graphics->set_buffer(game->post_param_buffer, STAGE_PIXEL_SHADER, 0, 0, 0);
         graphics->set_program(game->post_program);
-        graphics->set_pipeline(game->default_pipeline);
-        graphics_sampler_t samplers[] = { game->point_sampler, game->linear_sampler };
-        graphics->set_samplers(STAGE_PIXEL_SHADER, samplers, 2, 0);
-        // NOTE: Offscreen scene, horizontal and vertical blur, unblurred version (for filtering core part and leaving the halo).
-        graphics_texture_t srvs[] = { game->offscreen_scene, game->glow_b, game->glow_mask };
-        graphics->set_srvs(STAGE_PIXEL_SHADER, srvs, 3, 0);
+        graphics->set_pipeline(game->alphaoff_pipeline);
+        graphics->set_samplers(STAGE_PIXEL_SHADER, &game->point_sampler, 1, 0);
+        graphics->set_srvs(STAGE_PIXEL_SHADER, &game->offscreen_scene, 1, 0);
         graphics->draw(TOPOLOGY_TRIANGLE_LIST, 3, 0);
     }
     graphics->end_pass();

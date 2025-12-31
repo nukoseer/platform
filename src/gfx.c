@@ -26,6 +26,7 @@ typedef struct gfx_texture_t
     UINT width;
     UINT height;
     u32 array_size;
+    u32 sample_count;
     graphics_misc_t misc;
     u32 next_free_index;
 } gfx_texture_t;
@@ -627,6 +628,17 @@ static graphics_create_texture_2d_function(gfx_create_texture_2d)
     assert(!((texture_2d_desc->bind & BIND_DEPTH_STENCIL) && (texture_2d_desc->bind & BIND_RENDER_TARGET)) &&
         "[GFX] Texture cannot be both depth stencil and render target.");
 
+    UINT quality_levels = 0;
+    
+    if (texture_2d_desc->sample_count > 1)
+    {
+        HRESULT result = ID3D11Device_CheckMultisampleQualityLevels(global_d3d11.device,
+                                                                    map_dxgi_resource_format(texture_2d_desc->format),
+                                                                    texture_2d_desc->sample_count,
+                                                                    &quality_levels);
+        assert(SUCCEEDED(result) && quality_levels > 0 && "[GFX] Invalid sample count for texture.");
+   }
+    
     graphics_texture_t graphics_texture = { 0 };
     D3D11_TEXTURE2D_DESC desc =
     {
@@ -638,8 +650,8 @@ static graphics_create_texture_2d_function(gfx_create_texture_2d)
         // NOTE: No AA.
         .SampleDesc =
         {
-            .Count = 1,
-            .Quality = 0,
+            .Count = texture_2d_desc->sample_count > 1 ? texture_2d_desc->sample_count : 1,
+            .Quality = texture_2d_desc->sample_count > 1 ? quality_levels - 1 : 0,
         },
         .Usage = D3D11_USAGE_DEFAULT,
         .BindFlags = map_bind(texture_2d_desc->bind),
@@ -684,6 +696,7 @@ static graphics_create_texture_2d_function(gfx_create_texture_2d)
         .width = desc.Width,
         .height = desc.Height,
         .array_size = texture_2d_desc->array_size,
+        .sample_count = texture_2d_desc->sample_count,
         .misc = texture_2d_desc->misc,
     };
 
@@ -719,6 +732,14 @@ static graphics_create_texture_2d_function(gfx_create_texture_2d)
                 },
             };
         }
+        else if (texture_2d_desc->sample_count > 1)
+        {
+            srv_desc = (D3D11_SHADER_RESOURCE_VIEW_DESC)
+            {
+                .Format = map_dxgi_srv_format(texture_2d_desc->format),
+                .ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2DMS,
+            };
+        }
         else
         {
             srv_desc = (D3D11_SHADER_RESOURCE_VIEW_DESC)
@@ -739,6 +760,34 @@ static graphics_create_texture_2d_function(gfx_create_texture_2d)
     graphics_texture.height = gfx_texture->height;
 
     return graphics_texture;
+}
+
+static graphics_resolve_texture_function(gfx_resolve_texture)
+{
+    u32 src_texture_generation = get_generation(src_texture.platform);
+    u32 src_texture_index = get_index(src_texture.platform);
+    gfx_texture_t* gfx_src_texture = global_textures + src_texture_index;
+    u32 dst_texture_generation = get_generation(dst_texture.platform);
+    u32 dst_texture_index = get_index(dst_texture.platform);
+    gfx_texture_t* gfx_dst_texture = global_textures + dst_texture_index;
+
+    if (src_texture_generation != gfx_src_texture->generation)
+    {
+        assert(!"[GFX] Source texture generation does not match.");
+    }
+
+    if (dst_texture_generation != gfx_dst_texture->generation)
+    {
+        assert(!"[GFX] Destination texture generation does not match.");
+    }
+
+    assert(gfx_src_texture->texture && "[GFX] Invalid source texture for resolve.");
+    assert(gfx_dst_texture->texture && "[GFX] Invalid destination texture for resolve.");
+
+    ID3D11DeviceContext_ResolveSubresource(global_d3d11.context,
+                                           (ID3D11Resource*)gfx_dst_texture->texture, 0,
+                                           (ID3D11Resource*)gfx_src_texture->texture, 0,
+                                           map_dxgi_resource_format(gfx_src_texture->format));
 }
 
 static graphics_create_target_function(gfx_create_target)
@@ -763,12 +812,26 @@ static graphics_create_target_function(gfx_create_target)
 
         assert(gfx_color_texture->texture && "[GFX] Invalid color texture for target.");
 
-        D3D11_RENDER_TARGET_VIEW_DESC desc =
+        D3D11_RENDER_TARGET_VIEW_DESC desc = { 0 };
+        
+        if (gfx_color_texture->sample_count > 1)
         {
-            .Format = map_dxgi_rtv_format(gfx_color_texture->format),
-            .ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D,
-            .Texture2D = { .MipSlice = 0, },
-        };
+            desc = (D3D11_RENDER_TARGET_VIEW_DESC)
+            {
+                .Format = map_dxgi_rtv_format(gfx_color_texture->format),
+                .ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2DMS,
+                .Texture2D = { .MipSlice = 0, },
+            };
+        }
+        else
+        {
+            desc = (D3D11_RENDER_TARGET_VIEW_DESC)
+            {
+                .Format = map_dxgi_rtv_format(gfx_color_texture->format),
+                .ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D,
+                .Texture2DMS = { 0 },
+            };
+        }
 
         HRESULT result = ID3D11Device_CreateRenderTargetView(global_d3d11.device, (ID3D11Resource*)gfx_color_texture->texture, &desc, &render_target);
         assert(SUCCEEDED(result) && "[GFX] Failed to create render target view.");
@@ -786,12 +849,26 @@ static graphics_create_target_function(gfx_create_target)
 
         assert(gfx_depth_texture->texture && "[GFX] Invalid depth texture for target.");
         
-        D3D11_DEPTH_STENCIL_VIEW_DESC desc =
+        D3D11_DEPTH_STENCIL_VIEW_DESC desc = { 0 };
+
+        if (gfx_depth_texture->sample_count > 1)
         {
-            .Format = map_dxgi_dsv_format(gfx_depth_texture->format),
-            .ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D,
-            .Texture2D = { .MipSlice = 0, },
-        };
+            desc = (D3D11_DEPTH_STENCIL_VIEW_DESC)
+            {
+                .Format = map_dxgi_dsv_format(gfx_depth_texture->format),
+                .ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2DMS,
+                .Texture2DMS = { 0 },
+            };
+        }
+        else
+        {
+            desc = (D3D11_DEPTH_STENCIL_VIEW_DESC)
+            {
+                .Format = map_dxgi_dsv_format(gfx_depth_texture->format),
+                .ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D,
+                .Texture2D = { .MipSlice = 0, },
+            };
+        }
 
         HRESULT result = ID3D11Device_CreateDepthStencilView(global_d3d11.device, (ID3D11Resource*)gfx_depth_texture->texture, &desc, &depth_stencil);
         assert(SUCCEEDED(result) && "[GFX] Failed to create depth stencil view.");
@@ -985,21 +1062,43 @@ static graphics_create_pipeline_function(gfx_create_pipeline)
     result = ID3D11Device_CreateDepthStencilState(global_d3d11.device, &depth_desc, &gfx_pipeline->depth_stencil_state);
     assert(SUCCEEDED(result) && "[GFX] Failed to create depth stencil state.");
 
-    
     D3D11_BLEND_DESC blend_desc =
     {
-        .RenderTarget[0].BlendEnable = pipeline_desc->alpha_blend_enable,
+        .RenderTarget[0].BlendEnable = pipeline_desc->blend ? TRUE : FALSE,
         .RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL,
     };
 
-    if (pipeline_desc->alpha_blend_enable)
+    switch (pipeline_desc->blend)
     {
-        blend_desc.RenderTarget[0].SrcBlend = D3D11_BLEND_SRC_ALPHA;
-        blend_desc.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
-        blend_desc.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
-        blend_desc.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_SRC_ALPHA;
-        blend_desc.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_INV_SRC_ALPHA;
-        blend_desc.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
+        case BLEND_NULL:
+        {
+            // NOTE: Default is no blending.
+        } break;
+
+        case BLEND_ALPHA:
+        {
+            blend_desc.RenderTarget[0].SrcBlend = D3D11_BLEND_SRC_ALPHA;
+            blend_desc.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
+            blend_desc.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
+            blend_desc.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ONE;
+            blend_desc.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_INV_SRC_ALPHA;
+            blend_desc.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
+        } break;
+        
+        case BLEND_ADDITIVE:
+        {
+            blend_desc.RenderTarget[0].SrcBlend = D3D11_BLEND_ONE;
+            blend_desc.RenderTarget[0].DestBlend = D3D11_BLEND_ONE;
+            blend_desc.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
+            blend_desc.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ONE;
+            blend_desc.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_ONE;
+            blend_desc.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
+        } break;
+
+        default:
+        {
+            assert(!"[GFX] Invalid blend mode.");
+        } break;
     }
 
     result = ID3D11Device_CreateBlendState(global_d3d11.device, &blend_desc, &gfx_pipeline->blend_state);

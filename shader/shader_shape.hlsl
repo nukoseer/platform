@@ -1,3 +1,5 @@
+#include "utils.hlsl"
+
 struct VS_INPUT
 {
     float3 prev : TEXCOORD0;
@@ -9,9 +11,10 @@ struct VS_INPUT
 struct PS_INPUT
 {
     float4 position : SV_POSITION;
+    float side : TEXCOORD;
 };
 
-cbuffer global_settings : register(b0)
+cbuffer global_param : register(b0)
 {
     float4x4 world_matrix;
     float4x4 view_matrix;
@@ -24,68 +27,81 @@ cbuffer global_globe_param : register(b1)
     float shape;
     float yaw;
     float pitch;
-    float _pad;
+    float line_thickness;
     float2 scale;
     float2 viewport_size;
     float4 color;
 };
 
-float ease_in_out_back(float t)
-{
-    const float c1 = 1.70158;
-    const float c2 = c1 * 1.525;
-    
-    return t < 0.5 ? 
-        (pow(2 * t, 2) * ((c2 + 1) * 2 * t - c2)) / 2 :
-        (pow(2 * t - 2, 2) * ((c2 + 1) * (t * 2 - 2) + c2) + 2) / 2;
-}
-
-float3 rotate_y(float3 position, float yaw)
-{
-    float cos_yaw = cos(yaw);
-    float sin_yaw = sin(yaw);
-
-    return float3(cos_yaw * position.x + sin_yaw * position.z,
-                  position.y,
-                  -sin_yaw * position.x + cos_yaw * position.z);
-}
-
-float3 rotate_x(float3 position, float pitch)
-{
-    float cos_pitch = cos(pitch);
-    float sin_pitch = sin(pitch);
-
-    return float3(position.x,
-                  cos_pitch * position.y + sin_pitch * position.z,
-                  -sin_pitch * position.y + cos_pitch * position.z);
-}
-
 PS_INPUT vs(VS_INPUT input)
 {
     PS_INPUT output;
 
+    float p_lon = radians(input.prev.x);
+    float p_lat = radians(input.prev.y);
     float lon = radians(input.position.x);
     float lat = radians(input.position.y);
+    float n_lon = radians(input.next.x);
+    float n_lat = radians(input.next.y);
 
+    float3 p_globe_position = float3(cos(p_lat) * sin(p_lon), sin(p_lat), cos(p_lat) * cos(p_lon)) * 1.005;
     float3 globe_position = float3(cos(lat) * sin(lon), sin(lat), cos(lat) * cos(lon)) * 1.005;
+    float3 n_globe_position = float3(cos(n_lat) * sin(n_lon), sin(n_lat), cos(n_lat) * cos(n_lon)) * 1.005;
+
+    p_globe_position = rotate_y(p_globe_position, radians(yaw));
+    p_globe_position = rotate_x(p_globe_position, radians(pitch));
     globe_position = rotate_y(globe_position, radians(yaw));
     globe_position = rotate_x(globe_position, radians(pitch));
+    n_globe_position = rotate_y(n_globe_position, radians(yaw));
+    n_globe_position = rotate_x(n_globe_position, radians(pitch));
+
+    float3 p_flat_position = float3(n_lon * scale.x, n_lat * scale.y, 0.0) * 0.9995;
     float3 flat_position = float3(lon * scale.x, lat * scale.y, 0.0) * 0.9995;
+    float3 n_flat_position = float3(p_lon * scale.x, p_lat * scale.y, 0.0) * 0.9995;
 
+    float4 p_position = float4(lerp(p_flat_position, p_globe_position, ease_in_out_back(saturate(shape))), 1.0);
     float4 position = float4(lerp(flat_position, globe_position, ease_in_out_back(saturate(shape))), 1.0);
-    float4 world_space = mul(world_matrix, position);
-    float4 view_space = mul(view_matrix, world_space);
+    float4 n_position = float4(lerp(n_flat_position, n_globe_position, ease_in_out_back(saturate(shape))), 1.0);
+
+    float4 p_clip = mul(projection_matrix, mul(view_matrix, mul(world_matrix, p_position)));
+    float4 clip = mul(projection_matrix, mul(view_matrix, mul(world_matrix, position)));
+    float4 n_clip = mul(projection_matrix, mul(view_matrix, mul(world_matrix, n_position)));
+
+    float2 p_ndc = p_clip.xy / p_clip.w;
+    float2 ndc = clip.xy / clip.w;
+    float2 n_ndc = n_clip.xy / n_clip.w;
+
+    float2 dir0 = normalize(ndc - p_ndc);
+    float2 dir1 = normalize(n_ndc - ndc);
+
+    float2 perp0 = float2(-dir0.y, dir0.x);
+    float2 perp1 = float2(-dir1.y, dir1.x);
+
+    float2 miter_dir = normalize(perp0 + perp1);
+    float2 scale = 1.0 / dot(miter_dir, perp1);
+    float miter_level = 2.0;
+    scale = clamp(scale, -miter_level, miter_level);
+
+    float thickness = line_thickness;
+    float half_thickness = thickness * 0.5;
+    float2 ndc_half_thickness = half_thickness * 2.0 / viewport_size;
     
-    // NOTE: Before perspective division.
-    float4 clip_space = mul(projection_matrix, view_space);
+    float2 offset = miter_dir * scale * ndc_half_thickness * input.side;
+    float2 new_position = ndc + offset;
 
-    output.position = clip_space;
-
+    output.position = float4(new_position.xy * clip.w, clip.z, clip.w);
+    output.side = input.side;
+    
     return output;
 }
 
 float4 ps(PS_INPUT input) : SV_TARGET
 {
-    return color;
+    float distance = abs(input.side);
+    float width = fwidth(distance);
+    
+    float alpha = 1.0 - smoothstep(1.0 - width, 1.0 + width, distance);
+    
+    return float4(color.rgb, alpha);
 }
 

@@ -6,7 +6,7 @@ int main(int argc, char** argv)
 {
     if (argc != 3)
     {
-        printf("Usage: %s <kernel_size>\n", argv[0]);
+        printf("Usage: %s <kernel_size> <sigma>\n", argv[0]);
         return 1;
     }
 

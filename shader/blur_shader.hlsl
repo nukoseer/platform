@@ -22,13 +22,19 @@ PS_INPUT vs(uint id: SV_VertexID)
     return output;
 }
 
-// static const uint weight_count = 7;
-// static const float w[weight_count] = { 0.155285, 0.144214, 0.115516, 0.079805, 0.047552, 0.024438, 0.010832 };
+//static const uint weight_count = 7;
+//static const float w[weight_count] = { 0.155285, 0.144214, 0.115516, 0.079805, 0.047552, 0.024438, 0.010832 };
 
 static const uint weight_count = 3;
 static const float w[weight_count] = { 0.251379, 0.221841, 0.152469 };
 
-float3 gaussian_blur_13tap_1d(float2 uv)
+//static const uint weight_count = 11;
+//static const float w[weight_count] = { 0.199471, 0.176033, 0.120985, 0.064759, 0.026995, 0.008764, 0.002216, 0.000436, 0.000067, 0.000008, 0.000001 };
+
+//static const uint weight_count = 5;
+//static const float w[weight_count] = { 0.204164, 0.180174, 0.123832, 0.066282, 0.027631 };
+
+float3 gaussian_blur(float2 uv)
 {
     float3 color = global_glow_mask.Sample(global_linear_sampler, uv).rgb * w[0];
 
@@ -47,7 +53,7 @@ float3 gaussian_blur_13tap_1d(float2 uv)
 float4 ps(PS_INPUT input) : SV_TARGET
 {
     float2 uv = input.position.xy * inverse_dst_size;
-    float4 color = float4(gaussian_blur_13tap_1d(uv), 1);
+    float4 color = float4(gaussian_blur(uv), 1);
 
     return color;
 }

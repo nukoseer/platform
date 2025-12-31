@@ -2,7 +2,7 @@
 
 #include "maths.h"
 
-#define FONT_ENABLE 0
+#define FONT_ENABLE 1
 
 typedef enum key_modifier_t
 {
@@ -194,6 +194,13 @@ typedef enum graphics_texture_address_t
     TEXTURE_ADDRESS_MIRROR_ONCE
 } graphics_texture_address_t;
 
+typedef enum graphics_blend_t
+{
+    BLEND_NULL,
+    BLEND_ALPHA,
+    BLEND_ADDITIVE,
+} graphics_blend_t;
+
 typedef struct graphics_buffer_desc_t
 {
     const void* data;
@@ -215,6 +222,7 @@ typedef struct graphics_texture_2d_desc_t
     graphics_bind_t bind;
     u32 width;
     u32 height;
+    u32 sample_count;
     u32 array_size;
     graphics_misc_t misc;
 } graphics_texture_2d_desc_t;
@@ -283,7 +291,7 @@ typedef struct graphics_pipeline_desc_t
     bool wireframe;
     bool depth_test;
     bool depth_write;
-    bool alpha_blend_enable;
+    graphics_blend_t blend;
 } graphics_pipeline_desc_t;
 
 typedef struct graphics_pipeline_t
@@ -333,6 +341,9 @@ typedef graphics_create_buffer_function(graphics_create_buffer_f);
 
 #define graphics_create_texture_2d_function(name) graphics_texture_t name(const graphics_texture_2d_desc_t* texture_2d_desc, const void** initial_data, const u32* pitches)
 typedef graphics_create_texture_2d_function(graphics_create_texture_2d_f);
+
+#define graphics_resolve_texture_function(name) void name(graphics_texture_t dst_texture, graphics_texture_t src_texture)
+typedef graphics_resolve_texture_function(graphics_resolve_texture_f);
 
 #define graphics_create_sampler_function(name) graphics_sampler_t name(const graphics_sampler_desc_t* sampler_desc)
 typedef graphics_create_sampler_function(graphics_create_sampler_f);
@@ -467,6 +478,7 @@ typedef struct graphics_t
         {
             graphics_create_buffer_f* create_buffer;
             graphics_create_texture_2d_f* create_texture_2d;
+            graphics_resolve_texture_f* resolve_texture;
             graphics_create_sampler_f* create_sampler;
             graphics_create_target_f* create_target;
             graphics_create_shader_f* create_shader;

@@ -3,25 +3,20 @@ struct PS_INPUT
     float4 position : SV_POSITION;
 };
 
-Texture2D    global_scene          : register(t0);   // Offscreen single-sample texture
-Texture2D    global_glow           : register(t1);   // Glow texture
-Texture2D    global_glow_mask      : register(t2);   // Glow mask texture
-SamplerState global_point_sampler  : register(s0);
-SamplerState global_linear_sampler : register(s1);
-
-cbuffer global_post_setting : register(b0)
+cbuffer global_post_param : register(b0)
 {
-    float2 inverse_dst_size;
-    float2 inverse_src_size;
+    float2 viewport_size;
     float aspect_ratio;
     float invert;
     
     float vignette;
     float vignette_soft;
     
-    float glow_intensity;
-    float3 _pad;
+    float2 _pad;
 };
+
+Texture2D    global_scene          : register(t0);   // Offscreen single-sample texture
+SamplerState global_point_sampler  : register(s0);
 
 PS_INPUT vs(uint id : SV_VertexID)
 {
@@ -35,13 +30,8 @@ PS_INPUT vs(uint id : SV_VertexID)
 
 float4 ps(PS_INPUT input) : SV_TARGET
 {
-    float2 uv = input.position.xy * inverse_dst_size;
+    float2 uv = input.position.xy / viewport_size;
     float3 color = global_scene.Sample(global_point_sampler, uv).rgb;
-    float4 blur = global_glow.Sample(global_linear_sampler, uv);
-    float3 core_a = global_glow_mask.Sample(global_point_sampler, uv).a;
-
-    // float3 halo_only = blur.rgb * (1.0 - core_a);
-    color = color + blur.rgb * glow_intensity;
 
     if (vignette > 0.0)
     {
