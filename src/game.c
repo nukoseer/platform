@@ -29,6 +29,8 @@
 #include "shape_data.inl"
 #include "sphere_data.inl"
 
+#include "country_borders.h"
+
 #define CELL_X_COUNT    360
 #define CELL_Y_COUNT    180
 #define CELL_SLOT_COUNT 10
@@ -94,6 +96,19 @@ typedef struct shape_info_t
 
     shape_param_t param;
 } shape_info_t;
+
+typedef struct skybox_info_t
+{
+    graphics_texture_t texture;
+    graphics_buffer_t param_buffer;
+    graphics_buffer_t vertex_buffer;
+    graphics_buffer_t index_buffer;
+    graphics_shader_t vertex_shader;
+    graphics_shader_t pixel_shader;
+    graphics_program_t program;
+
+    skybox_param_t param;
+} skybox_info_t;
 
 typedef struct glow_merge_param_t
 {
@@ -168,6 +183,7 @@ typedef struct game_t
 
     sphere_info_t sphere_info;
     shape_info_t shape_info;
+    skybox_info_t skybox_info;
 
     glow_mask_param_t glow_mask_setting;
     graphics_buffer_t glow_mask_buffer;
@@ -218,6 +234,20 @@ typedef struct game_t
     f32 shape_value;
     f32 shape_speed;
     f32 shape_direction;
+
+    graphics_buffer_t border_mesh_vertex_buffer;
+    graphics_buffer_t border_mesh_index_buffer;
+    u32 border_mesh_vertex_count;
+    u32 border_mesh_index_count;
+
+    border_point_t* border_points;
+    u32 border_point_count;
+
+    border_part_range_t* border_part_ranges;
+    u32 border_part_range_count;
+
+    country_range_t* country_ranges;
+    u32 country_range_count;
 } game_t;
 
  #pragma pack(push, 1)
@@ -658,22 +688,22 @@ static void init_shape(const graphics_t* graphics, shape_info_t* shape_info)
         .bind = BIND_CONSTANT_BUFFER,
     });
 
-    shape_info->vertex_buffer = graphics->create_buffer(&(graphics_buffer_desc_t)
-    {
-        .data = global_shape_points,
-        .size = sizeof(global_shape_points),
-        .usage = USAGE_IMMUTABLE,
-        .bind = BIND_VERTEX_BUFFER,
-    });
+    // shape_info->vertex_buffer = graphics->create_buffer(&(graphics_buffer_desc_t)
+    // {
+    //     .data = global_shape_points,
+    //     .size = sizeof(global_shape_points),
+    //     .usage = USAGE_IMMUTABLE,
+    //     .bind = BIND_VERTEX_BUFFER,
+    // });
 
-    shape_info->index_buffer = graphics->create_buffer(&(graphics_buffer_desc_t)
-    {
-        .data = global_shape_indices,
-        .size = array_count(global_shape_indices),
-        .usage = USAGE_DYNAMIC,
-        .bind = BIND_INDEX_BUFFER,
-        .index_format = FORMAT_R16_UINT,
-    });
+    // shape_info->index_buffer = graphics->create_buffer(&(graphics_buffer_desc_t)
+    // {
+    //     .data = global_shape_indices,
+    //     .size = array_count(global_shape_indices),
+    //     .usage = USAGE_DYNAMIC,
+    //     .bind = BIND_INDEX_BUFFER,
+    //     .index_format = FORMAT_R16_UINT,
+    // });
 
     shape_info->vertex_shader = graphics->create_shader(&(graphics_shader_desc_t)
     {
@@ -695,12 +725,120 @@ static void init_shape(const graphics_t* graphics, shape_info_t* shape_info)
         .pixel_shader = shape_info->pixel_shader,
         .attributes = (graphics_vertex_attribute_t[])
         {
-            { "TEXCOORD", FORMAT_R32G32B32_FLOAT, offsetof(border_vertex_t, prev), 0, 0, 0, 0 },
-            { "POSITION", FORMAT_R32G32B32_FLOAT, offsetof(border_vertex_t, current), 0, 0, 0, 0 },
-            { "TEXCOORD", FORMAT_R32G32B32_FLOAT, offsetof(border_vertex_t, next), 1, 0, 0, 0 },
-            { "TEXCOORD", FORMAT_R32_FLOAT,       offsetof(border_vertex_t, side), 2, 0, 0, 0 },
+            { "TEXCOORD", FORMAT_R32G32B32_FLOAT, offsetof(border_mesh_vertex_t, prev), 0, 0, 0, 0 },
+            { "POSITION", FORMAT_R32G32B32_FLOAT, offsetof(border_mesh_vertex_t, current), 0, 0, 0, 0 },
+            { "TEXCOORD", FORMAT_R32G32B32_FLOAT, offsetof(border_mesh_vertex_t, next), 1, 0, 0, 0 },
+            { "TEXCOORD", FORMAT_R32_FLOAT,       offsetof(border_mesh_vertex_t, side), 2, 0, 0, 0 },
         },
         .attribute_count = 4,
+    });
+}
+
+static void init_skybox(io_t* io, graphics_t* graphics, skybox_info_t* skybox_info)
+{
+    // TODO: Probably we can be more clever.
+    // This affects start up time drastically of course...
+    // We also do not support any other image type. BMPs are pretty large files.
+    bmp_image_t px_space = load_bmp_image(io, "..\\resources\\px_bmp.bmp");
+    bmp_image_t nx_space = load_bmp_image(io, "..\\resources\\nx_bmp.bmp");
+    bmp_image_t py_space = load_bmp_image(io, "..\\resources\\py_bmp.bmp");
+    bmp_image_t ny_space = load_bmp_image(io, "..\\resources\\ny_bmp.bmp");
+    bmp_image_t pz_space = load_bmp_image(io, "..\\resources\\pz_bmp.bmp");
+    bmp_image_t nz_space = load_bmp_image(io, "..\\resources\\nz_bmp.bmp");
+
+    void* skybox_data[6]  = { px_space.data,  nx_space.data,  py_space.data,  ny_space.data,  pz_space.data,  nz_space.data };
+    u32 skybox_pitches[6] = { px_space.pitch, nx_space.pitch, py_space.pitch, ny_space.pitch, pz_space.pitch, nz_space.pitch };
+
+    skybox_info->texture = graphics->create_texture_2d(&(graphics_texture_2d_desc_t)
+    {
+        .format = FORMAT_R8G8B8A8_UNORM_SRGB,
+        .bind = BIND_SHADER_RESOURCE,
+        .width = (u32)(px_space.width),
+        .height = (u32)(px_space.height),
+        .array_size = array_count(skybox_data),
+        .misc = MISC_TEXTURE_CUBE,
+    }, skybox_data, skybox_pitches);
+
+    for (u32 skybox_index = 0; skybox_index < array_count(skybox_data); ++skybox_index)
+    {
+        // TODO: malloc / free was never the right way... 
+        free(skybox_data[skybox_index]);
+    }
+    
+    // NOTE: Unit cube centered at origin.
+    static const skybox_vertex_t skybox_vertices[] =
+    {
+        // +X
+        { +1.0f, -1.0f, -1.0f }, { +1.0f, -1.0f, +1.0f }, { +1.0f, +1.0f, +1.0f }, { +1.0f, +1.0f, -1.0f },
+        // -X
+        { -1.0f, -1.0f, +1.0f }, { -1.0f, -1.0f, -1.0f }, { -1.0f, +1.0f, -1.0f }, { -1.0f, +1.0f, +1.0f },
+        // +Y
+        { -1.0f, +1.0f, -1.0f }, { +1.0f, +1.0f, -1.0f }, { +1.0f, +1.0f, +1.0f }, { -1.0f, +1.0f, +1.0f },
+        // -Y
+        { -1.0f, -1.0f, +1.0f }, { +1.0f, -1.0f, +1.0f }, { +1.0f, -1.0f, -1.0f }, { -1.0f, -1.0f, -1.0f },
+        // +Z
+        { -1.0f, -1.0f, +1.0f }, { -1.0f, +1.0f, +1.0f }, { +1.0f, +1.0f, +1.0f }, { +1.0f, -1.0f, +1.0f },
+        // -Z
+        { +1.0f, -1.0f, -1.0f }, { +1.0f, +1.0f, -1.0f }, { -1.0f, +1.0f, -1.0f }, { -1.0f, -1.0f, -1.0f },
+    };
+    
+    static const u16 skybox_indices[] =
+    {
+        0,  1, 2,    0,  2,  3, // +X
+        4,  5, 6,    4,  6,  7, // -X
+        8,  9, 10,   8, 10, 11, // +Y
+        12, 13, 14,  12, 14, 15, // -Y
+        16, 17, 18,  16, 18, 19, // +Z
+        20, 21, 22,  20, 22, 23  // -Z
+    };
+
+    skybox_info->param_buffer = graphics->create_buffer(&(graphics_buffer_desc_t)
+    {
+        .size = sizeof(skybox_param_t),
+        .usage = USAGE_DYNAMIC,
+        .bind = BIND_CONSTANT_BUFFER,
+    });
+
+    skybox_info->vertex_buffer = graphics->create_buffer(&(graphics_buffer_desc_t)
+    {
+        .data = skybox_vertices,
+        .size = sizeof(skybox_vertices),
+        .usage = USAGE_IMMUTABLE,
+        .bind = BIND_VERTEX_BUFFER,
+    });
+
+    skybox_info->index_buffer = graphics->create_buffer(&(graphics_buffer_desc_t)
+    {
+        .data = skybox_indices,
+        .size = array_count(skybox_indices),
+        .usage = USAGE_IMMUTABLE,
+        .bind = BIND_INDEX_BUFFER,
+        .index_format = FORMAT_R16_UINT,
+    });
+
+    skybox_info->vertex_shader = graphics->create_shader(&(graphics_shader_desc_t)
+    {
+        .bytecode = skybox_vshader,
+        .bytecode_size = sizeof(skybox_vshader),
+        .stage = STAGE_VERTEX_SHADER,
+    });
+
+    skybox_info->pixel_shader = graphics->create_shader(&(graphics_shader_desc_t)
+    {
+        .bytecode = skybox_pshader,
+        .bytecode_size = sizeof(skybox_pshader),
+        .stage = STAGE_PIXEL_SHADER,
+    });
+    
+    skybox_info->program = graphics->create_program(&(graphics_program_desc_t)
+    {
+        .vertex_shader = skybox_info->vertex_shader,
+        .pixel_shader = skybox_info->pixel_shader,
+        .attributes = (graphics_vertex_attribute_t[])
+        {
+            { "POSITION", FORMAT_R32G32B32_FLOAT, 0, 0, 0, 0, 0 },
+        },
+        .attribute_count = 1,
     });
 }
 
@@ -775,16 +913,16 @@ static f32 global_earth_yaw;
 static f32 global_earth_pitch;
 static bool global_earth_reset;
 
-static bool inside_country(const border_vertex_t* points, u32 point_count, f32 lon, f32 lat)
+static bool inside_country(const border_point_t* points, u32 point_count, f32 lon, f32 lat)
 {
     bool inside = false;
 
     for (u32 i = 0, j = point_count - 1; i < point_count; j = i++)
     {
-        f32 xi = points[i].current.x;
-        f32 yi = points[i].current.y;
-        f32 xj = points[j].current.x;
-        f32 yj = points[j].current.y;
+        f32 xi = points[i].lonlat.x;
+        f32 yi = points[i].lonlat.y;
+        f32 xj = points[j].lonlat.x;
+        f32 yj = points[j].lonlat.y;
 
         bool hit = ((yi > lat) != (yj > lat)) && (lon < (xj - xi) * (lat - yi) / (yj - yi) + xi);
 
@@ -794,7 +932,7 @@ static bool inside_country(const border_vertex_t* points, u32 point_count, f32 l
     return inside;
 }
 
-static u8 cell_get_country_id(const u8* cells, f32 lon, f32 lat)
+static u8 cell_get_country_id(game_t* game, f32 lon, f32 lat)
 {
     u32 result = 0;
     u32 x = x_index_from_lon(lon);
@@ -803,20 +941,21 @@ static u8 cell_get_country_id(const u8* cells, f32 lon, f32 lat)
 
     for (u32 slot_index = 0; slot_index < CELL_SLOT_COUNT; ++slot_index)
     {
-        u32 country_id = cells[index + slot_index];
+        u32 country_id = game->cells[index + slot_index];
         
         if (country_id != 0)
         {
             u32 country_index = country_id - 1;
-            u16 part_offset = global_shape_part_offset_counts[country_index][0];
-            u16 part_count = global_shape_part_offset_counts[country_index][1];
+            country_range_t country_range = game->country_ranges[country_index];
 
+            u32 part_offset = country_range.part_offset;
+            u32 part_count = country_range.part_count;
+            
             for (u32 part_index = 0; part_index < part_count; ++part_index)
             {
-                u32 start = global_shape_parts[part_offset + part_index][0] * 2;
-                u32 end = global_shape_parts[part_offset + part_index][1] * 2;
+                border_part_range_t part_range = game->border_part_ranges[part_index + part_offset];
 
-                if (inside_country(global_shape_points + start, end - start, lon, lat))
+                if (inside_country(game->border_points + part_range.point_index, part_range.point_count, lon, lat))
                 {
                     result = country_id;
                     break;
@@ -832,9 +971,9 @@ static u8 cell_get_country_id(const u8* cells, f32 lon, f32 lat)
     return result;
 }
 
-static u8 cell_get_country(const u8* cells, f32 lon, f32 lat)
+static u8 cell_get_country(game_t* game, f32 lon, f32 lat)
 {
-    u8 country_id = cell_get_country_id(cells, lon, lat);
+    u8 country_id = cell_get_country_id(game, lon, lat);
     u8 country_index = 0xFF;
     
     if (country_id)
@@ -930,6 +1069,7 @@ init_function(init)
                 60.0f, (f32)platform->width / (f32)platform->height);
     init_sphere(graphics, &game->sphere_info);
     init_shape(graphics, &game->shape_info);
+    init_skybox(io, graphics, &game->skybox_info);
 
     game->shape_value = 1.0f;
     game->shape_direction = 1.0f;
@@ -997,10 +1137,10 @@ init_function(init)
         .pixel_shader = game->glow_mask_pixel_shader,
         .attributes = (graphics_vertex_attribute_t[])
         {
-            { "TEXCOORD", FORMAT_R32G32B32_FLOAT, offsetof(border_vertex_t, prev), 0, 0, 0, 0 },
-            { "POSITION", FORMAT_R32G32B32_FLOAT, offsetof(border_vertex_t, current), 0, 0, 0, 0 },
-            { "TEXCOORD", FORMAT_R32G32B32_FLOAT, offsetof(border_vertex_t, next), 1, 0, 0, 0 },
-            { "TEXCOORD", FORMAT_R32_FLOAT,       offsetof(border_vertex_t, side), 2, 0, 0, 0 },
+            { "TEXCOORD", FORMAT_R32G32B32_FLOAT, offsetof(border_mesh_vertex_t, prev), 0, 0, 0, 0 },
+            { "POSITION", FORMAT_R32G32B32_FLOAT, offsetof(border_mesh_vertex_t, current), 0, 0, 0, 0 },
+            { "TEXCOORD", FORMAT_R32G32B32_FLOAT, offsetof(border_mesh_vertex_t, next), 1, 0, 0, 0 },
+            { "TEXCOORD", FORMAT_R32_FLOAT,       offsetof(border_mesh_vertex_t, side), 2, 0, 0, 0 },
         },
         .attribute_count = 4,
     });
@@ -1098,28 +1238,84 @@ init_function(init)
 
     io->release_file_memory(io->read_file("..\\src\\game.c").data);
 
-    u32 total_part_count = global_shape_part_offset_counts[array_count(global_shape_part_offset_counts) - 1][0] + 1;
+    io_file_read_result_t border_mesh_file_result = io->read_file("..\\tools\\build\\border_mesh.bin");
+    assert(border_mesh_file_result.data && border_mesh_file_result.size > 0);
+
+    border_mesh_file_header_t* border_mesh_header = (border_mesh_file_header_t*)border_mesh_file_result.data;
+    assert(border_mesh_header->magic == BORDER_MESH_FILE_MAGIC);
+
+    border_mesh_vertex_t* border_mesh_vertices = (border_mesh_vertex_t*)((u8*)border_mesh_file_result.data + sizeof(border_mesh_file_header_t));
+    u32 border_mesh_vertex_count = border_mesh_header->vertex_count;
+    u16* border_mesh_indices = (u16*)((u8*)border_mesh_file_result.data + sizeof(border_mesh_file_header_t) + sizeof(border_mesh_vertex_t) * border_mesh_vertex_count);
+    u32 border_mesh_index_count = border_mesh_header->index_count;
+
+    fprintf(stderr, "Border mesh - vertex count: %u, index count: %u\n", border_mesh_vertex_count, border_mesh_index_count);
+
+    game->border_mesh_vertex_buffer = graphics->create_buffer(&(graphics_buffer_desc_t)
+    {
+        .data = border_mesh_vertices,
+        .size = sizeof(border_mesh_vertex_t) * border_mesh_vertex_count,
+        .usage = USAGE_IMMUTABLE,
+        .bind = BIND_VERTEX_BUFFER,
+    });
+
+    game->border_mesh_index_buffer = graphics->create_buffer(&(graphics_buffer_desc_t)
+    {
+        .data = border_mesh_indices,
+        .size = border_mesh_index_count,
+        .usage = USAGE_IMMUTABLE,
+        .bind = BIND_INDEX_BUFFER,
+        .index_format = FORMAT_R16_UINT,
+    });
+
+    game->border_mesh_vertex_count = border_mesh_vertex_count;
+    game->border_mesh_index_count = border_mesh_index_count;
+
+    io->release_file_memory(border_mesh_file_result.data);
+
+    io_file_read_result_t border_file_result = io->read_file("..\\tools\\build\\border.bin");
+    assert(border_file_result.data && border_file_result.size > 0);
+
+    border_file_header_t* border_header = (border_file_header_t*)border_file_result.data;
+    assert(border_header->magic == BORDER_FILE_MAGIC);
+    game->border_points = (border_point_t*)((u8*)border_file_result.data + sizeof(border_file_header_t));
+    game->border_point_count = border_header->point_count;
+
+    game->border_part_ranges = (border_part_range_t*)((u8*)border_file_result.data + sizeof(border_file_header_t) + sizeof(border_point_t) * game->border_point_count);
+    game->border_part_range_count = border_header->part_range_count;
+
+    game->country_ranges = (country_range_t*)((u8*)border_file_result.data + sizeof(border_file_header_t) + sizeof(border_point_t) * game->border_point_count + sizeof(border_part_range_t) * game->border_part_range_count);
+    game->country_range_count = border_header->country_range_count;
+
+    fprintf(stderr, "Border - point count: %u, part_range_count: %u, country_range_count: %u\n", game->border_point_count, game->border_part_range_count, game->country_range_count);
+
+    u32 total_part_count = game->border_part_range_count;
+    
     f32* part_outlines = calloc(1, total_part_count * sizeof(f32) * 4);
     u32 part_outline_count = 0;
 
-    for (u8 country_index = 0; country_index < array_count(global_shape_part_offset_counts); ++country_index)
+    for (u8 country_index = 0; country_index < game->country_range_count; ++country_index)
     {
-        u32 part_offset = global_shape_part_offset_counts[country_index][0];
-        u32 part_count = global_shape_part_offset_counts[country_index][1];
+        country_range_t country_range = game->country_ranges[country_index];
+
+        u32 part_offset = country_range.part_offset;
+        u32 part_count = country_range.part_count;
+
+        // u32 part_offset = global_shape_part_offset_counts[country_index][0];
+        // u32 part_count = global_shape_part_offset_counts[country_index][1];
 
         for (u32 part_index = 0; part_index < part_count; ++part_index)
         {
-            u32 start = global_shape_parts[part_offset + part_index][0] * 2;
-            u32 end = global_shape_parts[part_offset + part_index][1] * 2;
+            border_part_range_t part_range = game->border_part_ranges[part_index + part_offset];
 
             f32 lon_min = 1000.0f;
             f32 lon_max = -1000.0f;
             f32 lat_min = 1000.0f;
             f32 lat_max = -1000.0f;
 
-            for (u32 k = start; k < end; ++k)
+            for (u32 k = 0; k < part_range.point_count; ++k)
             {
-                vec3 point = global_shape_points[k].current;
+                vec2 point = game->border_points[k + part_range.point_index].lonlat;
 
                 if (point.x < lon_min)
                 {
@@ -1155,9 +1351,11 @@ init_function(init)
     game->cells = calloc(1, CELL_X_COUNT * CELL_Y_COUNT * CELL_SLOT_COUNT);
     f32* outlines = part_outlines;
 
-    for (u8 country_index = 0; country_index < array_count(global_shape_part_offset_counts); ++country_index)
+    for (u8 country_index = 0; country_index < game->country_range_count; ++country_index)
     {
-        for (u32 part_index = 0; part_index < global_shape_part_offset_counts[country_index][1]; ++part_index)
+        country_range_t country_range = game->country_ranges[country_index];
+        
+        for (u32 part_index = 0; part_index < country_range.part_count; ++part_index)
         {
             f32 lon_min = outlines[0];
             f32 lon_max = outlines[1];
@@ -1170,111 +1368,6 @@ init_function(init)
     }
 
     free(part_outlines);
-
-    // TODO: Probably we can be more clever.
-    // This affects start up time drastically of course...
-    // We also do not support any other image type. BMPs are pretty large files.
-    bmp_image_t px_space = load_bmp_image(io, "..\\resources\\px_bmp.bmp");
-    bmp_image_t nx_space = load_bmp_image(io, "..\\resources\\nx_bmp.bmp");
-    bmp_image_t py_space = load_bmp_image(io, "..\\resources\\py_bmp.bmp");
-    bmp_image_t ny_space = load_bmp_image(io, "..\\resources\\ny_bmp.bmp");
-    bmp_image_t pz_space = load_bmp_image(io, "..\\resources\\pz_bmp.bmp");
-    bmp_image_t nz_space = load_bmp_image(io, "..\\resources\\nz_bmp.bmp");
-
-    void* skybox_data[6]  = { px_space.data,  nx_space.data,  py_space.data,  ny_space.data,  pz_space.data,  nz_space.data };
-    u32 skybox_pitches[6] = { px_space.pitch, nx_space.pitch, py_space.pitch, ny_space.pitch, pz_space.pitch, nz_space.pitch };
-
-    game->skybox_texture = graphics->create_texture_2d(&(graphics_texture_2d_desc_t)
-    {
-        .format = FORMAT_R8G8B8A8_UNORM_SRGB,
-        .bind = BIND_SHADER_RESOURCE,
-        .width = (u32)(px_space.width),
-        .height = (u32)(px_space.height),
-        .array_size = array_count(skybox_data),
-        .misc = MISC_TEXTURE_CUBE,
-    }, skybox_data, skybox_pitches);
-
-    for (u32 skybox_index = 0; skybox_index < array_count(skybox_data); ++skybox_index)
-    {
-        // TODO: malloc / free was never the right way... 
-        free(skybox_data[skybox_index]);
-    }
-    
-    // NOTE: Unit cube centered at origin.
-    static const skybox_vertex_t skybox_vertices[] =
-    {
-        // +X
-        { +1.0f, -1.0f, -1.0f }, { +1.0f, -1.0f, +1.0f }, { +1.0f, +1.0f, +1.0f }, { +1.0f, +1.0f, -1.0f },
-        // -X
-        { -1.0f, -1.0f, +1.0f }, { -1.0f, -1.0f, -1.0f }, { -1.0f, +1.0f, -1.0f }, { -1.0f, +1.0f, +1.0f },
-        // +Y
-        { -1.0f, +1.0f, -1.0f }, { +1.0f, +1.0f, -1.0f }, { +1.0f, +1.0f, +1.0f }, { -1.0f, +1.0f, +1.0f },
-        // -Y
-        { -1.0f, -1.0f, +1.0f }, { +1.0f, -1.0f, +1.0f }, { +1.0f, -1.0f, -1.0f }, { -1.0f, -1.0f, -1.0f },
-        // +Z
-        { -1.0f, -1.0f, +1.0f }, { -1.0f, +1.0f, +1.0f }, { +1.0f, +1.0f, +1.0f }, { +1.0f, -1.0f, +1.0f },
-        // -Z
-        { +1.0f, -1.0f, -1.0f }, { +1.0f, +1.0f, -1.0f }, { -1.0f, +1.0f, -1.0f }, { -1.0f, -1.0f, -1.0f },
-    };
-    
-    static const u16 skybox_indices[] =
-    {
-         0,  1, 2,    0,  2,  3, // +X
-         4,  5, 6,    4,  6,  7, // -X
-         8,  9, 10,   8, 10, 11, // +Y
-        12, 13, 14,  12, 14, 15, // -Y
-        16, 17, 18,  16, 18, 19, // +Z
-        20, 21, 22,  20, 22, 23  // -Z
-    };
-
-    game->skybox_param_buffer = graphics->create_buffer(&(graphics_buffer_desc_t)
-    {
-        .size = sizeof(skybox_param_t),
-        .usage = USAGE_DYNAMIC,
-        .bind = BIND_CONSTANT_BUFFER,
-    });
-
-    game->skybox_vertex_buffer = graphics->create_buffer(&(graphics_buffer_desc_t)
-    {
-        .data = skybox_vertices,
-        .size = sizeof(skybox_vertices),
-        .usage = USAGE_IMMUTABLE,
-        .bind = BIND_VERTEX_BUFFER,
-    });
-
-    game->skybox_index_buffer = graphics->create_buffer(&(graphics_buffer_desc_t)
-    {
-        .data = skybox_indices,
-        .size = array_count(skybox_indices),
-        .usage = USAGE_IMMUTABLE,
-        .bind = BIND_INDEX_BUFFER,
-        .index_format = FORMAT_R16_UINT,
-    });
-
-    game->skybox_vertex_shader = graphics->create_shader(&(graphics_shader_desc_t)
-    {
-        .bytecode = skybox_vshader,
-        .bytecode_size = sizeof(skybox_vshader),
-        .stage = STAGE_VERTEX_SHADER,
-    });
-
-    game->skybox_pixel_shader = graphics->create_shader(&(graphics_shader_desc_t)
-    {
-        .bytecode = skybox_pshader,
-        .bytecode_size = sizeof(skybox_pshader),
-        .stage = STAGE_PIXEL_SHADER,
-    });
-    
-    game->skybox_program = graphics->create_program(&(graphics_program_desc_t)
-    {
-        .vertex_shader = game->skybox_vertex_shader,
-        .pixel_shader = game->skybox_pixel_shader,
-        .attributes = (graphics_vertex_attribute_t[])
-        {
-            { "POSITION", FORMAT_R32G32B32_FLOAT, 0, 0, 0, 0, 0 },
-        },
-        .attribute_count = 1,
-    });
 }
 
 static vec2 xy_to_lon_lat(f32 x, f32 y, f32 width, f32 height)
@@ -1423,7 +1516,7 @@ update_function(update)
         f32 lon = lerp(xy_lon_lat.x, game->shape_value, ray_lon_lat.x);
         f32 lat = lerp(xy_lon_lat.y, game->shape_value, ray_lon_lat.y);
 
-        game->country_index = cell_get_country(game->cells, lon, lat);
+        game->country_index = cell_get_country(game, lon, lat);
 
         if (game->country_index != 0xFF && game->country_index < array_count(global_shape_country_names))
         {
@@ -1433,28 +1526,6 @@ update_function(update)
                     global_shape_country_names[game->country_index], game->country_index);
         }
     }
-}
-
-static inline vec3 srgb_to_linear(vec3 srgb)
-{
-    vec3 linear;
-
-    linear.x = (srgb.x <= 0.04045f) ? (srgb.x / 12.92f) : powf((srgb.x + 0.055f) / 1.055f, 2.4f);
-    linear.y = (srgb.y <= 0.04045f) ? (srgb.y / 12.92f) : powf((srgb.y + 0.055f) / 1.055f, 2.4f);
-    linear.z = (srgb.z <= 0.04045f) ? (srgb.z / 12.92f) : powf((srgb.z + 0.055f) / 1.055f, 2.4f);
-
-    return linear;
-}
-
-static inline vec3 linear_to_srgb(vec3 linear)
-{
-    vec3 srgb;
-
-    srgb.x = (linear.x <= 0.0031308f) ? (linear.x * 12.92f) : (1.055f * powf(linear.x, 1.0f / 2.4f) - 0.055f);
-    srgb.y = (linear.y <= 0.0031308f) ? (linear.y * 12.92f) : (1.055f * powf(linear.y, 1.0f / 2.4f) - 0.055f);
-    srgb.z = (linear.z <= 0.0031308f) ? (linear.z * 12.92f) : (1.055f * powf(linear.z, 1.0f / 2.4f) - 0.055f);
-
-    return srgb;
 }
 
 render_function(render)
@@ -1486,16 +1557,16 @@ render_function(render)
             .shape = game->shape_value,
         };
 
-        graphics->update_buffer(game->skybox_param_buffer, &skybox_param, 0, sizeof(skybox_param_t));
-        graphics->set_buffer(game->skybox_param_buffer, STAGE_VERTEX_SHADER, 0, 0, 0);
-        graphics->set_buffer(game->skybox_param_buffer, STAGE_PIXEL_SHADER, 0, 0, 0);
-        graphics->set_vertex_buffer(game->skybox_vertex_buffer, 0, sizeof(skybox_vertex_t), 0);
-        graphics->set_index_buffer(game->skybox_index_buffer, 0);
-        graphics->set_program(game->skybox_program);
-        graphics->set_srvs(STAGE_PIXEL_SHADER, &game->skybox_texture, 1, 0);
+        graphics->update_buffer(game->skybox_info.param_buffer, &skybox_param, 0, sizeof(skybox_param_t));
+        graphics->set_buffer(game->skybox_info.param_buffer, STAGE_VERTEX_SHADER, 0, 0, 0);
+        graphics->set_buffer(game->skybox_info.param_buffer, STAGE_PIXEL_SHADER, 0, 0, 0);
+        graphics->set_vertex_buffer(game->skybox_info.vertex_buffer, 0, sizeof(skybox_vertex_t), 0);
+        graphics->set_index_buffer(game->skybox_info.index_buffer, 0);
+        graphics->set_program(game->skybox_info.program);
+        graphics->set_srvs(STAGE_PIXEL_SHADER, &game->skybox_info.texture, 1, 0);
         graphics->set_samplers(STAGE_PIXEL_SHADER, &game->linear_sampler, 1, 0);
         graphics->set_pipeline(game->default_pipeline);
-        graphics->draw_indexed(TOPOLOGY_TRIANGLE_LIST, game->skybox_index_buffer.size, 0, 0);
+        graphics->draw_indexed(TOPOLOGY_TRIANGLE_LIST, game->skybox_info.index_buffer.size, 0, 0);
     }
     graphics->end_pass();
     
@@ -1594,8 +1665,8 @@ render_function(render)
         shape_info->param.line_thickness = 2.0f;
         graphics->update_buffer(game->transform_buffer, &game->transform_param, 0, sizeof(game->transform_param));
         graphics->update_buffer(shape_info->param_buffer, shape_param, 0, sizeof(shape_param_t));
-        graphics->set_vertex_buffer(shape_info->vertex_buffer, 0, sizeof(border_vertex_t), 0);
-        graphics->set_index_buffer(shape_info->index_buffer, 0);
+        graphics->set_vertex_buffer(game->border_mesh_vertex_buffer, 0, sizeof(border_mesh_vertex_t), 0);
+        graphics->set_index_buffer(game->border_mesh_index_buffer, 0);
         graphics->set_buffer(game->transform_buffer, STAGE_VERTEX_SHADER, 0, 0, 0);
         graphics->set_buffer(shape_info->param_buffer, STAGE_VERTEX_SHADER, 1, 0, 0);
         
@@ -1605,7 +1676,7 @@ render_function(render)
         graphics->set_buffer(game->glow_mask_buffer, STAGE_PIXEL_SHADER, 0, 0, 0);
         graphics->set_program(game->glow_mask_program);
         graphics->set_pipeline(game->alphaoff_pipeline);
-        graphics->draw_indexed(TOPOLOGY_TRIANGLE_LIST, shape_info->index_buffer.size, 0, 0);
+        graphics->draw_indexed(TOPOLOGY_TRIANGLE_LIST, game->border_mesh_index_count, 0, 0);
     }
     graphics->end_pass();
 
@@ -1671,8 +1742,8 @@ render_function(render)
     {
         graphics->update_buffer(game->transform_buffer, &game->transform_param, 0, sizeof(game->transform_param));
         graphics->set_buffer(game->transform_buffer, STAGE_VERTEX_SHADER, 0, 0, 0);
-        graphics->set_vertex_buffer(shape_info->vertex_buffer, 0, sizeof(border_vertex_t), 0);
-        graphics->set_index_buffer(shape_info->index_buffer, 0);
+        graphics->set_vertex_buffer(game->border_mesh_vertex_buffer, 0, sizeof(border_mesh_vertex_t), 0);
+        graphics->set_index_buffer(game->border_mesh_index_buffer, 0);
         graphics->set_program(shape_info->program);
         graphics->set_pipeline(game->d_test_pipeline);
 
@@ -1684,7 +1755,8 @@ render_function(render)
         graphics->update_buffer(shape_info->param_buffer, shape_param, 0, sizeof(shape_param_t));
         graphics->set_buffer(shape_info->param_buffer, STAGE_VERTEX_SHADER | STAGE_PIXEL_SHADER, 1, 0, 0);
 
-        graphics->draw_indexed(TOPOLOGY_TRIANGLE_LIST, shape_info->index_buffer.size, 0, 0);
+        graphics->draw_indexed(TOPOLOGY_TRIANGLE_LIST, game->border_mesh_index_count, 0, 0);
+        // graphics->draw_indexed(TOPOLOGY_TRIANGLE_LIST, shape_info->index_buffer.size, 0, 0);
 
         if (game->country_index != 0xFF)
         {

@@ -632,6 +632,7 @@ static DWORD WINAPI main_thread(void* param)
         fatal(function, "[PLATFORM] Unassigned io function.");
     }
 
+    // TODO: Does this take time?
     module_t module = load_module();
     module.init(&platform);
     

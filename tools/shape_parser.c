@@ -7,12 +7,14 @@
 
 #include "../src/utils.h"
 #include "../src/maths.h"
+#include "../src/country_borders.h"
 
 #define PRINT_PARTS          1
 #define PRINT_PART_COUNTS    2
-#define PRINT_INDICES        4
-#define PRINT_POINTS         8
-#define PRINT_CENTERS        32
+#define PRINT_POINTS         4
+#define PRINT_MESH_POINTS    8
+#define PRINT_INDICES        16
+#define PRINT_MESH_INDICES   32
 #define PRINT_INDEX_COUNTS   64
 
 #pragma pack(push, 1)
@@ -65,9 +67,10 @@ static inline void usage(const char* name)
     fprintf(stderr, "Usage: %s --shapefile <shp file> --parts | --indices | --points\n", name);
 }
 
-void parse_shape_file(uint8_t* shape_file_buffer, size_t shape_file_size, u32 print_format)
+size_t parse_shape_file(void* header, u8* memory, u8* shape_file_buffer, size_t shape_file_size, u32 print_format)
 {
     uint8_t* initial_record_offset = shape_file_buffer + sizeof(shape_file_header_t);
+    size_t memory_offset = 0;
     u32 offset = 0;
     u32 part_index = 0;
     u32 part_offset = 0;
@@ -86,7 +89,9 @@ void parse_shape_file(uint8_t* shape_file_buffer, size_t shape_file_size, u32 pr
             u8* part_ptr = shape_content_ptr + sizeof(shape_content_t);
             u32* parts = (u32*)part_ptr;
 
-            if ((print_format & PRINT_PARTS) || (print_format & PRINT_PART_COUNTS) || (print_format & PRINT_INDICES) || (print_format & PRINT_INDEX_COUNTS))
+            if ((print_format & PRINT_POINTS) || (print_format & PRINT_PARTS) ||
+                (print_format & PRINT_PART_COUNTS) || (print_format & PRINT_MESH_INDICES) ||
+                (print_format & PRINT_INDEX_COUNTS))
             {
                 if (print_format & PRINT_PARTS)
                 {
@@ -94,18 +99,35 @@ void parse_shape_file(uint8_t* shape_file_buffer, size_t shape_file_size, u32 pr
                     {
                         u32 start = parts[i] + part_index;
                         u32 end = ((i + 1 < shape_content->part_count) ? parts[i + 1] : shape_content->point_count) + part_index;
-                        printf("{ %u, %u }, ", start, end);
+                        border_part_range_t border_part_range =
+                        {
+                            .point_index = start,
+                            .point_count = end - start,
+                        };
+
+                        memcpy(memory + memory_offset, &border_part_range, sizeof(border_part_range_t));
+                        memory_offset += sizeof(border_part_range_t);
+
+                        ((border_file_header_t*)header)->part_range_count += 1;
                     }
                 }
 
                 if (print_format & PRINT_PART_COUNTS)
                 {
-                    printf("{ %u, %u }, ", part_offset, shape_content->part_count);
+                    country_range_t country_range =
+                    {
+                        .part_offset = part_offset,
+                        .part_count = shape_content->part_count,
+                    };
+                    memcpy(memory + memory_offset, &country_range, sizeof(country_range_t));
+                    memory_offset += sizeof(country_range_t);
+
+                    ((border_file_header_t*)header)->country_range_count += 1;
                 }
 
                 u32 temp_index_count = 0;
                 
-                if (print_format & PRINT_INDICES || print_format & PRINT_INDEX_COUNTS)
+                if (print_format & PRINT_MESH_INDICES || print_format & PRINT_INDEX_COUNTS)
                 {
                     for (u32 i = 0; i < shape_content->part_count; ++i)
                     {
@@ -126,9 +148,22 @@ void parse_shape_file(uint8_t* shape_file_buffer, size_t shape_file_size, u32 pr
                                 u32 next_left = 2 * next + 0;
                                 u32 next_right = 2 * next + 1;
 
-                                if (print_format & PRINT_INDICES)
+                                if (print_format & PRINT_MESH_INDICES)
                                 {
-                                    printf("%u, %u, %u, %u, %u, %u, ", current_left, current_right, next_left, next_left, current_right, next_right);
+                                    *(u16*)(memory + memory_offset) = current_left;
+                                    memory_offset += sizeof(u16);
+                                    *(u16*)(memory + memory_offset) = current_right;
+                                    memory_offset += sizeof(u16);
+                                    *(u16*)(memory + memory_offset) = next_left;
+                                    memory_offset += sizeof(u16);
+                                    *(u16*)(memory + memory_offset) = next_left;
+                                    memory_offset += sizeof(u16);
+                                    *(u16*)(memory + memory_offset) = current_right;
+                                    memory_offset += sizeof(u16);
+                                    *(u16*)(memory + memory_offset) = next_right;
+                                    memory_offset += sizeof(u16);
+
+                                    ((border_mesh_file_header_t*)header)->index_count += 6;
                                 }
                                 ++temp_index_count;
                             }
@@ -146,14 +181,10 @@ void parse_shape_file(uint8_t* shape_file_buffer, size_t shape_file_size, u32 pr
                 part_index += shape_content->point_count;
             }
             
-            if (print_format & PRINT_POINTS)
+            if (print_format & PRINT_MESH_POINTS || print_format & PRINT_POINTS)
             {
                 uint8_t* point_ptr = part_ptr + (shape_content->part_count * sizeof(u32));
                 point_t* points = (point_t*)(point_ptr);
-
-                f32 sum_x = 0.0f;
-                f32 sum_y = 0.0f;
-                f32 sum_z = 0.0f;
 
                 for (u32 i = 0; i < shape_content->point_count; ++i)
                 {
@@ -176,10 +207,39 @@ void parse_shape_file(uint8_t* shape_file_buffer, size_t shape_file_size, u32 pr
                     f32 y = sinf(lat_rad) /* radius */;
                     f32 z = cosf(lat_rad) * cosf(lon_rad) /* radius */;
                     
-                    if (print_format & PRINT_POINTS)
+                    if (print_format & PRINT_MESH_POINTS)
                     {
-                        printf("{ { %+3.12ff, %+3.12ff, %+3.12ff }, { %+3.12ff, %+3.12ff, %+3.12ff }, { %+3.12ff, %+3.12ff, %+3.12ff }, %f },\n", p_lon, p_lat, 0.0f, lon, lat, 0.0f, n_lon, n_lat, 0.0f, -1.0f);
-                        printf("{ { %+3.12ff, %+3.12ff, %+3.12ff }, { %+3.12ff, %+3.12ff, %+3.12ff }, { %+3.12ff, %+3.12ff, %+3.12ff }, %f },\n", p_lon, p_lat, 0.0f, lon, lat, 0.0f, n_lon, n_lat, 0.0f, +1.0f);
+                        border_mesh_vertex_t v1 =
+                        {
+                            .prev = v3(p_lon, p_lat, 0.0f),
+                            .current = v3(lon, lat, 0.0f),
+                            .next = v3(n_lon, n_lat, 0.0f),
+                            .side = -1.0f,
+                        };
+
+                        border_mesh_vertex_t v2 =
+                        {
+                            .prev = v3(p_lon, p_lat, 0.0f),
+                            .current = v3(lon, lat, 0.0f),
+                            .next = v3(n_lon, n_lat, 0.0f),
+                            .side = 1.0f,
+                        };
+
+                        memcpy(memory + memory_offset, &v1, sizeof(border_mesh_vertex_t));
+                        memory_offset += sizeof(border_mesh_vertex_t);
+                        memcpy(memory + memory_offset, &v2, sizeof(border_mesh_vertex_t));
+                        memory_offset += sizeof(border_mesh_vertex_t);
+
+                        ((border_mesh_file_header_t*)header)->vertex_count += 2;
+                    }
+                    else if (print_format & PRINT_POINTS)
+                    {
+                        border_point_t border_point = { lon, lat };
+
+                        memcpy(memory + memory_offset, &border_point, sizeof(border_point_t));
+                        memory_offset += sizeof(border_point_t);
+
+                        ((border_file_header_t*)header)->point_count += 1;
                     }
                 }
             }
@@ -191,6 +251,8 @@ void parse_shape_file(uint8_t* shape_file_buffer, size_t shape_file_size, u32 pr
 
         offset += sizeof(shape_record_header_t) + content_length_byte;
     }
+
+    return memory_offset;
 }
 
 int main(int argc, char* argv[])
@@ -265,46 +327,95 @@ int main(int argc, char* argv[])
         return 1;
     }
 
+    size_t mesh_total_size = GIBIBYTES(2);
+    size_t mesh_offset = 0;
+    u8* mesh_memory = calloc(1, mesh_total_size);
+
+    border_mesh_file_header_t* border_mesh_file_header = (border_mesh_file_header_t*)mesh_memory;
+    border_mesh_file_header->magic = BORDER_MESH_FILE_MAGIC;
+    border_mesh_file_header->vertex_count = 0;
+    border_mesh_file_header->index_count = 0;
+    border_mesh_file_header->vertex_stride = sizeof(border_mesh_vertex_t);
+    border_mesh_file_header->index_stride = sizeof(u16);
+
+    mesh_offset += sizeof(border_mesh_file_header_t);
+
+    size_t total_size = GIBIBYTES(2);
+    size_t offset = 0;
+    u8* memory = calloc(1, total_size);
+
+    border_file_header_t* border_file_header = (border_file_header_t*)memory;
+    border_file_header->magic = BORDER_FILE_MAGIC;
+    border_file_header->point_count = 0;
+    border_file_header->part_range_count = 0;
+    border_file_header->country_range_count = 0;
+
+    offset += sizeof(border_file_header_t);
+
+    // NOTE: Border information CPU representation.
+    if (print_format & PRINT_POINTS)
+    {
+        offset += parse_shape_file(border_file_header, memory + offset, shape_file_buffer, shape_file_size, PRINT_POINTS);
+    }
+
     if (print_format & PRINT_PARTS)
     {
-        printf("static u32 global_shape_parts[][2] =\n{\n");
-        parse_shape_file(shape_file_buffer, shape_file_size, PRINT_PARTS);
-        printf("\n};\n\n");
+        // printf("static u32 global_shape_parts[][2] =\n{\n");
+        offset += parse_shape_file(border_file_header, memory + offset, shape_file_buffer, shape_file_size, PRINT_PARTS);
+        // printf("\n};\n\n");
+    }
 
-        printf("static u16 global_shape_part_offset_counts[][2] =\n{\n");
-        parse_shape_file(shape_file_buffer, shape_file_size, PRINT_PART_COUNTS);
-        printf("\n};\n\n");
+    if (print_format & PRINT_PARTS)
+    {
+        // printf("static u16 global_shape_part_offset_counts[][2] =\n{\n");
+        offset += parse_shape_file(border_file_header, memory + offset, shape_file_buffer, shape_file_size, PRINT_PART_COUNTS);
+        // printf("\n};\n\n");
+    }
+
+    // NOTE: Border mesh GPU representation.
+    if (print_format & PRINT_POINTS)
+    {
+        // printf("typedef struct border_vertex_t border_vertex_t;\n");
+        // printf("""struct border_vertex_t\n"""
+        //     """{\n"""
+        //     """    vec3 prev;\n"""
+        //     """    vec3 current;\n"""
+        //     """    vec3 next;\n"""
+        //     """    f32 side;\n"""
+        //     """} static global_shape_points[] =\n"""
+        //     """{\n"""
+        // );
+        mesh_offset += parse_shape_file(border_mesh_file_header, mesh_memory + mesh_offset, shape_file_buffer, shape_file_size, PRINT_MESH_POINTS);
+
+        // printf("\n};\n\n");
     }
     
     if (print_format & PRINT_INDICES)
     {
-        printf("static u16 global_shape_indices[] =\n{\n");
-        parse_shape_file(shape_file_buffer, shape_file_size, PRINT_INDICES);
-        printf("\n};\n\n");
+        // printf("static u16 global_shape_indices[] =\n{\n");
+        mesh_offset += parse_shape_file(border_mesh_file_header, mesh_memory + mesh_offset, shape_file_buffer, shape_file_size, PRINT_MESH_INDICES);
+        // printf("\n};\n\n");
 
-        printf("static u32 global_shape_offset_index_counts[][2] =\n{\n");
-        parse_shape_file(shape_file_buffer, shape_file_size, PRINT_INDEX_COUNTS);
-        printf("\n};\n\n");
+        // printf("static u32 global_shape_offset_index_counts[][2] =\n{\n");
+        // parse_shape_file(shape_file_buffer, shape_file_size, PRINT_INDEX_COUNTS);
+        // printf("\n};\n\n");
     }
 
-    if (print_format & PRINT_POINTS)
-    {
-        printf("typedef struct border_vertex_t border_vertex_t;\n");
-        printf("""struct border_vertex_t\n"""
-            """{\n"""
-            """    vec3 prev;\n"""
-            """    vec3 current;\n"""
-            """    vec3 next;\n"""
-            """    f32 side;\n"""
-            """} static global_shape_points[] =\n"""
-            """{\n"""
-        );
-        parse_shape_file(shape_file_buffer, shape_file_size, PRINT_POINTS);
-        printf("\n};\n\n");
-    }
+    const char* border_mesh_file_name = "border_mesh.bin";
+    FILE* border_mesh_file = fopen(border_mesh_file_name, "wb");
 
-    free(shape_file_buffer);
-    fclose(shape_file);
+    fprintf(stderr, "Written border mesh - vertex count: %u, index count: %u\n", border_mesh_file_header->vertex_count, border_mesh_file_header->index_count);
+    
+    const char* border_file_name = "border.bin";
+    FILE* border_file = fopen(border_file_name, "wb");
+
+    fprintf(stderr, "Written border - point count: %u, part range count: %u, country range count: %u\n",
+            border_file_header->point_count,
+            border_file_header->part_range_count,
+            border_file_header->country_range_count);
+
+    fwrite(mesh_memory, mesh_offset, 1, border_mesh_file);
+    fwrite(memory, offset, 1, border_file);
 
     return 0;
 }
