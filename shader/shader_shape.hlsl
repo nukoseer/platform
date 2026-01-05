@@ -71,22 +71,45 @@ PS_INPUT vs(VS_INPUT input)
     float2 ndc = clip.xy / clip.w;
     float2 n_ndc = n_clip.xy / n_clip.w;
 
-    float2 dir0 = normalize(ndc - p_ndc);
-    float2 dir1 = normalize(n_ndc - ndc);
+    float2 d0 = ndc - p_ndc;
+    float2 d1 = n_ndc - ndc;
+
+    float eps = 1e-6;
+    float l0 = dot(d0, d0);
+    float l1 = dot(d1, d1);
+
+    if (l0 < eps && l1 < eps)
+    {
+        // all three points basically the same
+        d0 = float2(1.0, 0);
+        d1 = float2(1.0, 0);
+    }
+    else if (l0 < eps)
+    {
+        d0 = d1;
+    }
+    else if (l1 < eps)
+    {
+        d1 = d0;
+    }
+
+    float2 dir0 = normalize(d0);
+    float2 dir1 = normalize(d1);
 
     float2 perp0 = float2(-dir0.y, dir0.x);
     float2 perp1 = float2(-dir1.y, dir1.x);
 
-    float2 miter_dir = normalize(perp0 + perp1);
+    float2 miter_dir = perp0 + perp1;
+
     float2 scale = 1.0 / dot(miter_dir, perp1);
     float miter_level = 2.0;
     scale = clamp(scale, -miter_level, miter_level);
 
     float thickness = line_thickness;
     float half_thickness = thickness * 0.5;
-    float2 ndc_half_thickness = half_thickness * 2.0 / viewport_size;
-    
-    float2 offset = miter_dir * scale * ndc_half_thickness * input.side;
+    float2 ndc_per_pixel = 2.0 / viewport_size;
+
+    float2 offset = miter_dir * scale * half_thickness * ndc_per_pixel * input.side;
     float2 new_position = ndc + offset;
 
     output.position = float4(new_position.xy * clip.w, clip.z, clip.w);
