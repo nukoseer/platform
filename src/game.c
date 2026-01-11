@@ -25,15 +25,10 @@
 #include "../shader/skybox_vertex_shader.h"
 #include "../shader/skybox_pixel_shader.h"
 
-#include "shape_meta_data.inl"
-#include "shape_data.inl"
 #include "sphere_data.inl"
 
-#include "country_borders.h"
-
-#define CELL_X_COUNT    360
-#define CELL_Y_COUNT    180
-#define CELL_SLOT_COUNT 10
+#include "country.h"
+#include "country.c"
 
 typedef struct transform_param_t
 {
@@ -227,27 +222,13 @@ typedef struct game_t
     graphics_2d_font_color_t font_color;
 #endif
 
-    u8* cells;
+    country_data_t country_data;
     u8 country_index;
 
     // NOTE: 1.0f is globe map, 0.0f flat map.
     f32 shape_value;
     f32 shape_speed;
     f32 shape_direction;
-
-    graphics_buffer_t border_mesh_vertex_buffer;
-    graphics_buffer_t border_mesh_index_buffer;
-    u32 border_mesh_vertex_count;
-    u32 border_mesh_index_count;
-
-    border_point_t* border_points;
-    u32 border_point_count;
-
-    border_part_range_t* border_part_ranges;
-    u32 border_part_range_count;
-
-    country_range_t* country_ranges;
-    u32 country_range_count;
 } game_t;
 
  #pragma pack(push, 1)
@@ -285,6 +266,10 @@ typedef struct bmp_image_t
     u32 height;
     u32 pitch;
 } bmp_image_t;
+
+static f32 global_earth_yaw;
+static f32 global_earth_pitch;
+static bool global_earth_reset;
 
 static bmp_image_t load_bmp_image(const io_t* io, const char* file_name)
 {
@@ -725,10 +710,10 @@ static void init_shape(const graphics_t* graphics, shape_info_t* shape_info)
         .pixel_shader = shape_info->pixel_shader,
         .attributes = (graphics_vertex_attribute_t[])
         {
-            { "TEXCOORD", FORMAT_R32G32B32_FLOAT, offsetof(border_mesh_vertex_t, prev), 0, 0, 0, 0 },
-            { "POSITION", FORMAT_R32G32B32_FLOAT, offsetof(border_mesh_vertex_t, current), 0, 0, 0, 0 },
-            { "TEXCOORD", FORMAT_R32G32B32_FLOAT, offsetof(border_mesh_vertex_t, next), 1, 0, 0, 0 },
-            { "TEXCOORD", FORMAT_R32_FLOAT,       offsetof(border_mesh_vertex_t, side), 2, 0, 0, 0 },
+            { "TEXCOORD", FORMAT_R32G32B32_FLOAT, offsetof(country_border_mesh_vertex_t, prev), 0, 0, 0, 0 },
+            { "POSITION", FORMAT_R32G32B32_FLOAT, offsetof(country_border_mesh_vertex_t, current), 0, 0, 0, 0 },
+            { "TEXCOORD", FORMAT_R32G32B32_FLOAT, offsetof(country_border_mesh_vertex_t, next), 1, 0, 0, 0 },
+            { "TEXCOORD", FORMAT_R32_FLOAT,       offsetof(country_border_mesh_vertex_t, side), 2, 0, 0, 0 },
         },
         .attribute_count = 4,
     });
@@ -840,148 +825,6 @@ static void init_skybox(io_t* io, graphics_t* graphics, skybox_info_t* skybox_in
         },
         .attribute_count = 1,
     });
-}
-
-// NOTE: [-180, 180] -> [0, 360)
-static inline u32 x_index_from_lon(f32 lon)
-{
-    f32 u = (lon + 180.0f) / 360.0f;
-    u32 x = (u32)floorf(u * 360.0f);
-    x = clamp_u32(0, x, CELL_X_COUNT - 1);
-
-    return x;
-}
-
-// NOTE: [-90, 90] -> [0, 180)
-static inline u32 y_index_from_lat(f32 lat)
-{
-    f32 v = (lat + 90.0f) / 180.0f;
-    u32 y = (u32)floor(v * 180.0f);
-    y = clamp_u32(0, y, CELL_Y_COUNT - 1);
-
-    return y;
-}
-
-static inline u32 cell_index(u32 x, u32 y)
-{
-    u32 result = (y * CELL_X_COUNT + x) * CELL_SLOT_COUNT;
-
-    return result;
-}
-
-static inline void cell_insert(u8* cells, u8 country_index, u32 x, u32 y)
-{
-    u32 index = cell_index(x, y);
-
-    for (u32 slot_index = 0; slot_index < CELL_SLOT_COUNT; ++slot_index)
-    {
-        u8* country_id = cells + index + slot_index;
-
-        if (*country_id == country_index + 1)
-        {
-            break;
-        }
-        else if (*country_id != 0)
-        {
-            continue;
-        }
-        else
-        {
-            *country_id = country_index + 1;
-            break;
-        }
-    }
-}
-
-static void cell_insert_country(u8* cells, u8 country_index, f32 lon_min, f32 lon_max, f32 lat_min, f32 lat_max)
-{
-    u32 x_min = x_index_from_lon(lon_min);
-    u32 x_max = x_index_from_lon(lon_max);
-    u32 y_min = y_index_from_lat(lat_min);
-    u32 y_max = y_index_from_lat(lat_max);
-
-    for (u32 y = y_min; y < y_max; ++y)
-    {
-        for (u32 x = x_min; x < x_max; ++x)
-        {
-            cell_insert(cells, country_index, x, y);
-        }
-    }
-}
-
-static f32 global_earth_yaw;
-static f32 global_earth_pitch;
-static bool global_earth_reset;
-
-static bool inside_country(const border_point_t* points, u32 point_count, f32 lon, f32 lat)
-{
-    bool inside = false;
-
-    for (u32 i = 0, j = point_count - 1; i < point_count; j = i++)
-    {
-        f32 xi = points[i].lonlat.x;
-        f32 yi = points[i].lonlat.y;
-        f32 xj = points[j].lonlat.x;
-        f32 yj = points[j].lonlat.y;
-
-        bool hit = ((yi > lat) != (yj > lat)) && (lon < (xj - xi) * (lat - yi) / (yj - yi) + xi);
-
-        inside ^= hit;
-    }
-
-    return inside;
-}
-
-static u8 cell_get_country_id(game_t* game, f32 lon, f32 lat)
-{
-    u32 result = 0;
-    u32 x = x_index_from_lon(lon);
-    u32 y = y_index_from_lat(lat);
-    u32 index = cell_index(x, y);
-
-    for (u32 slot_index = 0; slot_index < CELL_SLOT_COUNT; ++slot_index)
-    {
-        u32 country_id = game->cells[index + slot_index];
-        
-        if (country_id != 0)
-        {
-            u32 country_index = country_id - 1;
-            country_range_t country_range = game->country_ranges[country_index];
-
-            u32 part_offset = country_range.part_offset;
-            u32 part_count = country_range.part_count;
-            
-            for (u32 part_index = 0; part_index < part_count; ++part_index)
-            {
-                border_part_range_t part_range = game->border_part_ranges[part_index + part_offset];
-
-                if (inside_country(game->border_points + part_range.point_index, part_range.point_count, lon, lat))
-                {
-                    result = country_id;
-                    break;
-                }
-            }
-        }
-        else
-        {
-            break;
-        }
-    }
-
-    return result;
-}
-
-static u8 cell_get_country(game_t* game, f32 lon, f32 lat)
-{
-    u8 country_id = cell_get_country_id(game, lon, lat);
-    u8 country_index = 0xFF;
-    
-    if (country_id)
-    {
-        country_index = country_id - 1;
-    }
-
-    return country_index;
 }
 
 typedef struct ray_t
@@ -1137,10 +980,10 @@ init_function(init)
         .pixel_shader = game->glow_mask_pixel_shader,
         .attributes = (graphics_vertex_attribute_t[])
         {
-            { "TEXCOORD", FORMAT_R32G32B32_FLOAT, offsetof(border_mesh_vertex_t, prev), 0, 0, 0, 0 },
-            { "POSITION", FORMAT_R32G32B32_FLOAT, offsetof(border_mesh_vertex_t, current), 0, 0, 0, 0 },
-            { "TEXCOORD", FORMAT_R32G32B32_FLOAT, offsetof(border_mesh_vertex_t, next), 1, 0, 0, 0 },
-            { "TEXCOORD", FORMAT_R32_FLOAT,       offsetof(border_mesh_vertex_t, side), 2, 0, 0, 0 },
+            { "TEXCOORD", FORMAT_R32G32B32_FLOAT, offsetof(country_border_mesh_vertex_t, prev), 0, 0, 0, 0 },
+            { "POSITION", FORMAT_R32G32B32_FLOAT, offsetof(country_border_mesh_vertex_t, current), 0, 0, 0, 0 },
+            { "TEXCOORD", FORMAT_R32G32B32_FLOAT, offsetof(country_border_mesh_vertex_t, next), 1, 0, 0, 0 },
+            { "TEXCOORD", FORMAT_R32_FLOAT,       offsetof(country_border_mesh_vertex_t, side), 2, 0, 0, 0 },
         },
         .attribute_count = 4,
     });
@@ -1236,138 +1079,7 @@ init_function(init)
     game->font_color = graphics->create_font_color(0.6862f, 0.6862f, 0.6862f, 1.0f);
 #endif
 
-    io->release_file_memory(io->read_file("..\\src\\game.c").data);
-
-    io_file_read_result_t border_mesh_file_result = io->read_file("..\\tools\\build\\border_mesh.bin");
-    assert(border_mesh_file_result.data && border_mesh_file_result.size > 0);
-
-    border_mesh_file_header_t* border_mesh_header = (border_mesh_file_header_t*)border_mesh_file_result.data;
-    assert(border_mesh_header->magic == BORDER_MESH_FILE_MAGIC);
-
-    border_mesh_vertex_t* border_mesh_vertices = (border_mesh_vertex_t*)((u8*)border_mesh_file_result.data + sizeof(border_mesh_file_header_t));
-    u32 border_mesh_vertex_count = border_mesh_header->vertex_count;
-    u16* border_mesh_indices = (u16*)((u8*)border_mesh_file_result.data + sizeof(border_mesh_file_header_t) + sizeof(border_mesh_vertex_t) * border_mesh_vertex_count);
-    u32 border_mesh_index_count = border_mesh_header->index_count;
-
-    fprintf(stderr, "Border mesh - vertex count: %u, index count: %u\n", border_mesh_vertex_count, border_mesh_index_count);
-
-    game->border_mesh_vertex_buffer = graphics->create_buffer(&(graphics_buffer_desc_t)
-    {
-        .data = border_mesh_vertices,
-        .size = sizeof(border_mesh_vertex_t) * border_mesh_vertex_count,
-        .usage = USAGE_IMMUTABLE,
-        .bind = BIND_VERTEX_BUFFER,
-    });
-
-    game->border_mesh_index_buffer = graphics->create_buffer(&(graphics_buffer_desc_t)
-    {
-        .data = border_mesh_indices,
-        .size = border_mesh_index_count,
-        .usage = USAGE_IMMUTABLE,
-        .bind = BIND_INDEX_BUFFER,
-        .index_format = FORMAT_R16_UINT,
-    });
-
-    game->border_mesh_vertex_count = border_mesh_vertex_count;
-    game->border_mesh_index_count = border_mesh_index_count;
-
-    io->release_file_memory(border_mesh_file_result.data);
-
-    io_file_read_result_t border_file_result = io->read_file("..\\tools\\build\\border.bin");
-    assert(border_file_result.data && border_file_result.size > 0);
-
-    border_file_header_t* border_header = (border_file_header_t*)border_file_result.data;
-    assert(border_header->magic == BORDER_FILE_MAGIC);
-    game->border_points = (border_point_t*)((u8*)border_file_result.data + sizeof(border_file_header_t));
-    game->border_point_count = border_header->point_count;
-
-    game->border_part_ranges = (border_part_range_t*)((u8*)border_file_result.data + sizeof(border_file_header_t) + sizeof(border_point_t) * game->border_point_count);
-    game->border_part_range_count = border_header->part_range_count;
-
-    game->country_ranges = (country_range_t*)((u8*)border_file_result.data + sizeof(border_file_header_t) + sizeof(border_point_t) * game->border_point_count + sizeof(border_part_range_t) * game->border_part_range_count);
-    game->country_range_count = border_header->country_range_count;
-
-    fprintf(stderr, "Border - point count: %u, part_range_count: %u, country_range_count: %u\n", game->border_point_count, game->border_part_range_count, game->country_range_count);
-
-    u32 total_part_count = game->border_part_range_count;
-    
-    f32* part_outlines = calloc(1, total_part_count * sizeof(f32) * 4);
-    u32 part_outline_count = 0;
-
-    for (u8 country_index = 0; country_index < game->country_range_count; ++country_index)
-    {
-        country_range_t country_range = game->country_ranges[country_index];
-
-        u32 part_offset = country_range.part_offset;
-        u32 part_count = country_range.part_count;
-
-        // u32 part_offset = global_shape_part_offset_counts[country_index][0];
-        // u32 part_count = global_shape_part_offset_counts[country_index][1];
-
-        for (u32 part_index = 0; part_index < part_count; ++part_index)
-        {
-            border_part_range_t part_range = game->border_part_ranges[part_index + part_offset];
-
-            f32 lon_min = 1000.0f;
-            f32 lon_max = -1000.0f;
-            f32 lat_min = 1000.0f;
-            f32 lat_max = -1000.0f;
-
-            for (u32 k = 0; k < part_range.point_count; ++k)
-            {
-                vec2 point = game->border_points[k + part_range.point_index].lonlat;
-
-                if (point.x < lon_min)
-                {
-                    lon_min = point.x;
-                }
-
-                if (point.y < lat_min)
-                {
-                    lat_min = point.y;
-                }
-
-                if (point.x > lon_max)
-                {
-                    lon_max = point.x;
-                }
-
-                if (point.y > lat_max)
-                {
-                    lat_max = point.y;
-                }
-            }
-
-            part_outlines[part_outline_count + 0] = lon_min;
-            part_outlines[part_outline_count + 1] = lon_max;
-            part_outlines[part_outline_count + 2] = lat_min;
-            part_outlines[part_outline_count + 3] = lat_max;
-            part_outline_count += 4;
-        }
-    }
-
-    assert(total_part_count * 4 == part_outline_count);
-
-    game->cells = calloc(1, CELL_X_COUNT * CELL_Y_COUNT * CELL_SLOT_COUNT);
-    f32* outlines = part_outlines;
-
-    for (u8 country_index = 0; country_index < game->country_range_count; ++country_index)
-    {
-        country_range_t country_range = game->country_ranges[country_index];
-        
-        for (u32 part_index = 0; part_index < country_range.part_count; ++part_index)
-        {
-            f32 lon_min = outlines[0];
-            f32 lon_max = outlines[1];
-            f32 lat_min = outlines[2];
-            f32 lat_max = outlines[3];
-            outlines += 4;
-            
-            cell_insert_country(game->cells, country_index, lon_min, lon_max, lat_min, lat_max);
-        }
-    }
-
-    free(part_outlines);
+    init_country_data(graphics, io, &game->country_data);
 }
 
 static vec2 xy_to_lon_lat(f32 x, f32 y, f32 width, f32 height)
@@ -1457,46 +1169,34 @@ update_function(update)
     {
         if (global_earth_yaw != 0.0f)
         {
-            if (global_earth_yaw > 0.0f && global_earth_yaw < speed)
+            while (global_earth_yaw > 360.0f)
             {
-                global_earth_yaw = 0.0f;
-            }
-        
-            if (global_earth_yaw > 0.0f)
-            {
-                global_earth_yaw -= speed;
+                global_earth_yaw -= 360.0f;
             }
 
-            if (global_earth_yaw < 0.0f && global_earth_yaw > -speed)
+            while (global_earth_yaw < -360.0f)
+            {
+                global_earth_yaw += 360.0f;
+            }
+
+            if (fabs(global_earth_yaw) < speed)
             {
                 global_earth_yaw = 0.0f;
             }
-        
-            if (global_earth_yaw < 0.0f)
+            else
             {
-                global_earth_yaw += speed;
+                global_earth_yaw += global_earth_yaw > 0.0f ? -speed : speed;
             }
         }
         if (global_earth_pitch != 0.0f)
         {
-            if (global_earth_pitch > 0.0f && global_earth_pitch < speed)
+            if (fabs(global_earth_pitch) < speed)
             {
                 global_earth_pitch = 0.0f;
             }
-        
-            if (global_earth_pitch > 0.0f)
+            else
             {
-                global_earth_pitch -= speed;
-            }
-
-            if (global_earth_pitch < 0.0f && global_earth_pitch > -speed)
-            {
-                global_earth_pitch = 0.0f;
-            }
-        
-            if (global_earth_pitch < 0.0f)
-            {
-                global_earth_pitch += speed;
+                global_earth_pitch += global_earth_pitch > 0.0f ? -speed : speed;
             }
         }
 
@@ -1516,14 +1216,21 @@ update_function(update)
         f32 lon = lerp(xy_lon_lat.x, game->shape_value, ray_lon_lat.x);
         f32 lat = lerp(xy_lon_lat.y, game->shape_value, ray_lon_lat.y);
 
-        game->country_index = cell_get_country(game, lon, lat);
+        u8 country_index = country_cell_get_index(&game->country_data.query, lon, lat);
 
-        if (game->country_index != 0xFF && game->country_index < array_count(global_shape_country_names))
+        if (country_is_valid_index(country_index))
         {
-            fprintf(stderr, "\rx: %f, y: %f, lon: %f, lat: %f, yaw: %f, pitch: %f, country: %s, id: %u",
-                    input->mouse_position.x, input->mouse_position.y,
-                    lon, lat, global_earth_yaw, global_earth_pitch,
-                    global_shape_country_names[game->country_index], game->country_index);
+            country_name_t country_name = country_get_name(game->country_index);
+
+            if (country_name.name)
+            {
+                fprintf(stderr, "\rx: %f, y: %f, lon: %f, lat: %f, yaw: %f, pitch: %f, country: %s, id: %u",
+                        input->mouse_position.x, input->mouse_position.y,
+                        lon, lat, global_earth_yaw, global_earth_pitch,
+                        country_name.name, game->country_index);
+                
+                game->country_index = country_index;
+            }
         }
     }
 }
@@ -1570,10 +1277,7 @@ render_function(render)
     }
     graphics->end_pass();
     
-    graphics->begin_pass(game->offscreen_target_msaa, &(graphics_pass_desc_t)
-    {
-        .clear_color = false, .clear_depth = false,
-    });
+    graphics->begin_pass(game->offscreen_target_msaa, &(graphics_pass_desc_t){});
     {
         sphere_info_t* sphere_info = &game->sphere_info;
         sphere_info->param.alpha = game->shape_value;
@@ -1606,11 +1310,7 @@ render_function(render)
     shape_param->scale = v2(scale_x, scale_y);
     shape_param->viewport_size = v2((f32)game->offscreen_scene.width, (f32)game->offscreen_scene.height);
 
-    graphics->begin_pass(game->offscreen_target_msaa, &(graphics_pass_desc_t)
-    {
-        .clear_color = false,
-        .clear_depth = false
-    });
+    graphics->begin_pass(game->offscreen_target_msaa, &(graphics_pass_desc_t){});
     {
         shape_param->color = v4(0.006f, 0.006f, 0.006f, 1.0f);
 
@@ -1656,17 +1356,15 @@ render_function(render)
     // }
     // graphics->end_pass();
 
-    graphics->begin_pass(game->glow_mask_msaa_target, &(graphics_pass_desc_t)
+    graphics->begin_pass(game->glow_mask_msaa_target, &(graphics_pass_desc_t) { .clear_color = true });
     {
-        .clear_color = true,
-        .clear_rgba = { 0.0f, 0.0f, 0.0f, 0.0f },
-    });
-    {
+        country_mesh_data_t* country_mesh_data = &game->country_data.mesh;
+        
         shape_info->param.line_thickness = 2.0f;
         graphics->update_buffer(game->transform_buffer, &game->transform_param, 0, sizeof(game->transform_param));
         graphics->update_buffer(shape_info->param_buffer, shape_param, 0, sizeof(shape_param_t));
-        graphics->set_vertex_buffer(game->border_mesh_vertex_buffer, 0, sizeof(border_mesh_vertex_t), 0);
-        graphics->set_index_buffer(game->border_mesh_index_buffer, 0);
+        graphics->set_vertex_buffer(country_mesh_data->vertex_buffer, 0, country_mesh_data->vertex_stride, 0);
+        graphics->set_index_buffer(country_mesh_data->index_buffer, 0);
         graphics->set_buffer(game->transform_buffer, STAGE_VERTEX_SHADER, 0, 0, 0);
         graphics->set_buffer(shape_info->param_buffer, STAGE_VERTEX_SHADER, 1, 0, 0);
         
@@ -1676,14 +1374,14 @@ render_function(render)
         graphics->set_buffer(game->glow_mask_buffer, STAGE_PIXEL_SHADER, 0, 0, 0);
         graphics->set_program(game->glow_mask_program);
         graphics->set_pipeline(game->alphaoff_pipeline);
-        graphics->draw_indexed(TOPOLOGY_TRIANGLE_LIST, game->border_mesh_index_count, 0, 0);
+        graphics->draw_indexed(TOPOLOGY_TRIANGLE_LIST, country_mesh_data->index_count, 0, 0);
     }
     graphics->end_pass();
 
     graphics->resolve_texture(game->glow_mask, game->glow_mask_msaa);
     
     // NOTE: Horizontal blur. glow_mask -> glow_a.
-    graphics->begin_pass(game->glow_a_target, &(graphics_pass_desc_t){ .clear_color = false });
+    graphics->begin_pass(game->glow_a_target, &(graphics_pass_desc_t){});
     {
         game->glow_blur_setting = (glow_blur_setting_t)
         {
@@ -1701,7 +1399,7 @@ render_function(render)
     graphics->end_pass();
 
     // NOTE: Vertical blur. glow_a -> glow_b.
-    graphics->begin_pass(game->glow_b_target, &(graphics_pass_desc_t){ .clear_color = false });
+    graphics->begin_pass(game->glow_b_target, &(graphics_pass_desc_t){});
     {
         game->glow_blur_setting = (glow_blur_setting_t)
         {
@@ -1719,7 +1417,7 @@ render_function(render)
     graphics->end_pass();
 
     // // NOTE: Merge pass. offscreen_scene + glow -> offscreen_scene.
-    graphics->begin_pass(game->offscreen_target_msaa, &(graphics_pass_desc_t){ .clear_color = false });
+    graphics->begin_pass(game->offscreen_target_msaa, &(graphics_pass_desc_t){});
     {
         game->glow_merge_param.viewport_size = (vec2){ (f32)platform->width, (f32)platform->height };
 
@@ -1738,12 +1436,14 @@ render_function(render)
     }
     graphics->end_pass();
 
-    graphics->begin_pass(game->offscreen_target_msaa, &(graphics_pass_desc_t){ .clear_color = false });
+    graphics->begin_pass(game->offscreen_target_msaa, &(graphics_pass_desc_t){});
     {
+        country_mesh_data_t* country_mesh_data = &game->country_data.mesh;
+        
         graphics->update_buffer(game->transform_buffer, &game->transform_param, 0, sizeof(game->transform_param));
         graphics->set_buffer(game->transform_buffer, STAGE_VERTEX_SHADER, 0, 0, 0);
-        graphics->set_vertex_buffer(game->border_mesh_vertex_buffer, 0, sizeof(border_mesh_vertex_t), 0);
-        graphics->set_index_buffer(game->border_mesh_index_buffer, 0);
+        graphics->set_vertex_buffer(country_mesh_data->vertex_buffer, 0, country_mesh_data->vertex_stride, 0);
+        graphics->set_index_buffer(country_mesh_data->index_buffer, 0);
         graphics->set_program(shape_info->program);
         graphics->set_pipeline(game->d_test_pipeline);
 
@@ -1755,7 +1455,7 @@ render_function(render)
         graphics->update_buffer(shape_info->param_buffer, shape_param, 0, sizeof(shape_param_t));
         graphics->set_buffer(shape_info->param_buffer, STAGE_VERTEX_SHADER | STAGE_PIXEL_SHADER, 1, 0, 0);
 
-        graphics->draw_indexed(TOPOLOGY_TRIANGLE_LIST, game->border_mesh_index_count, 0, 0);
+        graphics->draw_indexed(TOPOLOGY_TRIANGLE_LIST, country_mesh_data->index_count, 0, 0);
         // graphics->draw_indexed(TOPOLOGY_TRIANGLE_LIST, shape_info->index_buffer.size, 0, 0);
 
         // if (game->country_index != 0xFF)
@@ -1774,7 +1474,7 @@ render_function(render)
     graphics->resolve_texture(game->offscreen_scene, game->offscreen_scene_msaa);
     
     // NOTE: Post pass rendering to backbuffer.
-    graphics->begin_pass(graphics->get_backbuffer_target(), &(graphics_pass_desc_t){ .clear_color = false });
+    graphics->begin_pass(graphics->get_backbuffer_target(), &(graphics_pass_desc_t){ .clear_color = true,  });
     {
         game->post_param.viewport_size = (vec2){ (f32)platform->width, (f32)platform->height };
         game->post_param.aspect_ratio = (f32)platform->width / (f32)platform->height;
@@ -1813,12 +1513,12 @@ render_function(render)
                                 frame_ms_text, frame_ms_length);   
         }
 
-        if (game->country_index != 0xFF)
+        country_name_t country_name = country_get_name(game->country_index);
+        if (country_name.name && country_name.length)
         {
             graphics->draw_text(game->font, game->font_color, TEXT_ALIGNMENT_LEADING,
                                 8.0f, 8.0f, (f32)platform->width, (f32)platform->height,
-                                global_shape_country_names[game->country_index],
-                                strlen(global_shape_country_names[game->country_index]));
+                                country_name.name, country_name.length);
         }
     }
     graphics->end_draw();

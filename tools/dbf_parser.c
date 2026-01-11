@@ -5,6 +5,8 @@
 #include <string.h>
 
 #include "../src/utils.h"
+#include "../src/maths.h"
+#include "../src/country.h"
 
 #pragma pack(push,1)
 
@@ -99,7 +101,7 @@ static void parse_dbf_file(const u8* dbf_file_buffer)
     const u8* dbf_records = dbf_file_buffer + dbf_header->header_size;
     const dbf_column_t* dbf_name_column = dbf_columns + name_index;
 
-    printf("static char* global_shape_country_names[] = \n{\n");
+    printf("static country_name_t global_shape_country_names[] = \n{\n");
     
     for (u32 record_index = 0; record_index < dbf_header->record_count; dbf_records += dbf_header->record_size, ++record_index)
     {
@@ -116,7 +118,7 @@ static void parse_dbf_file(const u8* dbf_file_buffer)
         // NOTE: We don't need +1 because our data do not use deletion flag as mentioned above.
         memcpy(name_buffer, dbf_record + /* + 1 + */ dbf_name_column->offset, dbf_name_column->length);
         name_buffer[dbf_name_column->length] = 0;
-        printf("\"%s\", ", name_buffer);
+        printf("    { \"%s\", %zu },\n", name_buffer, strlen(name_buffer));
     }
     printf("\n};\n");
 }
