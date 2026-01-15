@@ -1456,18 +1456,18 @@ render_function(render)
         graphics->set_buffer(shape_info->param_buffer, STAGE_VERTEX_SHADER | STAGE_PIXEL_SHADER, 1, 0, 0);
 
         graphics->draw_indexed(TOPOLOGY_TRIANGLE_LIST, country_mesh_data->index_count, 0, 0);
-        // graphics->draw_indexed(TOPOLOGY_TRIANGLE_LIST, shape_info->index_buffer.size, 0, 0);
 
-        // if (game->country_index != 0xFF)
-        // {
-        //     // shape_param->color = v4(0.2f, 0.2f, 0.2f, 0.7f);
-        //     shape_param->color = v4(1.0f, 1.0f, 1.0f, 1.0f);
-        //     graphics->update_buffer(shape_info->param_buffer, shape_param, 0, sizeof(shape_param_t));
-        //     graphics->set_buffer(shape_info->param_buffer, STAGE_VERTEX_SHADER | STAGE_PIXEL_SHADER, 1, 0, 0);
-        //     graphics->draw_indexed(TOPOLOGY_TRIANGLE_LIST,
-        //                            global_shape_offset_index_counts[game->country_index][1],
-        //                            global_shape_offset_index_counts[game->country_index][0], 0);
-        // }
+        if (game->country_index != 0xFF)
+        {
+            // shape_param->color = v4(0.2f, 0.2f, 0.2f, 0.7f);
+            shape_param->color = v4(1.0f, 1.0f, 1.0f, 1.0f);
+            graphics->update_buffer(shape_info->param_buffer, shape_param, 0, sizeof(shape_param_t));
+            graphics->set_buffer(shape_info->param_buffer, STAGE_VERTEX_SHADER | STAGE_PIXEL_SHADER, 1, 0, 0);
+
+            graphics->draw_indexed(TOPOLOGY_TRIANGLE_LIST,
+                                   country_mesh_data->index_ranges[game->country_index].index_count,
+                                   country_mesh_data->index_ranges[game->country_index].index_offset, 0);
+        }
     }
     graphics->end_pass();
 

@@ -1,7 +1,6 @@
 #include "country.h"
 
 #include "shape_meta_data.inl"
-#include "shape_data.inl"
 
 typedef struct country_mesh_data_t
 {
@@ -10,6 +9,8 @@ typedef struct country_mesh_data_t
     u32 vertex_count;
     u32 index_count;
     u32 vertex_stride;
+    country_border_mesh_index_range_t* index_ranges;
+    u32 index_range_count;
 } country_mesh_data_t;
 
 typedef struct country_query_data_t
@@ -284,13 +285,17 @@ static void init_country_mesh_data(graphics_t* graphics, io_t* io, country_mesh_
 
     country_border_mesh_vertex_t* country_border_mesh_vertices = (country_border_mesh_vertex_t*)((u8*)country_border_mesh_file_result.data + sizeof(country_border_mesh_file_header_t));
     u16* country_border_mesh_indices = (u16*)((u8*)country_border_mesh_file_result.data + sizeof(country_border_mesh_file_header_t) + sizeof(country_border_mesh_vertex_t) * country_border_mesh_header->vertex_count);
+    country_border_mesh_index_range_t* country_border_mesh_index_ranges = (country_border_mesh_index_range_t*)((u8*)country_border_mesh_file_result.data + sizeof(country_border_mesh_file_header_t) +
+                                                                                                               sizeof(country_border_mesh_vertex_t) * country_border_mesh_header->vertex_count +
+                                                                                                               sizeof(u16) * country_border_mesh_header->index_count);
     
     u32 country_border_mesh_vertex_count = country_border_mesh_header->vertex_count;
     u32 country_border_mesh_index_count = country_border_mesh_header->index_count;
     u32 country_border_mesh_vertex_stride = country_border_mesh_header->vertex_stride;
+    u32 country_border_mesh_index_range_count = country_border_mesh_header->index_range_count;
 
-    fprintf(stderr, "[COUNTRY] Border mesh - vertex count: %u, index count: %u\n",
-            country_border_mesh_vertex_count, country_border_mesh_index_count);
+    fprintf(stderr, "[COUNTRY] Border mesh - vertex count: %u, index count: %u index range count: %u\n",
+            country_border_mesh_vertex_count, country_border_mesh_index_count, country_border_mesh_index_range_count);
 
     mesh_data->vertex_buffer = graphics->create_buffer(&(graphics_buffer_desc_t)
     {
@@ -309,9 +314,13 @@ static void init_country_mesh_data(graphics_t* graphics, io_t* io, country_mesh_
         .index_format = FORMAT_R16_UINT,
     });
 
+    mesh_data->index_ranges = calloc(country_border_mesh_index_range_count, sizeof(country_border_mesh_index_range_t));
+    memcpy(mesh_data->index_ranges, country_border_mesh_index_ranges, sizeof(country_border_mesh_index_range_t) * country_border_mesh_index_range_count);
+
     mesh_data->vertex_count = country_border_mesh_vertex_count;
     mesh_data->index_count = country_border_mesh_index_count;
     mesh_data->vertex_stride = country_border_mesh_vertex_stride;
+    mesh_data->index_range_count = country_border_mesh_index_range_count;
 
     io->release_file_memory(country_border_mesh_file_result.data);
 }

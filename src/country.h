@@ -12,7 +12,14 @@ typedef struct country_border_mesh_file_header_t
     u32 index_count;
     u32 vertex_stride;
     u32 index_stride;
+    u32 index_range_count;
 } country_border_mesh_file_header_t;
+
+typedef struct country_border_mesh_index_range_t
+{
+    u32 index_offset;
+    u32 index_count;
+} country_border_mesh_index_range_t;
 
 typedef struct country_border_mesh_vertex_t
 {

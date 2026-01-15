@@ -9,13 +9,13 @@
 #include "../src/maths.h"
 #include "../src/country.h"
 
-#define PRINT_PARTS          1
-#define PRINT_PART_COUNTS    2
-#define PRINT_POINTS         4
-#define PRINT_MESH_POINTS    8
-#define PRINT_INDICES        16
-#define PRINT_MESH_INDICES   32
-#define PRINT_INDEX_COUNTS   64
+#define PRINT_PARTS               1
+#define PRINT_PART_COUNTS         2
+#define PRINT_POINTS              4
+#define PRINT_MESH_POINTS         8
+#define PRINT_INDICES             16
+#define PRINT_MESH_INDICES        32
+#define PRINT_MESH_INDEX_RANGES   64
 
 #pragma pack(push, 1)
 typedef struct shape_file_header_t
@@ -91,7 +91,7 @@ size_t parse_shape_file(void* header, u8* memory, u8* shape_file_buffer, size_t 
 
             if ((print_format & PRINT_POINTS) || (print_format & PRINT_PARTS) ||
                 (print_format & PRINT_PART_COUNTS) || (print_format & PRINT_MESH_INDICES) ||
-                (print_format & PRINT_INDEX_COUNTS))
+                (print_format & PRINT_MESH_INDEX_RANGES))
             {
                 if (print_format & PRINT_PARTS)
                 {
@@ -127,7 +127,7 @@ size_t parse_shape_file(void* header, u8* memory, u8* shape_file_buffer, size_t 
 
                 u32 temp_index_count = 0;
                 
-                if (print_format & PRINT_MESH_INDICES || print_format & PRINT_INDEX_COUNTS)
+                if (print_format & PRINT_MESH_INDICES || print_format & PRINT_MESH_INDEX_RANGES)
                 {
                     for (u32 i = 0; i < shape_content->part_count; ++i)
                     {
@@ -171,9 +171,18 @@ size_t parse_shape_file(void* header, u8* memory, u8* shape_file_buffer, size_t 
                     }
                 }
 
-                if (print_format & PRINT_INDEX_COUNTS)
+                if (print_format & PRINT_MESH_INDEX_RANGES)
                 {
-                    printf("{ %u, %u }, ", index_count * 6, temp_index_count * 6);
+                    country_border_mesh_index_range_t index_range =
+                    {
+                        .index_offset = index_count * 6,
+                        .index_count = temp_index_count * 6,
+                    };
+
+                    memcpy(memory + memory_offset, &index_range, sizeof(country_border_mesh_index_range_t));
+                    memory_offset += sizeof(country_border_mesh_index_range_t);
+                    
+                    ((country_border_mesh_file_header_t*)header)->index_range_count += 1;
                 }
                 index_count += temp_index_count;
 
@@ -360,45 +369,25 @@ int main(int argc, char* argv[])
 
     if (print_format & PRINT_PARTS)
     {
-        // printf("static u32 global_shape_parts[][2] =\n{\n");
         offset += parse_shape_file(file_header, memory + offset, shape_file_buffer, shape_file_size, PRINT_PARTS);
-        // printf("\n};\n\n");
     }
 
     if (print_format & PRINT_PARTS)
     {
-        // printf("static u16 global_shape_part_offset_counts[][2] =\n{\n");
         offset += parse_shape_file(file_header, memory + offset, shape_file_buffer, shape_file_size, PRINT_PART_COUNTS);
-        // printf("\n};\n\n");
     }
 
     // NOTE: Border mesh GPU representation.
     if (print_format & PRINT_POINTS)
     {
-        // printf("typedef struct border_vertex_t border_vertex_t;\n");
-        // printf("""struct border_vertex_t\n"""
-        //     """{\n"""
-        //     """    vec3 prev;\n"""
-        //     """    vec3 current;\n"""
-        //     """    vec3 next;\n"""
-        //     """    f32 side;\n"""
-        //     """} static global_shape_points[] =\n"""
-        //     """{\n"""
-        // );
         mesh_offset += parse_shape_file(mesh_file_header, mesh_memory + mesh_offset, shape_file_buffer, shape_file_size, PRINT_MESH_POINTS);
-
-        // printf("\n};\n\n");
     }
     
     if (print_format & PRINT_INDICES)
     {
-        // printf("static u16 global_shape_indices[] =\n{\n");
         mesh_offset += parse_shape_file(mesh_file_header, mesh_memory + mesh_offset, shape_file_buffer, shape_file_size, PRINT_MESH_INDICES);
-        // printf("\n};\n\n");
 
-        // printf("static u32 global_shape_offset_index_counts[][2] =\n{\n");
-        // parse_shape_file(shape_file_buffer, shape_file_size, PRINT_INDEX_COUNTS);
-        // printf("\n};\n\n");
+        mesh_offset += parse_shape_file(mesh_file_header, mesh_memory + mesh_offset, shape_file_buffer, shape_file_size, PRINT_MESH_INDEX_RANGES);
     }
 
     const char* mesh_file_name = "country_border_mesh.bin";
