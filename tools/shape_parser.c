@@ -215,28 +215,30 @@ size_t parse_shape_file(void* header, u8* memory, u8* shape_file_buffer, size_t 
                     f32 x = cosf(lat_rad) * sinf(lon_rad) /* radius */;
                     f32 y = sinf(lat_rad) /* radius */;
                     f32 z = cosf(lat_rad) * cosf(lon_rad) /* radius */;
+
+                    (void)x, (void)y, (void)z;
                     
                     if (print_format & PRINT_MESH_POINTS)
                     {
-                        country_border_mesh_vertex_t v1 =
+                        country_border_mesh_vertex_t vertex1 =
                         {
-                            .prev = v3(p_lon, p_lat, 0.0f),
-                            .current = v3(lon, lat, 0.0f),
-                            .next = v3(n_lon, n_lat, 0.0f),
+                            .prev = v2(p_lon, p_lat),
+                            .current = v2(lon, lat),
+                            .next = v2(n_lon, n_lat),
                             .side = -1.0f,
                         };
 
-                        country_border_mesh_vertex_t v2 =
+                        country_border_mesh_vertex_t vertex2 =
                         {
-                            .prev = v3(p_lon, p_lat, 0.0f),
-                            .current = v3(lon, lat, 0.0f),
-                            .next = v3(n_lon, n_lat, 0.0f),
+                            .prev = v2(p_lon, p_lat),
+                            .current = v2(lon, lat),
+                            .next = v2(n_lon, n_lat),
                             .side = 1.0f,
                         };
 
-                        memcpy(memory + memory_offset, &v1, sizeof(country_border_mesh_vertex_t));
+                        memcpy(memory + memory_offset, &vertex1, sizeof(country_border_mesh_vertex_t));
                         memory_offset += sizeof(country_border_mesh_vertex_t);
-                        memcpy(memory + memory_offset, &v2, sizeof(country_border_mesh_vertex_t));
+                        memcpy(memory + memory_offset, &vertex2, sizeof(country_border_mesh_vertex_t));
                         memory_offset += sizeof(country_border_mesh_vertex_t);
 
                         ((country_border_mesh_file_header_t*)header)->vertex_count += 2;

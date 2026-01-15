@@ -118,7 +118,7 @@ static void parse_dbf_file(const u8* dbf_file_buffer)
         // NOTE: We don't need +1 because our data do not use deletion flag as mentioned above.
         memcpy(name_buffer, dbf_record + /* + 1 + */ dbf_name_column->offset, dbf_name_column->length);
         name_buffer[dbf_name_column->length] = 0;
-        printf("    { \"%s\", %zu },\n", name_buffer, strlen(name_buffer));
+        printf("    { \"%s\", %zu },\n", name_buffer, strlen((const char*)name_buffer));
     }
     printf("\n};\n");
 }

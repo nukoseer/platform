@@ -27,7 +27,10 @@
 
 #include "sphere_data.inl"
 
+#include "ray.h"
 #include "country.h"
+
+#include "ray.c"
 #include "country.c"
 
 typedef struct transform_param_t
@@ -678,23 +681,6 @@ static void init_shape(const graphics_t* graphics, shape_info_t* shape_info)
         .bind = BIND_CONSTANT_BUFFER,
     });
 
-    // shape_info->vertex_buffer = graphics->create_buffer(&(graphics_buffer_desc_t)
-    // {
-    //     .data = global_shape_points,
-    //     .size = sizeof(global_shape_points),
-    //     .usage = USAGE_IMMUTABLE,
-    //     .bind = BIND_VERTEX_BUFFER,
-    // });
-
-    // shape_info->index_buffer = graphics->create_buffer(&(graphics_buffer_desc_t)
-    // {
-    //     .data = global_shape_indices,
-    //     .size = array_count(global_shape_indices),
-    //     .usage = USAGE_DYNAMIC,
-    //     .bind = BIND_INDEX_BUFFER,
-    //     .index_format = FORMAT_R16_UINT,
-    // });
-
     shape_info->vertex_shader = graphics->create_shader(&(graphics_shader_desc_t)
     {
         .bytecode = vshader_shape,
@@ -747,7 +733,7 @@ static void init_skybox(io_t* io, graphics_t* graphics, skybox_info_t* skybox_in
         .height = (u32)(px_space.height),
         .array_size = array_count(skybox_data),
         .misc = MISC_TEXTURE_CUBE,
-    }, skybox_data, skybox_pitches);
+    }, (const void**)skybox_data, skybox_pitches);
 
     for (u32 skybox_index = 0; skybox_index < array_count(skybox_data); ++skybox_index)
     {
@@ -832,57 +818,6 @@ static void init_skybox(io_t* io, graphics_t* graphics, skybox_info_t* skybox_in
     });
 }
 
-typedef struct ray_t
-{
-    vec3 origin;
-    vec3 direction;
-} ray_t;
-
-static ray_t make_world_ray(f32 x, f32 y, f32 width, f32 height, f32 fov_y, vec3 camera_position, mat4x4 view_matrix)
-{
-    f32 normalized_x = 2.0f * (x / width) - 1.0f;
-    f32 normalized_y = 1.0f - 2.0f * (y / height);
-
-    f32 tan_y = tanf(fov_y * 0.5f * (f32)DEG2RAD);
-    f32 tan_x = tan_y * (width / height);
-    
-    vec3 direction_view = v3_normalize(v3(normalized_x * tan_x, normalized_y * tan_y, -1.0f));
-    vec3 direction_world = v3_normalize(
-        v3_add(v3_mulf(view_matrix.columns[0].xyz, direction_view.x),
-               v3_add(v3_mulf(view_matrix.columns[1].xyz, direction_view.y),
-                      v3_mulf(view_matrix.columns[2].xyz, direction_view.z))));
-
-    return (ray_t){ .origin = camera_position, .direction = direction_world };
-}
-
-static bool ray_unit_sphere(ray_t ray, f32* t_out)
-{
-    bool hit = false;
-    vec3 l = v3_sub(v3(0.0f, 0.0f, 0.0f), ray.origin);
-    f32 tca = v3_dot(l, ray.direction);
-
-    if (tca >= 0.0f)
-    {
-        f32 d_squared = v3_dot(l, l) - (tca * tca);
-
-        if (d_squared <= 1.0f)
-        {
-            f32 thc = sqrtf(1.0f * 1.0f - d_squared);
-            f32 t0 = tca - thc;
-            f32 t1 = tca + thc;
-            f32 t = (t0 > 0.0f) ? t0 : ((t1 > 0.0f) ? t1 : -1.0f);
-            
-            if (t >= 0.0f)
-            {
-                *t_out = t0;
-                hit = true;
-            }
-        }
-    }
-
-    return hit;
-}
-
 static inline void init_camera(camera_t* camera, vec3 position, vec3 target, f32 fov_y, f32 aspect_ratio)
 {
     *camera = (camera_t)
@@ -904,6 +839,141 @@ static inline void update_camera(camera_t* camera)
     camera->view_no_translation.columns[3].x = 0.0f;
     camera->view_no_translation.columns[3].y = 0.0f;
     camera->view_no_translation.columns[3].z = 0.0f;
+}
+
+static vec2 xy_to_lon_lat(f32 x, f32 y, f32 width, f32 height)
+{
+    vec2 result = { 0 };
+    vec2 normalized_position = v2(x / width, y / height);
+    // NOTE: Map to lon(-180, 180), lat(-90, 90).
+    result.x = (2.0f * normalized_position.x - 1.0f) * 180.0f;
+    result.y = (1.0f - 2.0f * normalized_position.y) * 90.0f;
+
+    return result;
+}
+
+static ray_result_t ray_to_lon_lat(ray_t ray, vec2* lonlat)
+{
+    ray_result_t ray_result = ray_hit_unit_sphere(ray);
+    
+    if (ray_result.hit)
+    {
+        vec3 hit_position = v3_normalize(v3_add(ray.origin, v3_mulf(ray.direction, ray_result.t)));
+
+        // NOTE: Undo pitch angle.
+        f32 pitch_rad = -global_earth_pitch * (f32)DEG2RAD;
+        vec3 position = (vec3)
+        {
+            .x = hit_position.x,
+            .y = cosf(pitch_rad) * hit_position.y + sinf(pitch_rad) * hit_position.z,
+            .z = -sinf(pitch_rad) * hit_position.y + cosf(pitch_rad) * hit_position.z,
+        };
+        
+        f32 lon = atan2f(position.x, position.z);
+        f32 lat = asinf(position.y);
+
+        // NOTE: Undo yaw angle.
+        lon -= global_earth_yaw * (f32)DEG2RAD;
+        
+        while (lon > (f32)PI)  lon -= 2.0f * (f32)PI;
+        while (lon < (f32)-PI) lon += 2.0f * (f32)PI;
+
+        lonlat->x = lon / (f32)DEG2RAD;
+        lonlat->y = lat / (f32)DEG2RAD;
+    }
+
+    return ray_result;
+}
+
+static u8 earth_find_country_index_under_cursor(const platform_t* platform, game_t* game)
+{
+    u8 country_index = COUNTRY_INVALID_INDEX;
+    input_t* input = platform->input;
+    camera_t* camera = &game->camera;
+
+    vec2 xy_lon_lat = xy_to_lon_lat(input->mouse_position.x, input->mouse_position.y,
+                                    (f32)platform->width, (f32)platform->height);
+    
+    ray_t mouse_ray = ray_world(input->mouse_position.x, input->mouse_position.y,
+                                (f32)platform->width, (f32)platform->height, camera->fov_y,
+                                camera->position, camera->view);
+
+    vec2 ray_lon_lat = { 0 };
+    ray_result_t ray_result = ray_to_lon_lat(mouse_ray, &ray_lon_lat);
+
+    game->shape_direction = (input_is_key_released(input, KEY_T) ?
+                             -game->shape_direction : game->shape_direction);
+    game->shape_speed = 1.0f * platform->delta_time * game->shape_direction;
+    game->shape_value = clamp(0.0f, game->shape_value + game->shape_speed, 1.0f);
+
+    if (game->shape_value == 0.0f || (game->shape_value == 1.0f && ray_result.hit))
+    {
+        f32 lon = lerp(xy_lon_lat.x, game->shape_value, ray_lon_lat.x);
+        f32 lat = lerp(xy_lon_lat.y, game->shape_value, ray_lon_lat.y);
+
+        country_index = country_cell_get_index(&game->country_data.query, lon, lat);
+    }
+
+    return country_index;
+}
+
+static void earth_rotation(const input_t* input, f32 delta_time)
+{
+    if (input_is_key_pressed(input, KEY_MOUSE_LEFT))
+    {
+        global_earth_yaw += 3.0f * input->mouse_delta.x * delta_time;
+        global_earth_pitch += 3.0f * -input->mouse_delta.y * delta_time;
+    }
+
+    global_earth_pitch = clamp(-90.0f, global_earth_pitch, 90.0f);
+
+    if (input_is_key_released(input, KEY_R))
+    {
+        global_earth_reset = !global_earth_reset;
+    }
+
+    f32 earth_reset_speed = 200.0f * delta_time;
+    
+    if (global_earth_reset)
+    {
+        if (global_earth_yaw != 0.0f)
+        {
+            while (global_earth_yaw > 360.0f)
+            {
+                global_earth_yaw -= 360.0f;
+            }
+
+            while (global_earth_yaw < -360.0f)
+            {
+                global_earth_yaw += 360.0f;
+            }
+
+            if (fabs(global_earth_yaw) < earth_reset_speed)
+            {
+                global_earth_yaw = 0.0f;
+            }
+            else
+            {
+                global_earth_yaw += global_earth_yaw > 0.0f ? -earth_reset_speed : earth_reset_speed;
+            }
+        }
+        if (global_earth_pitch != 0.0f)
+        {
+            if (fabs(global_earth_pitch) < earth_reset_speed)
+            {
+                global_earth_pitch = 0.0f;
+            }
+            else
+            {
+                global_earth_pitch += global_earth_pitch > 0.0f ? -earth_reset_speed : earth_reset_speed;
+            }
+        }
+
+        if (global_earth_yaw == 0.0f && global_earth_pitch == 0.0f)
+        {
+            global_earth_reset = false;
+        }
+    }    
 }
 
 init_function(init)
@@ -1088,154 +1158,6 @@ init_function(init)
     init_country_data(graphics, io, &game->country_data);
 }
 
-static vec2 xy_to_lon_lat(f32 x, f32 y, f32 width, f32 height)
-{
-    vec2 result = { 0 };
-    vec2 normalized_position = v2(x / width, y / height);
-    // NOTE: Map to lon(-180, 180), lat(-90, 90).
-    result.x = (2.0f * normalized_position.x - 1.0f) * 180.0f;
-    result.y = (1.0f - 2.0f * normalized_position.y) * 90.0f;
-
-    return result;
-}
-
-static vec2 ray_to_lon_lat(ray_t ray)
-{
-    vec2 result = { 0 };
-    f32 t = 0.0f;
-
-    if (ray_unit_sphere(ray, &t))
-    {
-        vec3 hit_position = v3_normalize(v3_add(ray.origin, v3_mulf(ray.direction, t)));
-
-        // NOTE: Undo pitch angle.
-        f32 pitch_rad = -global_earth_pitch * (f32)DEG2RAD;
-        vec3 position = (vec3)
-        {
-            .x = hit_position.x,
-            .y = cosf(pitch_rad) * hit_position.y + sinf(pitch_rad) * hit_position.z,
-            .z = -sinf(pitch_rad) * hit_position.y + cosf(pitch_rad) * hit_position.z,
-        };
-        
-        f32 lon = atan2f(position.x, position.z);
-        f32 lat = asinf(position.y);
-
-        // NOTE: Undo yaw angle.
-        lon -= global_earth_yaw * (f32)DEG2RAD;
-        
-        while (lon > (f32)PI)  lon -= 2.0f * (f32)PI;
-        while (lon < (f32)-PI) lon += 2.0f * (f32)PI;
-
-        result.x = lon / (f32)DEG2RAD;
-        result.y = lat / (f32)DEG2RAD;
-    }
-
-    return result;
-}
-
-static void earth_rotation(const input_t* input, f32 delta_time)
-{
-    if (input_is_key_pressed(input, KEY_MOUSE_LEFT))
-    {
-        global_earth_yaw += 3.0f * input->mouse_delta.x * delta_time;
-        global_earth_pitch += 3.0f * -input->mouse_delta.y * delta_time;
-    }
-
-    global_earth_pitch = clamp(-90.0f, global_earth_pitch, 90.0f);
-
-    if (input_is_key_released(input, KEY_R))
-    {
-        global_earth_reset = !global_earth_reset;
-    }
-
-    f32 earth_reset_speed = 200.0f * delta_time;
-    
-    if (global_earth_reset)
-    {
-        if (global_earth_yaw != 0.0f)
-        {
-            while (global_earth_yaw > 360.0f)
-            {
-                global_earth_yaw -= 360.0f;
-            }
-
-            while (global_earth_yaw < -360.0f)
-            {
-                global_earth_yaw += 360.0f;
-            }
-
-            if (fabs(global_earth_yaw) < earth_reset_speed)
-            {
-                global_earth_yaw = 0.0f;
-            }
-            else
-            {
-                global_earth_yaw += global_earth_yaw > 0.0f ? -earth_reset_speed : earth_reset_speed;
-            }
-        }
-        if (global_earth_pitch != 0.0f)
-        {
-            if (fabs(global_earth_pitch) < earth_reset_speed)
-            {
-                global_earth_pitch = 0.0f;
-            }
-            else
-            {
-                global_earth_pitch += global_earth_pitch > 0.0f ? -earth_reset_speed : earth_reset_speed;
-            }
-        }
-
-        if (global_earth_yaw == 0.0f && global_earth_pitch == 0.0f)
-        {
-            global_earth_reset = false;
-        }
-    }    
-}
-
-static void earth_find_country_index_under_cursor(const platform_t* platform, game_t* game)
-{
-    u8 country_index = COUNTRY_INVALID_INDEX;
-    input_t* input = platform->input;
-    camera_t* camera = &game->camera;
-
-    vec2 xy_lon_lat = xy_to_lon_lat(input->mouse_position.x, input->mouse_position.y,
-                                    (f32)platform->width, (f32)platform->height);
-    
-    ray_t mouse_ray = make_world_ray(input->mouse_position.x, input->mouse_position.y,
-                                     (f32)platform->width, (f32)platform->height, camera->fov_y,
-                                     camera->position, camera->view);
-    
-    vec2 ray_lon_lat = ray_to_lon_lat(mouse_ray);
-
-    game->shape_direction = (input_is_key_released(input, KEY_T) ?
-                             -game->shape_direction : game->shape_direction);
-    game->shape_speed = 1.0f * platform->delta_time * game->shape_direction;
-    game->shape_value = clamp(0.0f, game->shape_value + game->shape_speed, 1.0f);
-
-    if (game->shape_value == 0.0f || (game->shape_value == 1.0f && (ray_lon_lat.x != 0.0f || ray_lon_lat.y != 0.0f)))
-    {
-        f32 lon = lerp(xy_lon_lat.x, game->shape_value, ray_lon_lat.x);
-        f32 lat = lerp(xy_lon_lat.y, game->shape_value, ray_lon_lat.y);
-
-        u8 country_index = country_cell_get_index(&game->country_data.query, lon, lat);
-
-        if (country_is_valid_index(country_index))
-        {
-            country_name_t country_name = country_get_name(country_index);
-
-            game->country_index = country_index;
-
-            if (country_name.name)
-            {
-                fprintf(stderr, "\rx: %f, y: %f, lon: %f, lat: %f, yaw: %f, pitch: %f, country: %s, id: %u",
-                        input->mouse_position.x, input->mouse_position.y,
-                        lon, lat, global_earth_yaw, global_earth_pitch,
-                        country_name.name, game->country_index);
-            }
-        }
-    }
-}
-
 update_function(update)
 {
     memory_t* memory = platform->memory;
@@ -1255,7 +1177,19 @@ update_function(update)
         earth_rotation(input, platform->delta_time);
     }
 
-    earth_find_country_index_under_cursor(platform, game);
+    game->country_index = earth_find_country_index_under_cursor(platform, game);
+
+    if (country_is_valid_index(game->country_index))
+    {
+        country_name_t country_name = country_get_name(game->country_index);
+
+        if (country_name.name)
+        {
+            fprintf(stderr, "\rcountry: %s, id: %u, yaw: %f, pitch: %f",
+                    country_name.name, game->country_index,
+                    global_earth_yaw, global_earth_pitch);
+        }
+    }
 
     if (input_is_key_released(input, KEY_G))
     {
@@ -1315,7 +1249,7 @@ render_function(render)
     }
     graphics->end_pass();
     
-    graphics->begin_pass(game->offscreen_target_msaa, &(graphics_pass_desc_t){});
+    graphics->begin_pass(game->offscreen_target_msaa, &(graphics_pass_desc_t){ 0 });
     {
         sphere_info_t* sphere_info = &game->sphere_info;
         sphere_info->param.alpha = game->shape_value;
@@ -1348,7 +1282,7 @@ render_function(render)
     shape_param->scale = v2(scale_x, scale_y);
     shape_param->viewport_size = v2((f32)game->offscreen_scene.width, (f32)game->offscreen_scene.height);
 
-    graphics->begin_pass(game->offscreen_target_msaa, &(graphics_pass_desc_t){});
+    graphics->begin_pass(game->offscreen_target_msaa, &(graphics_pass_desc_t){ 0 });
     {
         shape_param->color = v4(0.006f, 0.006f, 0.006f, 1.0f);
 
@@ -1365,34 +1299,6 @@ render_function(render)
         graphics->draw_indexed(TOPOLOGY_LINE_LIST, sphere_info->index_buffer.size, 0, 0);
     }
     graphics->end_pass();
-
-    // graphics->begin_pass(game->offscreen_target_msaa, &(graphics_pass_desc_t){ .clear_color = false });
-    // {
-    //     graphics->update_buffer(game->transform_buffer, &game->transform_param, 0, sizeof(game->transform_param));
-    //     graphics->set_buffer(game->transform_buffer, STAGE_VERTEX_SHADER, 0, 0, 0);
-    //     graphics->set_vertex_buffer(shape_info->vertex_buffer, 0, sizeof(border_vertex_t), 0);
-    //     graphics->set_index_buffer(shape_info->index_buffer, 0);
-    //     graphics->set_program(shape_info->program);
-    //     graphics->set_pipeline(game->d_test_pipeline);
-
-    //     shape_param->color = v4(0.04f, 0.04f, 0.04f, 1.0f);
-
-    //     graphics->update_buffer(shape_info->param_buffer, shape_param, 0, sizeof(shape_param_t));
-    //     graphics->set_buffer(shape_info->param_buffer, STAGE_VERTEX_SHADER | STAGE_PIXEL_SHADER, 1, 0, 0);
-
-    //     graphics->draw_indexed(TOPOLOGY_TRIANGLE_LIST, shape_info->index_buffer.size, 0, 0);
- 
-    //     if (game->country_index != 0xFF)
-    //     {
-    //         shape_param->color = v4(0.2f, 0.2f, 0.2f, 0.7f);
-    //         graphics->update_buffer(shape_info->param_buffer, shape_param, 0, sizeof(shape_param_t));
-    //         graphics->set_buffer(shape_info->param_buffer, STAGE_VERTEX_SHADER | STAGE_PIXEL_SHADER, 1, 0, 0);
-    //         graphics->draw_indexed(TOPOLOGY_TRIANGLE_LIST,
-    //                                global_shape_offset_index_counts[game->country_index][1],
-    //                                global_shape_offset_index_counts[game->country_index][0], 0);
-    //     }
-    // }
-    // graphics->end_pass();
 
     graphics->begin_pass(game->glow_mask_msaa_target, &(graphics_pass_desc_t) { .clear_color = true });
     {
@@ -1419,7 +1325,7 @@ render_function(render)
     graphics->resolve_texture(game->glow_mask, game->glow_mask_msaa);
     
     // NOTE: Horizontal blur. glow_mask -> glow_a.
-    graphics->begin_pass(game->glow_a_target, &(graphics_pass_desc_t){});
+    graphics->begin_pass(game->glow_a_target, &(graphics_pass_desc_t){ 0 });
     {
         game->glow_blur_setting = (glow_blur_setting_t)
         {
@@ -1437,7 +1343,7 @@ render_function(render)
     graphics->end_pass();
 
     // NOTE: Vertical blur. glow_a -> glow_b.
-    graphics->begin_pass(game->glow_b_target, &(graphics_pass_desc_t){});
+    graphics->begin_pass(game->glow_b_target, &(graphics_pass_desc_t){ 0 });
     {
         game->glow_blur_setting = (glow_blur_setting_t)
         {
@@ -1455,7 +1361,7 @@ render_function(render)
     graphics->end_pass();
 
     // // NOTE: Merge pass. offscreen_scene + glow -> offscreen_scene.
-    graphics->begin_pass(game->offscreen_target_msaa, &(graphics_pass_desc_t){});
+    graphics->begin_pass(game->offscreen_target_msaa, &(graphics_pass_desc_t){ 0 });
     {
         game->glow_merge_param.viewport_size = (vec2){ (f32)platform->width, (f32)platform->height };
         game->glow_merge_param.intensity = game->glow_intensity;
@@ -1469,7 +1375,7 @@ render_function(render)
     }
     graphics->end_pass();
 
-    graphics->begin_pass(game->offscreen_target_msaa, &(graphics_pass_desc_t){});
+    graphics->begin_pass(game->offscreen_target_msaa, &(graphics_pass_desc_t){ 0 });
     {
         country_mesh_data_t* country_mesh_data = &game->country_data.mesh;
         
@@ -1480,7 +1386,6 @@ render_function(render)
         graphics->set_program(shape_info->program);
         graphics->set_pipeline(game->d_test_pipeline);
 
-        // shape_param->color = v4(0.011f, 0.982f, 0.332f, 1.0f);
         // shape_param->color = v4v(srgb_to_linear(v3(0.9964f, 0.8431f, 0.4941f)), 1.0f);
         shape_param->color = v4v(srgb_to_linear(v3(0.1058f, 0.9921f, 0.6117f)), 1.0f);
         shape_param->line_thickness = 2.0f;
@@ -1490,7 +1395,7 @@ render_function(render)
 
         graphics->draw_indexed(TOPOLOGY_TRIANGLE_LIST, country_mesh_data->index_count, 0, 0);
 
-        if (game->country_index != 0xFF)
+        if (country_is_valid_index(game->country_index))
         {
             // shape_param->color = v4(0.2f, 0.2f, 0.2f, 0.7f);
             shape_param->color = v4(1.0f, 1.0f, 1.0f, 1.0f);

@@ -23,9 +23,9 @@ typedef struct country_border_mesh_index_range_t
 
 typedef struct country_border_mesh_vertex_t
 {
-    vec3 prev;
-    vec3 current;
-    vec3 next;
+    vec2 prev;
+    vec2 current;
+    vec2 next;
     f32 side;
 } country_border_mesh_vertex_t;
 
