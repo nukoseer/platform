@@ -163,6 +163,7 @@ typedef struct game_t
     graphics_target_t offscreen_target_msaa;
     
     graphics_pipeline_t default_pipeline;
+    graphics_pipeline_t pre_multiplied_pipeline;
     graphics_pipeline_t alphaoff_pipeline;
     graphics_pipeline_t additive_pipeline;
     graphics_pipeline_t d_test_write_pipeline;
@@ -229,6 +230,10 @@ typedef struct game_t
     f32 shape_value;
     f32 shape_speed;
     f32 shape_direction;
+
+    f32 glow_intensity;
+    f32 vignette;
+    f32 invert;
 } game_t;
 
  #pragma pack(push, 1)
@@ -918,6 +923,7 @@ init_function(init)
     game->shape_direction = 1.0f;
 
     game->default_pipeline = graphics->create_pipeline(&(graphics_pipeline_desc_t){ .blend = BLEND_ALPHA, });
+    game->pre_multiplied_pipeline = graphics->create_pipeline(&(graphics_pipeline_desc_t){ .blend = BLEND_PRE_MULTIPLIED });
     game->alphaoff_pipeline = graphics->create_pipeline(&(graphics_pipeline_desc_t){ .depth_test = true, });
     game->additive_pipeline = graphics->create_pipeline(&(graphics_pipeline_desc_t){ .depth_test = true, .blend = BLEND_ADDITIVE });
 
@@ -1127,43 +1133,22 @@ static vec2 ray_to_lon_lat(ray_t ray)
     return result;
 }
 
-update_function(update)
+static void earth_rotation(const input_t* input, f32 delta_time)
 {
-    memory_t* memory = platform->memory;
-    input_t* input = platform->input;
-    game_t* game = (game_t*)memory->permanent;
-    camera_t* camera = &game->camera;
-
-    if (input->mouse_position.z != 0.0f)
+    if (input_is_key_pressed(input, KEY_MOUSE_LEFT))
     {
-        camera->position.z += 3.0f * platform->delta_time * -input->mouse_position.z;
-    }
-
-    update_camera(camera);
-
-    if (input->keys[KEY_MOUSE_LEFT].action == KEY_ACTION_PRESS && game->shape_value == 1.0f)
-    {
-        global_earth_yaw += 3.0f * input->mouse_delta.x * platform->delta_time;
-        global_earth_pitch += 3.0f * -input->mouse_delta.y * platform->delta_time;
+        global_earth_yaw += 3.0f * input->mouse_delta.x * delta_time;
+        global_earth_pitch += 3.0f * -input->mouse_delta.y * delta_time;
     }
 
     global_earth_pitch = clamp(-90.0f, global_earth_pitch, 90.0f);
 
-    vec2 xy_lon_lat = xy_to_lon_lat(input->mouse_position.x, input->mouse_position.y,
-                                    (f32)platform->width, (f32)platform->height);
-    
-    ray_t mouse_ray = make_world_ray(input->mouse_position.x, input->mouse_position.y,
-                                     (f32)platform->width, (f32)platform->height, camera->fov_y,
-                                     camera->position, camera->view);
-    
-    vec2 ray_lon_lat = ray_to_lon_lat(mouse_ray);
-
-    if (input->keys[KEY_R].action == KEY_ACTION_RELEASE)
+    if (input_is_key_released(input, KEY_R))
     {
         global_earth_reset = !global_earth_reset;
     }
 
-    f32 speed = 200.0f * platform->delta_time;
+    f32 earth_reset_speed = 200.0f * delta_time;
     
     if (global_earth_reset)
     {
@@ -1179,24 +1164,24 @@ update_function(update)
                 global_earth_yaw += 360.0f;
             }
 
-            if (fabs(global_earth_yaw) < speed)
+            if (fabs(global_earth_yaw) < earth_reset_speed)
             {
                 global_earth_yaw = 0.0f;
             }
             else
             {
-                global_earth_yaw += global_earth_yaw > 0.0f ? -speed : speed;
+                global_earth_yaw += global_earth_yaw > 0.0f ? -earth_reset_speed : earth_reset_speed;
             }
         }
         if (global_earth_pitch != 0.0f)
         {
-            if (fabs(global_earth_pitch) < speed)
+            if (fabs(global_earth_pitch) < earth_reset_speed)
             {
                 global_earth_pitch = 0.0f;
             }
             else
             {
-                global_earth_pitch += global_earth_pitch > 0.0f ? -speed : speed;
+                global_earth_pitch += global_earth_pitch > 0.0f ? -earth_reset_speed : earth_reset_speed;
             }
         }
 
@@ -1204,9 +1189,25 @@ update_function(update)
         {
             global_earth_reset = false;
         }
-    }
+    }    
+}
 
-    game->shape_direction = (input->keys[KEY_T].action == KEY_ACTION_RELEASE ?
+static void earth_find_country_index_under_cursor(const platform_t* platform, game_t* game)
+{
+    u8 country_index = COUNTRY_INVALID_INDEX;
+    input_t* input = platform->input;
+    camera_t* camera = &game->camera;
+
+    vec2 xy_lon_lat = xy_to_lon_lat(input->mouse_position.x, input->mouse_position.y,
+                                    (f32)platform->width, (f32)platform->height);
+    
+    ray_t mouse_ray = make_world_ray(input->mouse_position.x, input->mouse_position.y,
+                                     (f32)platform->width, (f32)platform->height, camera->fov_y,
+                                     camera->position, camera->view);
+    
+    vec2 ray_lon_lat = ray_to_lon_lat(mouse_ray);
+
+    game->shape_direction = (input_is_key_released(input, KEY_T) ?
                              -game->shape_direction : game->shape_direction);
     game->shape_speed = 1.0f * platform->delta_time * game->shape_direction;
     game->shape_value = clamp(0.0f, game->shape_value + game->shape_speed, 1.0f);
@@ -1220,7 +1221,9 @@ update_function(update)
 
         if (country_is_valid_index(country_index))
         {
-            country_name_t country_name = country_get_name(game->country_index);
+            country_name_t country_name = country_get_name(country_index);
+
+            game->country_index = country_index;
 
             if (country_name.name)
             {
@@ -1228,10 +1231,45 @@ update_function(update)
                         input->mouse_position.x, input->mouse_position.y,
                         lon, lat, global_earth_yaw, global_earth_pitch,
                         country_name.name, game->country_index);
-                
-                game->country_index = country_index;
             }
         }
+    }
+}
+
+update_function(update)
+{
+    memory_t* memory = platform->memory;
+    input_t* input = platform->input;
+    game_t* game = (game_t*)memory->permanent;
+    camera_t* camera = &game->camera;
+
+    if (input->mouse_position.z != 0.0f)
+    {
+        camera->position.z += 3.0f * platform->delta_time * -input->mouse_position.z;
+    }
+
+    update_camera(camera);
+
+    if (game->shape_value == 1.0f)
+    {
+        earth_rotation(input, platform->delta_time);
+    }
+
+    earth_find_country_index_under_cursor(platform, game);
+
+    if (input_is_key_released(input, KEY_G))
+    {
+        game->glow_intensity = game->glow_intensity == 0.0f ? 0.3f : 0.0f;
+    }
+
+    if (input_is_key_released(input, KEY_I))
+    {
+        game->invert = game->invert == 0.0f ? 1.0f : 0.0f;
+    }
+
+    if (input_is_key_released(input, KEY_V))
+    {
+        game->vignette = game->vignette == 0.0f ? 1.0f : 0.0f;
     }
 }
 
@@ -1272,7 +1310,7 @@ render_function(render)
         graphics->set_program(game->skybox_info.program);
         graphics->set_srvs(STAGE_PIXEL_SHADER, &game->skybox_info.texture, 1, 0);
         graphics->set_samplers(STAGE_PIXEL_SHADER, &game->linear_sampler, 1, 0);
-        graphics->set_pipeline(game->default_pipeline);
+        graphics->set_pipeline(game->pre_multiplied_pipeline);
         graphics->draw_indexed(TOPOLOGY_TRIANGLE_LIST, game->skybox_info.index_buffer.size, 0, 0);
     }
     graphics->end_pass();
@@ -1420,12 +1458,7 @@ render_function(render)
     graphics->begin_pass(game->offscreen_target_msaa, &(graphics_pass_desc_t){});
     {
         game->glow_merge_param.viewport_size = (vec2){ (f32)platform->width, (f32)platform->height };
-
-        if (platform->input->keys[KEY_G].action == KEY_ACTION_RELEASE)
-        {
-            game->glow_merge_param.intensity = game->glow_merge_param.intensity == 0.0f ? 1.0f : 0.0f;
-        }
-
+        game->glow_merge_param.intensity = game->glow_intensity;
         graphics->update_buffer(game->glow_merge_param_buffer, &game->glow_merge_param, 0, sizeof(game->glow_merge_param));
         graphics->set_buffer(game->glow_merge_param_buffer, STAGE_PIXEL_SHADER, 0, 0, 0);
         graphics->set_program(game->glow_merge_program);
@@ -1479,16 +1512,8 @@ render_function(render)
         game->post_param.viewport_size = (vec2){ (f32)platform->width, (f32)platform->height };
         game->post_param.aspect_ratio = (f32)platform->width / (f32)platform->height;
         game->post_param.vignette_soft = 0.45f;
-
-        if (platform->input->keys[KEY_I].action == KEY_ACTION_RELEASE)
-        {
-            game->post_param.invert = game->post_param.invert == 0.0f ? 1.0f : 0.0f;
-        }
-
-        if (platform->input->keys[KEY_V].action == KEY_ACTION_RELEASE)
-        {
-            game->post_param.vignette = game->post_param.vignette == 0.0f ? 1.0f : 0.0f;
-        }
+        game->post_param.invert = game->invert;
+        game->post_param.vignette = game->vignette;
 
         graphics->update_buffer(game->post_param_buffer, &game->post_param, 0, sizeof(game->post_param));
         graphics->set_buffer(game->post_param_buffer, STAGE_PIXEL_SHADER, 0, 0, 0);

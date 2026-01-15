@@ -65,5 +65,7 @@ float4 ps(PS_INPUT input) : SV_TARGET
 
     float3 color = global_bg_texture.Sample(global_bg_sampler, yaw_pitch_direction).rgb;
 
-    return float4(color, max(0.1, shape));
+    float alpha = max(0.1, shape);
+    
+    return float4(color.rgb * alpha, alpha);
 }

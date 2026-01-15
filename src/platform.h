@@ -118,6 +118,20 @@ typedef struct input_t
     vec2 mouse_delta;
 } input_t;
 
+inline bool input_is_key_pressed(const input_t* input, key_t key)
+{
+    bool result = input->keys[key].action == KEY_ACTION_PRESS;
+
+    return result;
+}
+
+inline bool input_is_key_released(const input_t* input, key_t key)
+{
+    bool result = input->keys[key].action == KEY_ACTION_RELEASE;
+
+    return result;
+}
+
 typedef struct memory_t
 {
     u8* permanent;
@@ -199,6 +213,7 @@ typedef enum graphics_blend_t
     BLEND_NULL,
     BLEND_ALPHA,
     BLEND_ADDITIVE,
+    BLEND_PRE_MULTIPLIED,
 } graphics_blend_t;
 
 typedef struct graphics_buffer_desc_t
