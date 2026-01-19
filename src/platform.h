@@ -574,12 +574,43 @@ typedef struct io_t
     };
 } io_t;
 
+typedef struct thread_pool_queue_t
+{
+    u64 platform;
+} thread_pool_queue_t;
+
+#define thread_pool_entry_function(name) void name(void* parameter)
+typedef thread_pool_entry_function(thread_pool_entry_f);
+
+#define thread_pool_add_entry_function(name) void name(thread_pool_queue_t queue, thread_pool_entry_f* function, void* parameter)
+typedef thread_pool_add_entry_function(thread_pool_add_entry_f);
+
+#define thread_pool_complete_all_entries_function(name) void name(thread_pool_queue_t queue)
+typedef thread_pool_complete_all_entries_function(thread_pool_complete_all_entries_f);
+
+typedef struct thread_pool_t
+{
+    thread_pool_queue_t queue;
+    
+    union
+    {
+        struct thread_pool_functions
+        {
+            thread_pool_add_entry_f* add_entry;
+            thread_pool_complete_all_entries_f* complete_all_entries;
+        };
+
+        void* functions[sizeof(struct thread_pool_functions) / sizeof(void*)];
+    };
+} thread_pool_t;
+
 typedef struct platform_t
 {
     memory_t* memory;
     input_t* input;
     graphics_t* graphics;
     io_t* io;
+    thread_pool_t* thread_pool;
 
     u32 width;
     u32 height;

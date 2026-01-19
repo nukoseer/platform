@@ -24,6 +24,7 @@
 #include "gfx_2d.c"
 
 #include "io.c"
+#include "thread_pool.c"
 
 #pragma comment(lib, "user32")
 #pragma comment(lib, "kernel32")
@@ -537,6 +538,9 @@ static DWORD WINAPI main_thread(void* param)
     HRESULT result = S_OK;
     window_t* window = (window_t*)param;
 
+    platform_thread_pool_queue_t thread_pool_queue = { 0 };
+    thread_pool_init(&thread_pool_queue, 8);
+
     window->d3d11 = d3d11_init();
     window->d2d1 = d2d1_init();
     window->swap_chain = d3d11_create_swap_chain(window->hwnd, window->d3d11);
@@ -601,12 +605,20 @@ static DWORD WINAPI main_thread(void* param)
         .release_file_memory = io_release_file_memory,
     };
 
+    thread_pool_t thread_pool =
+    {
+        .queue = { .platform = (usize)&thread_pool_queue, },
+        .add_entry = thread_pool_add_entry,
+        .complete_all_entries = thread_pool_complete_all_entries,
+    };
+
     platform_t platform =
     {
         .memory = &memory,
         .input = new_input,
         .graphics = &graphics,
         .io = &io,
+        .thread_pool = &thread_pool,
         .width = window->width,
         .height = window->height,
     };
@@ -630,6 +642,13 @@ static DWORD WINAPI main_thread(void* param)
         void* function = io.functions[function_index];
 
         fatal(function, "[PLATFORM] Unassigned io function.");
+    }
+
+    for (u32 function_index = 0; function_index < array_count(thread_pool.functions); ++function_index)
+    {
+        void* function = thread_pool.functions[function_index];
+
+        fatal(function, "[PLATFORM] Unassigned thread pool function.");
     }
 
     // TODO: Does this take time?
