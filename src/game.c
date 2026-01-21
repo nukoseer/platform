@@ -938,33 +938,38 @@ static ray_result_t ray_to_lon_lat(ray_t ray, vec2* lonlat)
 
 static u8 earth_find_country_index_under_cursor(const platform_t* platform, game_t* game)
 {
-    u8 country_index = COUNTRY_INVALID_INDEX;
     input_t* input = platform->input;
     camera_t* camera = &game->camera;
-
-    vec2 xy_lon_lat = xy_to_lon_lat(input->mouse_position.x, input->mouse_position.y,
-                                    (f32)platform->width, (f32)platform->height);
-    
-    ray_t mouse_ray = ray_world(input->mouse_position.x, input->mouse_position.y,
-                                (f32)platform->width, (f32)platform->height, camera->fov_y,
-                                camera->position, camera->view);
-
-    vec2 ray_lon_lat = { 0 };
-    ray_result_t ray_result = ray_to_lon_lat(mouse_ray, &ray_lon_lat);
 
     game->shape_direction = (input_is_key_released(input, KEY_T) ?
                              -game->shape_direction : game->shape_direction);
     game->shape_speed = 1.0f * platform->delta_time * game->shape_direction;
     game->shape_value = clamp(0.0f, game->shape_value + game->shape_speed, 1.0f);
 
-    if (game->shape_value == 0.0f || (game->shape_value == 1.0f && ray_result.hit))
+    vec2 lon_lat = { 0 };
+    
+    if (game->shape_value == 0.0f)
     {
-        f32 lon = lerp(xy_lon_lat.x, game->shape_value, ray_lon_lat.x);
-        f32 lat = lerp(xy_lon_lat.y, game->shape_value, ray_lon_lat.y);
+        lon_lat = xy_to_lon_lat(input->mouse_position.x, input->mouse_position.y,
+                                (f32)platform->width, (f32)platform->height);
+    }
+    else if (game->shape_value == 1.0f)
+    {
+        ray_t mouse_ray = ray_world(input->mouse_position.x, input->mouse_position.y,
+                                    (f32)platform->width, (f32)platform->height, camera->fov_y,
+                                    camera->position, camera->view);
 
-        country_index = country_cell_get_index(&game->country_data.query, lon, lat);
+        vec2 ray_lon_lat = { 0 };    
+        ray_result_t ray_result = ray_to_lon_lat(mouse_ray, &ray_lon_lat);
+
+        if (ray_result.hit)
+        {
+            lon_lat = ray_lon_lat;
+        }
     }
 
+    u8 country_index = country_cell_get_index(&game->country_data.query, lon_lat.x, lon_lat.y);
+    
     return country_index;
 }
 
