@@ -36,6 +36,19 @@ static void* ma_push_size(memory_arena_t* memory_arena, usize size)
     return memory;
 }
 
+static void* ma_push_size_zero(memory_arena_t* memory_arena, usize size)
+{
+    assert(memory_arena && "[MEMORY ARENA] Invalid memory arena during push size.");
+    assert(memory_arena->used + size <= memory_arena->size);
+
+    void* memory = memory_arena->base + memory_arena->used;
+    memory_arena->used += size;
+
+    memset(memory, 0, size);
+
+    return memory;
+}
+
 static memory_arena_t* ma_create_sub_arena(memory_arena_t* base_memory_arena, usize size)
 {
     memory_arena_t* sub_arena = ma_push_size(base_memory_arena, size);

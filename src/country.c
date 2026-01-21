@@ -185,7 +185,7 @@ static inline bool country_is_valid_index(u8 country_index)
 
 static void init_country_cells(memory_arena_t* memory_arena, country_query_data_t* query_data)
 {
-    query_data->cells = ma_push_size(memory_arena, COUNTRY_CELL_X_COUNT * COUNTRY_CELL_Y_COUNT * COUNTRY_CELL_SLOT_COUNT);
+    query_data->cells = ma_push_size_zero(memory_arena, COUNTRY_CELL_X_COUNT * COUNTRY_CELL_Y_COUNT * COUNTRY_CELL_SLOT_COUNT);
     u32 total_part_count = query_data->border_part_range_count;
 
     memory_arena_span_t part_span = ma_span_begin(memory_arena);
