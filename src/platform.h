@@ -135,10 +135,10 @@ inline bool input_is_key_released(const input_t* input, key_t key)
 typedef struct memory_t
 {
     u8* permanent;
-    size_t permanent_size;
+    usize permanent_size;
 
     u8* transient;
-    size_t transient_size;
+    usize transient_size;
 } memory_t;
 
 typedef enum graphics_format_t

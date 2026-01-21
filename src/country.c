@@ -183,11 +183,13 @@ static inline bool country_is_valid_index(u8 country_index)
     return result;
 }
 
-static void init_country_cells(country_query_data_t* query_data)
+static void init_country_cells(memory_arena_t* memory_arena, country_query_data_t* query_data)
 {
+    query_data->cells = ma_push_size(memory_arena, COUNTRY_CELL_X_COUNT * COUNTRY_CELL_Y_COUNT * COUNTRY_CELL_SLOT_COUNT);
     u32 total_part_count = query_data->border_part_range_count;
-    
-    f32* part_outlines = calloc(1, total_part_count * sizeof(f32) * 4);
+
+    memory_arena_span_t part_span = ma_span_begin(memory_arena);
+    f32* part_outlines = ma_push_size(memory_arena, total_part_count * sizeof(f32) * 4);
     u32 part_outline_count = 0;
 
     for (u8 country_index = 0; country_index < query_data->range_count; ++country_index)
@@ -241,26 +243,23 @@ static void init_country_cells(country_query_data_t* query_data)
 
     assert(total_part_count * 4 == part_outline_count);
 
-    query_data->cells = calloc(1, COUNTRY_CELL_X_COUNT * COUNTRY_CELL_Y_COUNT * COUNTRY_CELL_SLOT_COUNT);
-    f32* outlines = part_outlines;
-
     for (u8 country_index = 0; country_index < query_data->range_count; ++country_index)
     {
         country_range_t country_range = query_data->ranges[country_index];
         
         for (u32 part_index = 0; part_index < country_range.part_count; ++part_index)
         {
-            f32 lon_min = outlines[0];
-            f32 lon_max = outlines[1];
-            f32 lat_min = outlines[2];
-            f32 lat_max = outlines[3];
-            outlines += 4;
+            f32 lon_min = part_outlines[0];
+            f32 lon_max = part_outlines[1];
+            f32 lat_min = part_outlines[2];
+            f32 lat_max = part_outlines[3];
+            part_outlines += 4;
             
             country_cell_insert(query_data->cells, country_index, lon_min, lon_max, lat_min, lat_max);
         }
     }
 
-    free(part_outlines);
+    ma_span_end(part_span);
 }
 
 static inline country_name_t country_get_name(u8 country_index)
@@ -275,7 +274,7 @@ static inline country_name_t country_get_name(u8 country_index)
     return name;
 }
 
-static void init_country_mesh_data(graphics_t* graphics, io_t* io, country_mesh_data_t* mesh_data)
+static void init_country_mesh_data(memory_arena_t* memory_arena, graphics_t* graphics, io_t* io, country_mesh_data_t* mesh_data)
 {
     io_file_read_result_t country_border_mesh_file_result = io->read_file("..\\tools\\build\\country_border_mesh.bin");
     assert(country_border_mesh_file_result.data && country_border_mesh_file_result.size > 0);
@@ -314,7 +313,7 @@ static void init_country_mesh_data(graphics_t* graphics, io_t* io, country_mesh_
         .index_format = FORMAT_R16_UINT,
     });
 
-    mesh_data->index_ranges = calloc(country_border_mesh_index_range_count, sizeof(country_border_mesh_index_range_t));
+    mesh_data->index_ranges = ma_push_size(memory_arena, country_border_mesh_index_range_count * sizeof(country_border_mesh_index_range_t));
     memcpy(mesh_data->index_ranges, country_border_mesh_index_ranges, sizeof(country_border_mesh_index_range_t) * country_border_mesh_index_range_count);
 
     mesh_data->vertex_count = country_border_mesh_vertex_count;
@@ -348,9 +347,9 @@ static void init_country_query_data(io_t* io, country_query_data_t* query_data)
             query_data->border_point_count, query_data->border_part_range_count, query_data->range_count);
 }
 
-static void init_country_data(graphics_t* graphics, io_t* io, country_data_t* country_data)
+static void init_country_data(memory_arena_t* memory_arena, graphics_t* graphics, io_t* io, country_data_t* country_data)
 {
-    init_country_mesh_data(graphics, io, &country_data->mesh);
+    init_country_mesh_data(memory_arena, graphics, io, &country_data->mesh);
     init_country_query_data(io, &country_data->query);
-    init_country_cells(&country_data->query);
+    init_country_cells(memory_arena, &country_data->query);
 }

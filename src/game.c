@@ -27,6 +27,8 @@
 
 #include "sphere_data.inl"
 
+#include "memory_arena.c"
+
 #include "ray.h"
 #include "country.h"
 
@@ -160,6 +162,8 @@ typedef struct skybox_vertex_t
 
 typedef struct game_t
 {
+    memory_arena_t* memory_arena;
+    
     graphics_texture_t offscreen_scene;
     graphics_texture_t offscreen_scene_msaa;
     graphics_texture_t offscreen_depth_msaa;
@@ -279,7 +283,7 @@ static f32 global_earth_yaw;
 static f32 global_earth_pitch;
 static bool global_earth_reset;
 
-static bmp_image_t load_bmp_image(const io_t* io, const char* file_name)
+static bmp_image_t load_bmp_image(memory_arena_t* memory_arena, const io_t* io, const char* file_name)
 {
     bmp_image_t result = { 0 };
     io_file_read_result_t read_result = io->read_file(file_name);
@@ -287,16 +291,28 @@ static bmp_image_t load_bmp_image(const io_t* io, const char* file_name)
     if (read_result.size != 0)
     {
         bmp_header_t* header = (bmp_header_t*)read_result.data;
+        u32 bytes_per_pixel = header->bits_per_pixel / 8;
         u32* pixels = (u32*)((u8*)read_result.data + header->bitmap_offset);
-        u32* memory = malloc(header->width * header->height * header->bits_per_pixel);
+        u32* memory = 0;
 
-        memset(memory, 0, header->width * header->height * header->bits_per_pixel);
+        assert(bytes_per_pixel == 4 && "[BMP] Unsupported bytes per pixel.");
+        
+        if (memory_arena)
+        {
+            memory = ma_push_size(memory_arena, header->width * header->height * bytes_per_pixel);
+        }
+        else
+        {
+            memory = malloc(header->width * header->height * bytes_per_pixel);
+        }
+
+        memset(memory, 0, header->width * header->height * bytes_per_pixel);
 
         result.data = (u8*)memory;
         result.width = header->width;
         result.height = header->height;
 
-        assert(header->compression == 3 && "[BMP] Unsupported compression format");
+        assert(header->compression == 3 && "[BMP] Unsupported compression format.");
         // NOTE: If you are using this generically for some reason,
         // please remember that BMP files can go in either direction and
         // the height will be negative for top-down.
@@ -710,39 +726,74 @@ static void init_shape(const graphics_t* graphics, shape_info_t* shape_info)
     });
 }
 
-static void init_skybox(io_t* io, graphics_t* graphics, skybox_info_t* skybox_info)
+typedef struct skybox_t
 {
-    // TODO: Probably we can be more clever.
-    // This affects start up time drastically of course...
-    // We also do not support any other image type. BMPs are pretty large files.
-    bmp_image_t px_space = load_bmp_image(io, "..\\resources\\px_bmp.bmp");
-    bmp_image_t nx_space = load_bmp_image(io, "..\\resources\\nx_bmp.bmp");
-    bmp_image_t py_space = load_bmp_image(io, "..\\resources\\py_bmp.bmp");
-    bmp_image_t ny_space = load_bmp_image(io, "..\\resources\\ny_bmp.bmp");
-    bmp_image_t pz_space = load_bmp_image(io, "..\\resources\\pz_bmp.bmp");
-    bmp_image_t nz_space = load_bmp_image(io, "..\\resources\\nz_bmp.bmp");
+    memory_arena_t* memory_arena;
+    io_t* io;
+    bmp_image_t image;
+    const char* file_name;
+} skybox_t;
 
-    void* skybox_data[6]  = { px_space.data,  nx_space.data,  py_space.data,  ny_space.data,  pz_space.data,  nz_space.data };
-    u32 skybox_pitches[6] = { px_space.pitch, nx_space.pitch, py_space.pitch, ny_space.pitch, pz_space.pitch, nz_space.pitch };
+thread_pool_entry_function(skybox_load_entry)
+{
+    skybox_t* skybox = (skybox_t*)parameter;
+
+    skybox->image = load_bmp_image(skybox->memory_arena, skybox->io, skybox->file_name);
+}
+
+static void init_skybox(memory_arena_t* memory_arena, graphics_t* graphics, io_t* io, thread_pool_t* thread_pool, skybox_info_t* skybox_info)
+{
+    const char* skybox_file_names[] =
+    {
+        "..\\resources\\px_bmp.bmp",
+        "..\\resources\\nx_bmp.bmp",
+        "..\\resources\\py_bmp.bmp",
+        "..\\resources\\ny_bmp.bmp",
+        "..\\resources\\pz_bmp.bmp",
+        "..\\resources\\nz_bmp.bmp",
+    };
+
+    skybox_t* skyboxes[array_count(skybox_file_names)] = { 0 };
+    
+    memory_arena_span_t skybox_span = ma_span_begin(memory_arena);
+
+    for (i32 i = 0; i < array_count(skybox_file_names); ++i)
+    {
+        memory_arena_t* skybox_arena = ma_create_sub_arena(memory_arena, MIBIBYTES(32));
+        skybox_t* skybox = ma_push_size(skybox_arena, sizeof(skybox_t));
+        skybox->memory_arena = skybox_arena;
+        skybox->io = io;
+        skybox->file_name = skybox_file_names[i];
+        skyboxes[i] = skybox;
+        thread_pool->add_entry(thread_pool->queue, skybox_load_entry, skybox);
+    }
+
+    thread_pool->complete_all_entries(thread_pool->queue);
+    
+    void* skybox_data[array_count(skyboxes)]  = { 0 };
+    u32 skybox_pitches[array_count(skyboxes)] = { 0 };
+
+    for (i32 i = 0; i < array_count(skyboxes); ++i)
+    {
+        skybox_data[i] = skyboxes[i]->image.data;
+        skybox_pitches[i] = skyboxes[i]->image.pitch;
+    }
 
     skybox_info->texture = graphics->create_texture_2d(&(graphics_texture_2d_desc_t)
     {
         .format = FORMAT_R8G8B8A8_UNORM_SRGB,
         .bind = BIND_SHADER_RESOURCE,
-        .width = (u32)(px_space.width),
-        .height = (u32)(px_space.height),
+        .width = (u32)(skyboxes[0]->image.width),
+        .height = (u32)(skyboxes[0]->image.height),
         .array_size = array_count(skybox_data),
         .misc = MISC_TEXTURE_CUBE,
     }, (const void**)skybox_data, skybox_pitches);
 
-    for (u32 skybox_index = 0; skybox_index < array_count(skybox_data); ++skybox_index)
-    {
-        // TODO: malloc / free was never the right way... 
-        free(skybox_data[skybox_index]);
-    }
     
+    ma_span_end(skybox_span);
+
     // NOTE: Unit cube centered at origin.
-    static const skybox_vertex_t skybox_vertices[] =
+    const skybox_vertex_t skybox_vertices[] =
     {
         // +X
         { +1.0f, -1.0f, -1.0f }, { +1.0f, -1.0f, +1.0f }, { +1.0f, +1.0f, +1.0f }, { +1.0f, +1.0f, -1.0f },
@@ -758,7 +809,7 @@ static void init_skybox(io_t* io, graphics_t* graphics, skybox_info_t* skybox_in
         { +1.0f, -1.0f, -1.0f }, { +1.0f, +1.0f, -1.0f }, { -1.0f, +1.0f, -1.0f }, { -1.0f, -1.0f, -1.0f },
     };
     
-    static const u16 skybox_indices[] =
+    const u16 skybox_indices[] =
     {
         0,  1, 2,    0,  2,  3, // +X
         4,  5, 6,    4,  6,  7, // -X
@@ -981,13 +1032,17 @@ init_function(init)
     memory_t* memory = platform->memory;
     graphics_t* graphics = platform->graphics;
     io_t* io = platform->io;
+    thread_pool_t* thread_pool = platform->thread_pool;
     game_t* game = (game_t*)memory->permanent;
+    memory_arena_t* memory_arena = ma_initialize(memory->permanent + sizeof(game_t), memory->permanent_size - sizeof(game_t));
+    game->memory_arena = memory_arena;
 
     init_camera(&game->camera, v3(0.0f, 0.0f, 2.5f), v3(0.0f, 0.0f, 0.0f),
                 60.0f, (f32)platform->width / (f32)platform->height);
     init_sphere(graphics, &game->sphere_info);
     init_shape(graphics, &game->shape_info);
-    init_skybox(io, graphics, &game->skybox_info);
+    init_skybox(memory_arena, graphics, io, thread_pool, &game->skybox_info);
+    init_country_data(memory_arena, graphics, io, &game->country_data);
 
     game->shape_value = 1.0f;
     game->shape_direction = 1.0f;
@@ -1154,8 +1209,6 @@ init_function(init)
     // game->font_color = graphics->create_font_color(0.38f, 0.38f, 0.38f, 1.0f);
     game->font_color = graphics->create_font_color(0.6862f, 0.6862f, 0.6862f, 1.0f);
 #endif
-
-    init_country_data(graphics, io, &game->country_data);
 }
 
 update_function(update)
