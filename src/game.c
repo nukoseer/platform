@@ -35,6 +35,8 @@
 #include "ray.c"
 #include "country.c"
 
+#include "ui.c"
+
 typedef struct transform_param_t
 {
     mat4x4 world;
@@ -1263,6 +1265,20 @@ update_function(update)
     {
         game->vignette = game->vignette == 0.0f ? 1.0f : 0.0f;
     }
+
+    ui_begin(game->memory_arena, (f32)platform->width, (f32)platform->height);
+    {
+        ui_widget_box_begin("ui_widget_box", (ui_widget_desc_t)
+        {
+            .xy = { 10, 20 },
+            .size = { ui_widget_parent_size(1.0f), ui_widget_pixel_size(220.0f) },
+        });
+        {
+            
+        }
+        ui_widget_box_end();
+    }
+    ui_end();
 }
 
 render_function(render)

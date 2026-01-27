@@ -25,6 +25,13 @@ static memory_arena_t* ma_initialize(u8* memory, usize size)
     return memory_arena;
 }
 
+static inline usize ma_get_remaining_size(memory_arena_t* memory_arena)
+{
+    usize result = memory_arena->size - memory_arena->used;
+
+    return result;
+}
+
 static void* ma_push_size(memory_arena_t* memory_arena, usize size)
 {
     assert(memory_arena && "[MEMORY ARENA] Invalid memory arena during push size.");
