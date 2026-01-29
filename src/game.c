@@ -1268,15 +1268,24 @@ update_function(update)
 
     ui_begin(game->memory_arena, (f32)platform->width, (f32)platform->height);
     {
-        ui_widget_box_begin("ui_widget_box", (ui_widget_desc_t)
+        ui_widget_group_begin("ui-widget-group-1", (ui_widget_desc_t)
         {
             .xy = { 10, 20 },
-            .size = { ui_widget_parent_size(1.0f), ui_widget_pixel_size(220.0f) },
+            .size = { ui_widget_pixel_size(220.0f), ui_widget_pixel_size(220.0f) },
+            .child_axis = UI_WIDGET_AXIS_Y,
         });
         {
-            
+            ui_widget("ui-widget-1", (ui_widget_desc_t)
+            {
+                .size = { ui_widget_parent_size(1.0f), ui_widget_pixel_size(16.0f) },
+            });
+
+            ui_widget("ui-widget-2", (ui_widget_desc_t)
+            {
+                .size = { ui_widget_parent_size(1.0f), ui_widget_pixel_size(16.0f) },
+            });
         }
-        ui_widget_box_end();
+        ui_widget_group_end();
     }
     ui_end();
 }
