@@ -1268,9 +1268,8 @@ update_function(update)
 
     ui_begin(game->memory_arena, (f32)platform->width, (f32)platform->height);
     {
-        ui_widget_group_begin("ui-widget-group-1", (ui_widget_desc_t)
+        ui_widget_group_begin("ui-widget-group-1", 10, 20, (ui_widget_desc_t)
         {
-            .xy = { 10, 20 },
             .size = { ui_widget_pixel_size(220.0f), ui_widget_pixel_size(220.0f) },
             .child_axis = UI_WIDGET_AXIS_Y,
         });
