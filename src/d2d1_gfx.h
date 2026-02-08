@@ -9,5 +9,6 @@ typedef struct d2d1_t
 {
     struct ID2D1Factory* factory;
     struct ID2D1RenderTarget* render_target;
+    struct ID2D1SolidColorBrush* solid_color_brush;
     dwrite_t* dwrite;
 } d2d1_t;

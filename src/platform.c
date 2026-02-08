@@ -298,7 +298,9 @@ static bool resize_back_buffer(window_t* window)
 
         if (window->d2d1->render_target)
         {
+            ID2D1SolidColorBrush_Release(window->d2d1->solid_color_brush);
             ID2D1RenderTarget_Release(window->d2d1->render_target);
+            window->d2d1->solid_color_brush = 0;
             window->d2d1->render_target = 0;
         }
 
@@ -358,14 +360,18 @@ static bool resize_back_buffer(window_t* window)
                                                                 &window->d2d1->render_target);
             fatal_system(SUCCEEDED(result), "[D2D1] Failed to create render target.");
 
+            D2D1_COLOR_F d2d1_color = { 1.0f, 1.0f, 1.0f, 1.0f };
+            result = ID2D1RenderTarget_CreateSolidColorBrush(window->d2d1->render_target, &d2d1_color, 0, &window->d2d1->solid_color_brush);
+            fatal_system(SUCCEEDED(result), "[D2D1] Failed to create solid color brush.");
+    
             // NOTE: This looks like it works but I am not sure we really do anti-aliasing?
             ID2D1RenderTarget_SetAntialiasMode(window->d2d1->render_target, D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
             D2D1_ANTIALIAS_MODE antialias_mode = ID2D1RenderTarget_GetAntialiasMode(window->d2d1->render_target);
-            fatal(antialias_mode == D2D1_ANTIALIAS_MODE_PER_PRIMITIVE, "[D2D1] Failed to set anti-alias mode.");
+            fatal_system(antialias_mode == D2D1_ANTIALIAS_MODE_PER_PRIMITIVE, "[D2D1] Failed to set anti-alias mode.");
             
             ID2D1RenderTarget_SetTextAntialiasMode(window->d2d1->render_target, D2D1_TEXT_ANTIALIAS_MODE_CLEARTYPE);
             D2D1_TEXT_ANTIALIAS_MODE text_antialias_mode = ID2D1RenderTarget_GetTextAntialiasMode(window->d2d1->render_target);
-            fatal(text_antialias_mode == D2D1_TEXT_ANTIALIAS_MODE_CLEARTYPE, "[D2D1] Failed to set text anti-alias mode.");
+            fatal_system(text_antialias_mode == D2D1_TEXT_ANTIALIAS_MODE_CLEARTYPE, "[D2D1] Failed to set text anti-alias mode.");
 
             IDXGISurface_Release(dxgi_surface);
 #endif
@@ -591,12 +597,11 @@ static DWORD WINAPI main_thread(void* param)
         // NOTE: 2D functions for text rendering.
 
         .create_font = gfx_2d_create_font,
-        .create_font_color = gfx_2d_create_font_color,
         .delete_font = gfx_2d_delete_font,
-        .delete_font_color = gfx_2d_delete_font_color,
         .begin_draw = gfx_2d_begin_draw,
         .end_draw = gfx_2d_end_draw,
         .draw_text = gfx_2d_draw_text,
+        .draw_rect = gfx_2d_draw_rect,
     };
 
     io_t io =

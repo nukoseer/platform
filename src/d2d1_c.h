@@ -201,6 +201,20 @@ static inline HRESULT ID2D1RenderTarget_CreateSolidColorBrush(ID2D1RenderTarget*
     return ((HRESULT (WINAPI*)(ID2D1RenderTarget*, CONST D2D1_COLOR_F*, CONST D2D1_BRUSH_PROPERTIES*, ID2D1SolidColorBrush**))self->vtbl->table[8])(self, color, brushProperties, solidColorBrush);
 }
 
+static inline void ID2D1RenderTarget_DrawRectangle(ID2D1RenderTarget* self,
+                                                   CONST D2D1_RECT_F* rect,
+                                                   ID2D1Brush* brush,
+                                                   FLOAT strokeWidth,
+                                                   ID2D1StrokeStyle* strokeStyle)
+{
+    ((void (WINAPI*)(ID2D1RenderTarget*, CONST D2D1_RECT_F*, ID2D1Brush*, FLOAT, ID2D1StrokeStyle*))self->vtbl->table[16])(self, rect, brush, strokeWidth, strokeStyle);
+}
+
+static inline void ID2D1RenderTarget_FillRectangle(ID2D1RenderTarget* self, CONST D2D1_RECT_F* rect, ID2D1Brush* brush)
+{
+    ((void (WINAPI*)(ID2D1RenderTarget*, CONST D2D1_RECT_F*, ID2D1Brush*))self->vtbl->table[17])(self, rect, brush);
+}
+
 static inline void ID2D1RenderTarget_DrawRoundedRectangle(ID2D1RenderTarget* self,
                                                           CONST D2D1_ROUNDED_RECT* roundedRect,
                                                           ID2D1Brush* brush,
@@ -269,6 +283,11 @@ static inline void ID2D1RenderTarget_BeginDraw(ID2D1RenderTarget* self)
 static inline void ID2D1RenderTarget_EndDraw(ID2D1RenderTarget* self, D2D1_TAG* tag1, D2D1_TAG* tag2)
 {
     ((void (WINAPI*)(ID2D1RenderTarget*, D2D1_TAG*, D2D1_TAG*))self->vtbl->table[49])(self, tag1, tag2);
+}
+
+static inline void ID2D1SolidColorBrush_SetColor(ID2D1SolidColorBrush* self, CONST D2D1_COLOR_F* color)
+{
+    ((void (WINAPI*)(ID2D1SolidColorBrush*, CONST D2D1_COLOR_F*))self->vtbl->table[8])(self, color);
 }
 
 static inline ULONG ID2D1SolidColorBrush_Release(ID2D1SolidColorBrush* self)

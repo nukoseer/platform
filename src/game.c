@@ -229,7 +229,7 @@ typedef struct game_t
 
 #if FONT_ENABLE
     graphics_2d_font_t font;
-    graphics_2d_font_color_t font_color;
+    vec4 font_color;
 #endif
 
     country_data_t country_data;
@@ -1212,9 +1212,9 @@ init_function(init)
 
 #if FONT_ENABLE
     game->font = graphics->create_font("Consolas", 12);
-    // game->font_color = graphics->create_font_color(0.8313f, 0.0f, 0.4705f, 1.0f);
-    // game->font_color = graphics->create_font_color(0.38f, 0.38f, 0.38f, 1.0f);
-    game->font_color = graphics->create_font_color(0.6862f, 0.6862f, 0.6862f, 1.0f);
+    // game->font_color = vec4(0.8313f, 0.0f, 0.4705f, 1.0f);
+    // game->font_color = vec4(0.38f, 0.38f, 0.38f, 1.0f);
+    game->font_color = v4(0.6862f, 0.6862f, 0.6862f, 1.0f);
 #endif
 }
 
@@ -1512,27 +1512,30 @@ render_function(render)
     }
     graphics->end_pass();
 
-#if FONT_ENABLE
+
     graphics->begin_draw();
     {
+#if FONT_ENABLE
         char frame_ms_text[32] = { 0 };
         size_t frame_ms_length = 0;
 
         if ((frame_ms_length = snprintf(frame_ms_text, sizeof(frame_ms_text), "%.2f ms", platform->delta_time * 1000)) > 0)
         {
-            graphics->draw_text(game->font, game->font_color, TEXT_ALIGNMENT_TRAILING,
-                                0.0f - 8.0f, 0.0f + 8.0f, (f32)platform->width, (f32)platform->height,
-                                frame_ms_text, frame_ms_length);   
+            graphics->draw_text(game->font, frame_ms_text, frame_ms_length,
+                                game->font_color.r, game->font_color.g, game->font_color.b, game->font_color.a,
+                                TEXT_ALIGNMENT_TRAILING, 0.0f - 8.0f, 0.0f + 8.0f, (f32)platform->width, (f32)platform->height);
         }
 
         country_name_t country_name = country_get_name(game->country_index);
         if (country_name.name && country_name.length)
         {
-            graphics->draw_text(game->font, game->font_color, TEXT_ALIGNMENT_LEADING,
-                                8.0f, 8.0f, (f32)platform->width, (f32)platform->height,
-                                country_name.name, country_name.length);
+            graphics->draw_text(game->font, country_name.name, country_name.length,
+                                game->font_color.r, game->font_color.g, game->font_color.b, game->font_color.a,
+                                TEXT_ALIGNMENT_LEADING, 8.0f, 8.0f, (f32)platform->width, (f32)platform->height);
+        }
+#endif
         }
     }
     graphics->end_draw();
-#endif
+
 }

@@ -459,22 +459,11 @@ typedef struct graphics_2d_font_t
     u64 platform;
 } graphics_2d_font_t;
 
-typedef struct graphics_2d_font_color_t
-{
-    u64 platform;
-} graphics_2d_font_color_t;
-
 #define graphics_2d_create_font_function(name) graphics_2d_font_t name(const char* font_name, f32 point_size)
 typedef graphics_2d_create_font_function(graphics_2d_create_font_f);
 
-#define graphics_2d_create_font_color_function(name) graphics_2d_font_color_t name(f32 r, f32 g, f32 b, f32 a)
-typedef graphics_2d_create_font_color_function(graphics_2d_create_font_color_f);
-
 #define graphics_2d_delete_font_function(name) void name(graphics_2d_font_t font)
 typedef graphics_2d_delete_font_function(graphics_2d_delete_font_f);
-
-#define graphics_2d_delete_font_color_function(name) void name(graphics_2d_font_color_t font_color)
-typedef graphics_2d_delete_font_color_function(graphics_2d_delete_font_color_f);
 
 #define graphics_2d_begin_draw_function(name) void name(void)
 typedef graphics_2d_begin_draw_function(graphics_2d_begin_draw_f);
@@ -482,8 +471,11 @@ typedef graphics_2d_begin_draw_function(graphics_2d_begin_draw_f);
 #define graphics_2d_end_draw_function(name) void name(void)
 typedef graphics_2d_end_draw_function(graphics_2d_end_draw_f);
 
-#define graphics_2d_draw_text_function(name) void name(graphics_2d_font_t font, graphics_2d_font_color_t font_color, graphics_2d_text_alignment_t alignment, f32 x, f32 y, f32 width, f32 height, const char* text, size_t text_length)
+#define graphics_2d_draw_text_function(name) void name(graphics_2d_font_t font, const char* text, size_t text_length, f32 r, f32 g, f32 b, f32 a, graphics_2d_text_alignment_t alignment, f32 x, f32 y, f32 width, f32 height)
 typedef graphics_2d_draw_text_function(graphics_2d_draw_text_f);
+
+#define graphics_2d_draw_rect_function(name) void name(f32 x, f32 y, f32 width, f32 height, f32 r, f32 g, f32 b, f32 a)
+typedef graphics_2d_draw_rect_function(graphics_2d_draw_rect_f);
 
 typedef struct graphics_t
 {
@@ -534,12 +526,11 @@ typedef struct graphics_t
         struct graphics_2d_functions
         {
             graphics_2d_create_font_f* create_font;
-            graphics_2d_create_font_color_f* create_font_color;
             graphics_2d_delete_font_f* delete_font;
-            graphics_2d_delete_font_color_f* delete_font_color;
             graphics_2d_begin_draw_f* begin_draw;
             graphics_2d_end_draw_f* end_draw;
             graphics_2d_draw_text_f* draw_text;
+            graphics_2d_draw_rect_f* draw_rect;
         };
 
         void* functions_2d[sizeof(struct graphics_2d_functions) / sizeof(void*)];
