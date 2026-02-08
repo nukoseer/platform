@@ -231,6 +231,7 @@ typedef struct game_t
     graphics_2d_font_t font;
     vec4 font_color;
 #endif
+    ui_widget_draw_list_t widget_draw_list;
 
     country_data_t country_data;
     u8 country_index;
@@ -1268,7 +1269,7 @@ update_function(update)
 
     ui_begin(game->memory_arena, (f32)platform->width, (f32)platform->height);
     {
-        ui_widget_group_begin("ui-widget-group-1", 10, 20, (ui_widget_desc_t)
+        ui_widget_group_begin("ui-widget-group-1", 220, 220, (ui_widget_desc_t)
         {
             .size = { ui_widget_pixel_size(220.0f), ui_widget_pixel_size(220.0f) },
             .child_axis = UI_WIDGET_AXIS_Y,
@@ -1276,17 +1277,21 @@ update_function(update)
         {
             ui_widget("ui-widget-1", (ui_widget_desc_t)
             {
-                .size = { ui_widget_parent_size(1.0f), ui_widget_pixel_size(16.0f) },
+                .size = { ui_widget_parent_size(1.0f), ui_widget_pixel_size(24.0f) },
             });
-
             ui_widget("ui-widget-2", (ui_widget_desc_t)
             {
-                .size = { ui_widget_parent_size(1.0f), ui_widget_pixel_size(16.0f) },
+                .size = { ui_widget_parent_size(1.0f), ui_widget_parent_size(0.8f) },
+            });
+            ui_widget("ui-widget-3", (ui_widget_desc_t)
+            {
+                .size = { ui_widget_parent_size(1.0f), ui_widget_pixel_size(24.0f) },
             });
         }
         ui_widget_group_end();
     }
-    ui_end();
+    ui_widget_draw_list_t widget_draw_list = ui_end();
+    game->widget_draw_list = widget_draw_list;
 }
 
 render_function(render)
@@ -1534,6 +1539,13 @@ render_function(render)
                                 TEXT_ALIGNMENT_LEADING, 8.0f, 8.0f, (f32)platform->width, (f32)platform->height);
         }
 #endif
+
+        ui_widget_draw_list_t* widget_draw_list = &game->widget_draw_list;
+        for (u32 i = 0; i < widget_draw_list->draw_rect_count; ++i)
+        {
+            ui_widget_draw_rect_t* draw_rect = widget_draw_list->draw_rects + i;
+            graphics->draw_rect(draw_rect->x, draw_rect->y, draw_rect->width, draw_rect->height,
+                                draw_rect->r, draw_rect->g, draw_rect->b, draw_rect->a);
         }
     }
     graphics->end_draw();

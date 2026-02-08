@@ -46,6 +46,19 @@ typedef struct ui_widget_rect_t
     f32 width, height;
 } ui_widget_rect_t;
 
+typedef struct ui_widget_draw_rect_t
+{
+    f32 x, y;
+    f32 width, height;
+    f32 r, g, b, a;
+} ui_widget_draw_rect_t;
+
+typedef struct ui_widget_draw_list_t
+{
+    ui_widget_draw_rect_t* draw_rects;
+    u32 draw_rect_count;
+} ui_widget_draw_list_t;
+
 typedef struct ui_widget_desc_t
 {
     ui_widget_size_t size[UI_WIDGET_AXIS_COUNT];
@@ -88,10 +101,10 @@ typedef struct ui_t
 {
     memory_arena_t* arena;
     ui_widget_t* root_widget;
-    ui_widget_list_t widget_list_array[64];
-
+    ui_widget_list_t widget_lists[64];
     ui_stack_t stack;
-
+    ui_widget_draw_rect_t widget_draw_rects[64];
+    u32 widget_draw_rect_count;
     ui_widget_t* free_widgets;
 } ui_t;
 
@@ -308,8 +321,8 @@ static void ui_widget_list_child_remove(ui_widget_list_t* widget_list, ui_widget
 static ui_widget_t* ui_widget_get(ui_widget_key widget_key)
 {
     ui_widget_t* widget = 0;
-    u64 list_index = widget_key.value & (array_count(global_ui->widget_list_array) - 1);
-    ui_widget_list_t* widget_list = global_ui->widget_list_array + list_index;
+    u64 list_index = widget_key.value & (array_count(global_ui->widget_lists) - 1);
+    ui_widget_list_t* widget_list = global_ui->widget_lists + list_index;
 
     for (ui_widget_t* widget_iter = widget_list->first; widget_iter; widget_iter = widget_iter->hash_next)
     {
@@ -528,9 +541,11 @@ static void ui_widget_calculate_layout(ui_widget_t* root_widget, ui_widget_axis_
     }
 }
 
-static void ui_widget_print_sizes(ui_widget_t* root_widget)
+static void ui_widget_print_info(ui_widget_t* root_widget)
 {
-    fprintf(stderr, "[%s] fixed size: (%f, %f) rect: (%f, %f, %f, %f)\n",
+    fprintf(stderr, "[UI] <%s>:\n"
+            "   - fixed size: (%f, %f)\n"
+            "   - rect: (%f, %f, %f, %f)\n",
             root_widget->name,
             root_widget->fixed_size[0], root_widget->fixed_size[1],
             root_widget->rect.x, root_widget->rect.y,
@@ -538,7 +553,42 @@ static void ui_widget_print_sizes(ui_widget_t* root_widget)
 
     for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
     {
-        ui_widget_print_sizes(child_widget);
+        ui_widget_print_info(child_widget);
+    }
+
+    if (root_widget == global_ui->root_widget)
+    {
+        fprintf(stderr, "[UI] State:\n"
+            "   - arena remaining size: %zu\n"
+            "   - draw rect count: %u\n",
+                ma_get_remaining_size(global_ui->arena),
+                global_ui->widget_draw_rect_count);
+    }
+}
+
+static void ui_widget_calculate_draw_rects(ui_widget_t* root_widget)
+{
+    for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
+    {
+        assert(global_ui->widget_draw_rect_count < array_count(global_ui->widget_draw_rects) && "[UI] Invalid draw rect count.");
+        ui_widget_draw_rect_t* widget_draw_rect = global_ui->widget_draw_rects + global_ui->widget_draw_rect_count++;
+    
+        *widget_draw_rect = (ui_widget_draw_rect_t)
+        {
+            .x = child_widget->rect.x,
+            .y = child_widget->rect.y,
+            .width = child_widget->rect.width,
+            .height = child_widget->rect.height,
+            .r = 0.4f,
+            .g = 0.4f,
+            .b = 0.4f,
+            .a = 1.0f,
+        };
+    }
+
+    for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
+    {
+        ui_widget_calculate_draw_rects(child_widget);
     }
 }
 
@@ -565,9 +615,11 @@ static void ui_begin(memory_arena_t* memory_arena, f32 width, f32 height)
     global_ui->root_widget = root_widget;
     
     ui_push_parent_widget(root_widget);
+
+    global_ui->widget_draw_rect_count = 0; 
 }
 
-static void ui_end(void)
+static ui_widget_draw_list_t ui_end(void)
 {
     // NOTE: Pop the root widget.
     assert(global_ui->stack.parent_count == 1 && "[UI] Invalid parent stack count.");
@@ -581,7 +633,14 @@ static void ui_end(void)
         ui_widget_calculate_layout(global_ui->root_widget, axis);
     }
 
-    ui_widget_print_sizes(global_ui->root_widget);
+    ui_widget_calculate_draw_rects(global_ui->root_widget);
+    ui_widget_print_info(global_ui->root_widget);
+    
+    ui_widget_draw_list_t widget_draw_list =
+    {
+        .draw_rects = global_ui->widget_draw_rects,
+        .draw_rect_count = global_ui->widget_draw_rect_count,
+    };
 
-    // fprintf(stderr, "\n\r[UI] Arena remaining size: %zu", ma_get_remaining_size(global_ui->arena));
+    return widget_draw_list;
 }
