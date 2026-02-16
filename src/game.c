@@ -1273,18 +1273,22 @@ update_function(update)
         {
             .size = { ui_widget_pixel_size(220.0f), ui_widget_pixel_size(220.0f) },
             .child_axis = UI_WIDGET_AXIS_Y,
+            .border = { true, { 1.0f, 1.0f, 1.0f, 1.0f, } },
         });
         {
             ui_widget("ui-widget-1", (ui_widget_desc_t)
             {
+                .color = { 0.06f, 0.06f, 0.06f, 1.0f },
                 .size = { ui_widget_parent_size(1.0f), ui_widget_pixel_size(24.0f) },
             });
             ui_widget("ui-widget-2", (ui_widget_desc_t)
             {
                 .size = { ui_widget_parent_size(1.0f), ui_widget_parent_size(0.8f) },
+                .color = { 0.04f, 0.04f, 0.04f, 1.0f },
             });
             ui_widget("ui-widget-3", (ui_widget_desc_t)
             {
+                .color = { 0.06f, 0.06f, 0.06f, 1.0f },
                 .size = { ui_widget_parent_size(1.0f), ui_widget_pixel_size(24.0f) },
             });
         }
@@ -1545,6 +1549,7 @@ render_function(render)
         {
             ui_widget_draw_rect_t* draw_rect = widget_draw_list->draw_rects + i;
             graphics->draw_rect(draw_rect->x, draw_rect->y, draw_rect->width, draw_rect->height,
+                                draw_rect->fill, 0.5f,
                                 draw_rect->r, draw_rect->g, draw_rect->b, draw_rect->a);
         }
     }

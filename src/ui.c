@@ -51,6 +51,7 @@ typedef struct ui_widget_draw_rect_t
     f32 x, y;
     f32 width, height;
     f32 r, g, b, a;
+    bool fill;
 } ui_widget_draw_rect_t;
 
 typedef struct ui_widget_draw_list_t
@@ -59,10 +60,18 @@ typedef struct ui_widget_draw_list_t
     u32 draw_rect_count;
 } ui_widget_draw_list_t;
 
+typedef struct ui_border_t
+{
+    bool enabled;
+    f32 color[4];
+} ui_border_t;
+
 typedef struct ui_widget_desc_t
 {
     ui_widget_size_t size[UI_WIDGET_AXIS_COUNT];
     ui_widget_axis_t child_axis;
+    f32 color[4];
+    ui_border_t border;
 } ui_widget_desc_t;
 
 typedef struct ui_widget_list_t
@@ -78,6 +87,8 @@ typedef struct ui_widget_t
     ui_widget_position_t position;
     ui_widget_size_t size[UI_WIDGET_AXIS_COUNT];
     ui_widget_axis_t child_axis;
+    f32 color[4];
+    ui_border_t border;
 
     struct ui_widget_t* parent;
     struct ui_widget_t* hash_next;
@@ -367,34 +378,58 @@ static ui_widget_t* ui_widget_get(ui_widget_key widget_key)
     return widget;
 }
 
-static void ui_widget_group_begin(const char* widget_name, f32 x, f32 y, ui_widget_desc_t widget_desc)
+static inline void ui_widget_build(ui_widget_t* widget, const char* widget_name, f32 x, f32 y, const ui_widget_desc_t* widget_desc)
 {
-    ui_widget_key widget_key = ui_widget_get_key_from_string(ui_top_parent_widget()->key, widget_name);
-    ui_widget_t* widget = ui_widget_get(widget_key);
-
     assert(widget && "[UI] Couldn't get widget.");
-
+    
     widget->name = widget_name;
     widget->position.x = x;
     widget->position.y = y;
+
+    widget->border.enabled = widget_desc->border.enabled;
+
+    f32 sum_color = 0.0f;
+    
+    for (i32 color_index = 0; color_index < array_count(widget->color); ++color_index)
+    {
+        widget->color[color_index] = widget_desc->color[color_index];
+        widget->border.color[color_index] = widget_desc->border.color[color_index];
+
+        sum_color += widget_desc->color[color_index];
+    }
+
+    // NOTE: Assing default color.
+    if (sum_color == 0.0f)
+    {
+        widget->color[0] = 0.0f;
+        widget->color[1] = 0.0f;
+        widget->color[2] = 0.0f;
+        widget->color[3] = 1.0f;
+    }
     
     for (i32 axis = 0; axis < UI_WIDGET_AXIS_COUNT; ++axis)
     {
-        widget->size[axis] = widget_desc.size[axis];
-        
+        widget->size[axis] = widget_desc->size[axis];
     }
 
-    widget->child_axis = widget_desc.child_axis;
+    widget->child_axis = widget_desc->child_axis;
 
     // TODO: Right now, it is not supported to position widgets inside a widget group except it is directly under the root widget.
-    if (widget->parent != global_ui->root_widget)
+    if ((x != 0 || y != 0) && (widget->parent != global_ui->root_widget))
     {
         // TODO: We can also silently ignore position parameters but for now keep the assert.
         assert(!"[UI] Only widgets directly under the root widget can specify position.");
         widget->position.x = 0.0f;
         widget->position.y = 0.0f;
     }
+}
 
+static void ui_widget_group_begin(const char* widget_name, f32 x, f32 y, ui_widget_desc_t widget_desc)
+{
+    ui_widget_key widget_key = ui_widget_get_key_from_string(ui_top_parent_widget()->key, widget_name);
+    ui_widget_t* widget = ui_widget_get(widget_key);
+
+    ui_widget_build(widget, widget_name, x, y, &widget_desc);
     ui_push_parent_widget(widget);
 }
 
@@ -408,16 +443,7 @@ static void ui_widget(const char* widget_name, ui_widget_desc_t widget_desc)
     ui_widget_key widget_key = ui_widget_get_key_from_string(ui_top_parent_widget()->key, widget_name);
     ui_widget_t* widget = ui_widget_get(widget_key);
 
-    assert(widget && "[UI] Couldn't get widget.");
-
-    widget->name = widget_name;
-    widget->position.x = 0.0f;
-    widget->position.y = 0.0f;
-
-    for (i32 axis = 0; axis < UI_WIDGET_AXIS_COUNT; ++axis)
-    {
-        widget->size[axis] = widget_desc.size[axis];
-    }
+    ui_widget_build(widget, widget_name, 0.0f, 0.0f, &widget_desc);
 }
 
 static void ui_widget_calculate_pixel_sizes(ui_widget_t* root_widget, ui_widget_axis_t axis)
@@ -579,16 +605,49 @@ static void ui_widget_calculate_draw_rects(ui_widget_t* root_widget)
             .y = child_widget->rect.y,
             .width = child_widget->rect.width,
             .height = child_widget->rect.height,
-            .r = 0.4f,
-            .g = 0.4f,
-            .b = 0.4f,
-            .a = 1.0f,
+            .r = child_widget->color[0],
+            .g = child_widget->color[1],
+            .b = child_widget->color[2],
+            .a = child_widget->color[3],
+            .fill = true,
         };
     }
 
     for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
     {
         ui_widget_calculate_draw_rects(child_widget);
+    }
+}
+
+static void ui_widget_calculate_draw_rects_with_border(ui_widget_t* root_widget)
+{
+    for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
+    {
+        assert(global_ui->widget_draw_rect_count < array_count(global_ui->widget_draw_rects) && "[UI] Invalid draw rect count.");
+        ui_widget_draw_rect_t* widget_draw_rect = global_ui->widget_draw_rects + global_ui->widget_draw_rect_count++;
+    
+        if (child_widget->border.enabled)
+        {
+            widget_draw_rect = global_ui->widget_draw_rects + global_ui->widget_draw_rect_count++;
+
+            *widget_draw_rect = (ui_widget_draw_rect_t)
+            {
+                .x = child_widget->rect.x,
+                .y = child_widget->rect.y,
+                .width = child_widget->rect.width,
+                .height = child_widget->rect.height,
+                .r = child_widget->border.color[0],
+                .g = child_widget->border.color[1],
+                .b = child_widget->border.color[2],
+                .a = child_widget->border.color[3],
+                .fill = false,
+            };  
+        }
+    }
+
+    for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
+    {
+        ui_widget_calculate_draw_rects_with_border(child_widget);
     }
 }
 
@@ -634,6 +693,7 @@ static ui_widget_draw_list_t ui_end(void)
     }
 
     ui_widget_calculate_draw_rects(global_ui->root_widget);
+    ui_widget_calculate_draw_rects_with_border(global_ui->root_widget);
     ui_widget_print_info(global_ui->root_widget);
     
     ui_widget_draw_list_t widget_draw_list =

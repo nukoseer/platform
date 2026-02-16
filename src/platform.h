@@ -474,7 +474,7 @@ typedef graphics_2d_end_draw_function(graphics_2d_end_draw_f);
 #define graphics_2d_draw_text_function(name) void name(graphics_2d_font_t font, const char* text, size_t text_length, f32 r, f32 g, f32 b, f32 a, graphics_2d_text_alignment_t alignment, f32 x, f32 y, f32 width, f32 height)
 typedef graphics_2d_draw_text_function(graphics_2d_draw_text_f);
 
-#define graphics_2d_draw_rect_function(name) void name(f32 x, f32 y, f32 width, f32 height, f32 r, f32 g, f32 b, f32 a)
+#define graphics_2d_draw_rect_function(name) void name(f32 x, f32 y, f32 width, f32 height, bool fill, f32 thickness, f32 r, f32 g, f32 b, f32 a)
 typedef graphics_2d_draw_rect_function(graphics_2d_draw_rect_f);
 
 typedef struct graphics_t

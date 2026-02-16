@@ -173,16 +173,18 @@ static graphics_2d_draw_rect_function(gfx_2d_draw_rect)
         .right = x + width,
         .bottom = y + height,
     };
-    // f32 stroke_width = 1.0f;
 
     D2D1_COLOR_F color = { r, g, b, a };
     ID2D1SolidColorBrush_SetColor(global_d2d1.solid_color_brush, &color);
 
-    ID2D1RenderTarget_FillRectangle(global_d2d1.render_target, &rect, (ID2D1Brush*)global_d2d1.solid_color_brush);
-
-    D2D1_COLOR_F border_color = { 1.0f, 1.0f, 1.0f, 1.0f };
-    ID2D1SolidColorBrush_SetColor(global_d2d1.solid_color_brush, &border_color);
-    ID2D1RenderTarget_DrawRectangle(global_d2d1.render_target, &rect, (ID2D1Brush*)global_d2d1.solid_color_brush, 1.0f, 0);
+    if (fill)
+    {
+        ID2D1RenderTarget_FillRectangle(global_d2d1.render_target, &rect, (ID2D1Brush*)global_d2d1.solid_color_brush);
+    }
+    else
+    {
+        ID2D1RenderTarget_DrawRectangle(global_d2d1.render_target, &rect, (ID2D1Brush*)global_d2d1.solid_color_brush, thickness, 0);
+    }
 }
 
     
