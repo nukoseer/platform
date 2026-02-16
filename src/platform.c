@@ -365,9 +365,12 @@ static bool resize_back_buffer(window_t* window)
             fatal_system(SUCCEEDED(result), "[D2D1] Failed to create solid color brush.");
     
             // NOTE: This looks like it works but I am not sure we really do anti-aliasing?
-            ID2D1RenderTarget_SetAntialiasMode(window->d2d1->render_target, D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+            // ID2D1RenderTarget_SetAntialiasMode(window->d2d1->render_target, D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+            ID2D1RenderTarget_SetAntialiasMode(window->d2d1->render_target, D2D1_ANTIALIAS_MODE_ALIASED);
+            
             D2D1_ANTIALIAS_MODE antialias_mode = ID2D1RenderTarget_GetAntialiasMode(window->d2d1->render_target);
-            fatal_system(antialias_mode == D2D1_ANTIALIAS_MODE_PER_PRIMITIVE, "[D2D1] Failed to set anti-alias mode.");
+            // fatal_system(antialias_mode == D2D1_ANTIALIAS_MODE_PER_PRIMITIVE, "[D2D1] Failed to set anti-alias mode.");
+            fatal_system(antialias_mode == D2D1_ANTIALIAS_MODE_ALIASED, "[D2D1] Failed to set anti-alias mode.");
             
             ID2D1RenderTarget_SetTextAntialiasMode(window->d2d1->render_target, D2D1_TEXT_ANTIALIAS_MODE_CLEARTYPE);
             D2D1_TEXT_ANTIALIAS_MODE text_antialias_mode = ID2D1RenderTarget_GetTextAntialiasMode(window->d2d1->render_target);

@@ -52,6 +52,7 @@ typedef struct ui_widget_draw_rect_t
     f32 width, height;
     f32 r, g, b, a;
     bool fill;
+    f32 thickness;
 } ui_widget_draw_rect_t;
 
 typedef struct ui_widget_draw_list_t
@@ -63,6 +64,7 @@ typedef struct ui_widget_draw_list_t
 typedef struct ui_border_t
 {
     bool enabled;
+    f32 thickness;
     f32 color[4];
 } ui_border_t;
 
@@ -70,6 +72,7 @@ typedef struct ui_widget_desc_t
 {
     ui_widget_size_t size[UI_WIDGET_AXIS_COUNT];
     ui_widget_axis_t child_axis;
+    f32 padding;
     f32 color[4];
     ui_border_t border;
 } ui_widget_desc_t;
@@ -87,6 +90,7 @@ typedef struct ui_widget_t
     ui_widget_position_t position;
     ui_widget_size_t size[UI_WIDGET_AXIS_COUNT];
     ui_widget_axis_t child_axis;
+    f32 padding;
     f32 color[4];
     ui_border_t border;
 
@@ -387,6 +391,7 @@ static inline void ui_widget_build(ui_widget_t* widget, const char* widget_name,
     widget->position.y = y;
 
     widget->border.enabled = widget_desc->border.enabled;
+    widget->border.thickness = widget_desc->border.thickness;
 
     f32 sum_color = 0.0f;
     
@@ -413,6 +418,7 @@ static inline void ui_widget_build(ui_widget_t* widget, const char* widget_name,
     }
 
     widget->child_axis = widget_desc->child_axis;
+    widget->padding = widget_desc->padding;
 
     // TODO: Right now, it is not supported to position widgets inside a widget group except it is directly under the root widget.
     if ((x != 0 || y != 0) && (widget->parent != global_ui->root_widget))
@@ -494,7 +500,7 @@ static void ui_widget_calculate_size_violations(ui_widget_t* root_widget, ui_wid
         for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
         {
             f32 child_size = child_widget->fixed_size[axis];
-            f32 violation_amount = child_size - root_widget->fixed_size[axis];
+            f32 violation_amount = child_size - (root_widget->fixed_size[axis] - root_widget->padding * 2.0f);
             f32 fix_amount = clamp(0.0f, violation_amount, child_size);
 
             if (fix_amount > 0.0f)
@@ -507,21 +513,47 @@ static void ui_widget_calculate_size_violations(ui_widget_t* root_widget, ui_wid
     if (root_widget->child_axis == axis)
     {
         f32 total_child_size = 0.0f;
+        f32 parent_dependent_child_size = 0.0f;
         
         for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
         {
             total_child_size += child_widget->fixed_size[axis];
+
+            if (child_widget->size[axis].kind == UI_WIDGET_SIZE_PARENT)
+            {
+                parent_dependent_child_size += child_widget->fixed_size[axis];
+            }
         }
 
-        f32 violation_amount = total_child_size - root_widget->fixed_size[axis];
-        f32 fix_percentage = violation_amount / total_child_size;
+        f32 violation_amount = total_child_size - (root_widget->fixed_size[axis] - root_widget->padding * 2.0f);
+        f32 fix_percentage = 0.0f;
 
+        // NOTE: Right now we prefer to correct size violations by reducing the sizes of parent dependent children.
+        // If there are no parent dependent children, we reduce the sizes of all children.
+        // Idk if this makes sense.
+        if (parent_dependent_child_size == 0.0f)
+        {
+            fix_percentage = violation_amount / total_child_size;
+        }
+        else
+        {
+            fix_percentage = violation_amount / parent_dependent_child_size;
+        }
+        
         if (violation_amount > 0.0f)
         {
             for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
             {
-                f32 fix_amount = fix_percentage * child_widget->fixed_size[axis];
-                child_widget->fixed_size[axis] -= fix_amount;
+                if (parent_dependent_child_size == 0.0f)
+                {
+                    f32 fix_amount = fix_percentage * child_widget->fixed_size[axis];
+                    child_widget->fixed_size[axis] -= fix_amount;
+                }
+                else if (child_widget->size[axis].kind == UI_WIDGET_SIZE_PARENT)
+                {
+                    f32 fix_amount = fix_percentage * child_widget->fixed_size[axis];
+                    child_widget->fixed_size[axis] -= fix_amount;
+                }
             }
         }
     }
@@ -534,7 +566,7 @@ static void ui_widget_calculate_size_violations(ui_widget_t* root_widget, ui_wid
 
 static void ui_widget_calculate_layout(ui_widget_t* root_widget, ui_widget_axis_t axis)
 {
-    f32 layout_at = 0.0f;
+    f32 layout_at = root_widget->padding;
     
     for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
     {
@@ -641,6 +673,7 @@ static void ui_widget_calculate_draw_rects_with_border(ui_widget_t* root_widget)
                 .b = child_widget->border.color[2],
                 .a = child_widget->border.color[3],
                 .fill = false,
+                .thickness = child_widget->border.thickness,
             };  
         }
     }
