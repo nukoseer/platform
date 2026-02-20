@@ -46,20 +46,43 @@ typedef struct ui_widget_rect_t
     f32 width, height;
 } ui_widget_rect_t;
 
+typedef enum ui_widget_draw_kind_t
+{
+    UI_WIDGET_DRAW_RECT,
+    UI_WIDGET_DRAW_BORDER,
+} ui_widget_draw_kind_t;
+
 typedef struct ui_widget_draw_rect_t
 {
     f32 x, y;
     f32 width, height;
     f32 r, g, b, a;
-    bool fill;
-    f32 thickness;
 } ui_widget_draw_rect_t;
 
-typedef struct ui_widget_draw_list_t
+typedef struct ui_widget_draw_border_t
 {
-    ui_widget_draw_rect_t* draw_rects;
-    u32 draw_rect_count;
-} ui_widget_draw_list_t;
+    f32 x, y;
+    f32 width, height;
+    f32 r, g, b, a;
+    f32 thickness;
+} ui_widget_draw_border_t;
+
+typedef struct ui_widget_draw_command_t
+{
+    ui_widget_draw_kind_t kind;
+
+    union
+    {
+        ui_widget_draw_rect_t rect;
+        ui_widget_draw_border_t border;
+    };
+} ui_widget_draw_command_t;
+
+typedef struct ui_widget_draw_command_list_t
+{
+    ui_widget_draw_command_t* commands;
+    u32 command_count;
+} ui_widget_draw_command_list_t;
 
 typedef struct ui_border_t
 {
@@ -118,8 +141,8 @@ typedef struct ui_t
     ui_widget_t* root_widget;
     ui_widget_list_t widget_lists[64];
     ui_stack_t stack;
-    ui_widget_draw_rect_t widget_draw_rects[64];
-    u32 widget_draw_rect_count;
+    ui_widget_draw_command_t widget_draw_commands[64];
+    u32 widget_draw_command_count;
     ui_widget_t* free_widgets;
 } ui_t;
 
@@ -620,67 +643,65 @@ static void ui_widget_print_info(ui_widget_t* root_widget)
             "   - arena remaining size: %zu\n"
             "   - draw rect count: %u\n",
                 ma_get_remaining_size(global_ui->arena),
-                global_ui->widget_draw_rect_count);
+                global_ui->widget_draw_command_count);
     }
 }
 
-static void ui_widget_calculate_draw_rects(ui_widget_t* root_widget)
+static void ui_widget_calculate_draw_rect_commands(ui_widget_t* root_widget)
 {
     for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
     {
-        assert(global_ui->widget_draw_rect_count < array_count(global_ui->widget_draw_rects) && "[UI] Invalid draw rect count.");
-        ui_widget_draw_rect_t* widget_draw_rect = global_ui->widget_draw_rects + global_ui->widget_draw_rect_count++;
-    
-        *widget_draw_rect = (ui_widget_draw_rect_t)
+        assert(global_ui->widget_draw_command_count < array_count(global_ui->widget_draw_commands) && "[UI] Invalid draw command count.");
+        ui_widget_draw_command_t* widget_draw_command = global_ui->widget_draw_commands + global_ui->widget_draw_command_count++;
+        
+        *widget_draw_command = (ui_widget_draw_command_t)
         {
-            .x = child_widget->rect.x,
-            .y = child_widget->rect.y,
-            .width = child_widget->rect.width,
-            .height = child_widget->rect.height,
-            .r = child_widget->color[0],
-            .g = child_widget->color[1],
-            .b = child_widget->color[2],
-            .a = child_widget->color[3],
-            .fill = true,
+            .kind = UI_WIDGET_DRAW_RECT,
+            .rect.x = child_widget->rect.x,
+            .rect.y = child_widget->rect.y,
+            .rect.width = child_widget->rect.width,
+            .rect.height = child_widget->rect.height,
+            .rect.r = child_widget->color[0],
+            .rect.g = child_widget->color[1],
+            .rect.b = child_widget->color[2],
+            .rect.a = child_widget->color[3],
         };
     }
 
     for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
     {
-        ui_widget_calculate_draw_rects(child_widget);
+        ui_widget_calculate_draw_rect_commands(child_widget);
     }
 }
 
-static void ui_widget_calculate_draw_rects_with_border(ui_widget_t* root_widget)
+static void ui_widget_calculate_draw_border_commands(ui_widget_t* root_widget)
 {
     for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
     {
-        assert(global_ui->widget_draw_rect_count < array_count(global_ui->widget_draw_rects) && "[UI] Invalid draw rect count.");
-        ui_widget_draw_rect_t* widget_draw_rect = global_ui->widget_draw_rects + global_ui->widget_draw_rect_count++;
-    
         if (child_widget->border.enabled)
         {
-            widget_draw_rect = global_ui->widget_draw_rects + global_ui->widget_draw_rect_count++;
+            assert(global_ui->widget_draw_command_count < array_count(global_ui->widget_draw_commands) && "[UI] Invalid draw command count.");
+            ui_widget_draw_command_t* widget_draw_command = global_ui->widget_draw_commands + global_ui->widget_draw_command_count++;
 
-            *widget_draw_rect = (ui_widget_draw_rect_t)
+            *widget_draw_command = (ui_widget_draw_command_t)
             {
-                .x = child_widget->rect.x - child_widget->border.thickness * 0.5f,
-                .y = child_widget->rect.y - child_widget->border.thickness * 0.5f,
-                .width = child_widget->rect.width + child_widget->border.thickness,
-                .height = child_widget->rect.height + child_widget->border.thickness,
-                .r = child_widget->border.color[0],
-                .g = child_widget->border.color[1],
-                .b = child_widget->border.color[2],
-                .a = child_widget->border.color[3],
-                .fill = false,
-                .thickness = child_widget->border.thickness,
+                .kind = UI_WIDGET_DRAW_BORDER,
+                .border.x = child_widget->rect.x - child_widget->border.thickness * 0.5f,
+                .border.y = child_widget->rect.y - child_widget->border.thickness * 0.5f,
+                .border.width = child_widget->rect.width + child_widget->border.thickness,
+                .border.height = child_widget->rect.height + child_widget->border.thickness,
+                .border.r = child_widget->border.color[0],
+                .border.g = child_widget->border.color[1],
+                .border.b = child_widget->border.color[2],
+                .border.a = child_widget->border.color[3],
+                .border.thickness = child_widget->border.thickness,
             };  
         }
     }
 
     for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
     {
-        ui_widget_calculate_draw_rects_with_border(child_widget);
+        ui_widget_calculate_draw_border_commands(child_widget);
     }
 }
 
@@ -708,10 +729,10 @@ static void ui_begin(memory_arena_t* memory_arena, f32 width, f32 height)
     
     ui_push_parent_widget(root_widget);
 
-    global_ui->widget_draw_rect_count = 0; 
+    global_ui->widget_draw_command_count = 0; 
 }
 
-static ui_widget_draw_list_t ui_end(void)
+static ui_widget_draw_command_list_t ui_end(void)
 {
     // NOTE: Pop the root widget.
     assert(global_ui->stack.parent_count == 1 && "[UI] Invalid parent stack count.");
@@ -725,15 +746,15 @@ static ui_widget_draw_list_t ui_end(void)
         ui_widget_calculate_layout(global_ui->root_widget, axis);
     }
 
-    ui_widget_calculate_draw_rects(global_ui->root_widget);
-    ui_widget_calculate_draw_rects_with_border(global_ui->root_widget);
+    ui_widget_calculate_draw_rect_commands(global_ui->root_widget);
+    ui_widget_calculate_draw_border_commands(global_ui->root_widget);
     ui_widget_print_info(global_ui->root_widget);
     
-    ui_widget_draw_list_t widget_draw_list =
+    ui_widget_draw_command_list_t widget_draw_command_list =
     {
-        .draw_rects = global_ui->widget_draw_rects,
-        .draw_rect_count = global_ui->widget_draw_rect_count,
+        .commands = global_ui->widget_draw_commands,
+        .command_count = global_ui->widget_draw_command_count,
     };
 
-    return widget_draw_list;
+    return widget_draw_command_list;
 }

@@ -231,7 +231,7 @@ typedef struct game_t
     graphics_2d_font_t font;
     vec4 font_color;
 #endif
-    ui_widget_draw_list_t widget_draw_list;
+    ui_widget_draw_command_list_t widget_draw_command_list;
 
     country_data_t country_data;
     u8 country_index;
@@ -1305,8 +1305,8 @@ update_function(update)
         }
         ui_widget_group_end();
     }
-    ui_widget_draw_list_t widget_draw_list = ui_end();
-    game->widget_draw_list = widget_draw_list;
+    ui_widget_draw_command_list_t widget_draw_command_list = ui_end();
+    game->widget_draw_command_list = widget_draw_command_list;
 }
 
 render_function(render)
@@ -1555,13 +1555,40 @@ render_function(render)
         }
 #endif
 
-        ui_widget_draw_list_t* widget_draw_list = &game->widget_draw_list;
-        for (u32 i = 0; i < widget_draw_list->draw_rect_count; ++i)
+        ui_widget_draw_command_list_t* widget_draw_command_list = &game->widget_draw_command_list;
+        for (u32 i = 0; i < widget_draw_command_list->command_count; ++i)
         {
-            ui_widget_draw_rect_t* draw_rect = widget_draw_list->draw_rects + i;
-            graphics->draw_rect(draw_rect->x, draw_rect->y, draw_rect->width, draw_rect->height,
-                                draw_rect->fill, draw_rect->thickness,
-                                draw_rect->r, draw_rect->g, draw_rect->b, draw_rect->a);
+            ui_widget_draw_command_t* command = widget_draw_command_list->commands + i;
+
+            if (command->kind == UI_WIDGET_DRAW_RECT)
+            {
+                ui_widget_draw_rect_t* draw_rect = &command->rect;
+                
+                f32 x = draw_rect->x;
+                f32 y = draw_rect->y;
+                f32 width = draw_rect->width;
+                f32 height = draw_rect->height;
+                f32 color[4] = { draw_rect->r, draw_rect->g, draw_rect->b, draw_rect->a };
+                
+                graphics->draw_rect(x, y, width, height, true, 0.0f, color[0], color[1], color[2], color[3]);
+            }
+            else if (command->kind == UI_WIDGET_DRAW_BORDER)
+            {
+                ui_widget_draw_border_t* draw_border = &command->border;
+                
+                f32 x = draw_border->x;
+                f32 y = draw_border->y;
+                f32 width = draw_border->width;
+                f32 height = draw_border->height;
+                f32 color[4] = { draw_border->r, draw_border->g, draw_border->b, draw_border->a };
+                f32 thickness = draw_border->thickness;
+
+                graphics->draw_rect(x, y, width, height, false, thickness, color[0], color[1], color[2], color[3]);
+            }
+            else
+            {
+                assert(!"[UI] Invalid draw command.");
+            }
         }
     }
     graphics->end_draw();
