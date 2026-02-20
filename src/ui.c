@@ -664,10 +664,10 @@ static void ui_widget_calculate_draw_rects_with_border(ui_widget_t* root_widget)
 
             *widget_draw_rect = (ui_widget_draw_rect_t)
             {
-                .x = child_widget->rect.x,
-                .y = child_widget->rect.y,
-                .width = child_widget->rect.width,
-                .height = child_widget->rect.height,
+                .x = child_widget->rect.x - child_widget->border.thickness * 0.5f,
+                .y = child_widget->rect.y - child_widget->border.thickness * 0.5f,
+                .width = child_widget->rect.width + child_widget->border.thickness,
+                .height = child_widget->rect.height + child_widget->border.thickness,
                 .r = child_widget->border.color[0],
                 .g = child_widget->border.color[1],
                 .b = child_widget->border.color[2],

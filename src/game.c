@@ -419,7 +419,7 @@ static void resize_offscreen_buffer(platform_t* platform, game_t* game)
             .bind = BIND_SHADER_RESOURCE | BIND_RENDER_TARGET,
             .width = platform->width,
             .height = platform->height,
-            .sample_count = 4,
+            .sample_count = 8,
         }, 0, 0);
 
         game->offscreen_depth_msaa = graphics->create_texture_2d(&(graphics_texture_2d_desc_t)
@@ -428,7 +428,7 @@ static void resize_offscreen_buffer(platform_t* platform, game_t* game)
             .bind = BIND_DEPTH_STENCIL,
             .width = platform->width,
             .height = platform->height,
-            .sample_count = 4,
+            .sample_count = 8,
         }, 0, 0);
 
         game->glow_mask_msaa = graphics->create_texture_2d(&(graphics_texture_2d_desc_t)
@@ -437,7 +437,7 @@ static void resize_offscreen_buffer(platform_t* platform, game_t* game)
             .bind = BIND_SHADER_RESOURCE | BIND_RENDER_TARGET,
             .width = platform->width,
             .height = platform->height,
-            .sample_count = 4,
+            .sample_count = 8,
         }, 0, 0);
 
         game->glow_mask = graphics->create_texture_2d(&(graphics_texture_2d_desc_t)
@@ -1271,27 +1271,37 @@ update_function(update)
     {
         ui_widget_group_begin("ui-widget-group-1", 220, 220, (ui_widget_desc_t)
         {
-            .size = { ui_widget_pixel_size(220.0f), ui_widget_pixel_size(220.0f) },
+            .size = { ui_widget_pixel_size(360.0f), ui_widget_pixel_size(360.0f) },
             .child_axis = UI_WIDGET_AXIS_Y,
-            .padding = 16.0f,
-            .border = { true, 1.0f, { 1.0f, 1.0f, 1.0f, 1.0f, } },
+            .padding = 4.0f,
+            .border = { true, 1.0f, { 0.4f, 0.4f, 0.4f, 0.4f, } },
         });
         {
-            ui_widget("ui-widget-1", (ui_widget_desc_t)
+            ui_widget_group_begin("ui-widget-group-2", 0, 0, (ui_widget_desc_t)
             {
-                .color = { 0.06f, 0.06f, 0.06f, 1.0f },
-                .size = { ui_widget_parent_size(1.0f), ui_widget_pixel_size(24.0f) },
+                .size = { ui_widget_parent_size(1.0f), ui_widget_parent_size(1.0f) },
+                .child_axis = UI_WIDGET_AXIS_Y,
+                .padding = 1.0f,
+                .border = { true, 1.0f, { 0.4f, 0.4f, 0.4f, 0.4f, } },
             });
-            ui_widget("ui-widget-2", (ui_widget_desc_t)
             {
-                .size = { ui_widget_parent_size(1.0f), ui_widget_parent_size(0.8f) },
-                .color = { 0.04f, 0.04f, 0.04f, 1.0f },
-            });
-            ui_widget("ui-widget-3", (ui_widget_desc_t)
-            {
-                .color = { 0.06f, 0.06f, 0.06f, 1.0f },
-                .size = { ui_widget_parent_size(1.0f), ui_widget_pixel_size(24.0f) },
-            });
+                ui_widget("ui-widget-1", (ui_widget_desc_t)
+                {
+                    .color = { 0.06f, 0.06f, 0.06f, 1.0f },
+                    .size = { ui_widget_parent_size(1.0f), ui_widget_pixel_size(24.0f) },
+                });
+                ui_widget("ui-widget-2", (ui_widget_desc_t)
+                {
+                    .size = { ui_widget_parent_size(1.0f), ui_widget_parent_size(1.0f) },
+                    .color = { 0.04f, 0.04f, 0.04f, 1.0f },
+                });
+                ui_widget("ui-widget-3", (ui_widget_desc_t)
+                {
+                    .color = { 0.06f, 0.06f, 0.06f, 1.0f },
+                    .size = { ui_widget_parent_size(1.0f), ui_widget_pixel_size(24.0f) },
+                });
+            }
+            ui_widget_group_end();
         }
         ui_widget_group_end();
     }
