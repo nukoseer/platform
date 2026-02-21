@@ -84,20 +84,25 @@ typedef struct ui_widget_draw_command_list_t
     u32 command_count;
 } ui_widget_draw_command_list_t;
 
-typedef struct ui_border_t
+typedef struct ui_widget_color_t
+{
+    f32 r, g, b, a;
+} ui_widget_color_t;
+
+typedef struct ui_widget_border_t
 {
     bool enabled;
     f32 thickness;
-    f32 color[4];
-} ui_border_t;
+    ui_widget_color_t color;
+} ui_widget_border_t;
 
 typedef struct ui_widget_desc_t
 {
     ui_widget_size_t size[UI_WIDGET_AXIS_COUNT];
     ui_widget_axis_t child_axis;
     f32 padding;
-    f32 color[4];
-    ui_border_t border;
+    ui_widget_color_t color;
+    ui_widget_border_t border;
 } ui_widget_desc_t;
 
 typedef struct ui_widget_list_t
@@ -114,8 +119,8 @@ typedef struct ui_widget_t
     ui_widget_size_t size[UI_WIDGET_AXIS_COUNT];
     ui_widget_axis_t child_axis;
     f32 padding;
-    f32 color[4];
-    ui_border_t border;
+    ui_widget_color_t color;
+    ui_widget_border_t border;
 
     struct ui_widget_t* parent;
     struct ui_widget_t* hash_next;
@@ -150,7 +155,7 @@ typedef struct ui_t
 
 static ui_t* global_ui;
 
-static u64 ui_hash(u64 seed, const char* data, u64 size)
+static inline u64 ui_hash(u64 seed, const char* data, u64 size)
 {
     u64 hash = seed;
     const u64 prime = 0x00000100000001B3ULL;
@@ -211,6 +216,45 @@ static inline ui_widget_size_t ui_widget_parent_size(f32 parent_size_percentage)
     };
 
     return widget_size;
+}
+
+static inline ui_widget_axis_t ui_widget_axis_x(void)
+{
+    ui_widget_axis_t widget_axis = UI_WIDGET_AXIS_X;
+
+    return widget_axis;
+}
+
+static inline ui_widget_axis_t ui_widget_axis_y(void)
+{
+    ui_widget_axis_t widget_axis = UI_WIDGET_AXIS_Y;
+
+    return widget_axis;
+}
+
+static inline ui_widget_color_t ui_widget_color(f32 r, f32 g, f32 b, f32 a)
+{
+    ui_widget_color_t widget_color =
+    {
+        .r = r,
+        .g = g,
+        .b = b,
+        .a = a,
+    };
+
+    return widget_color;
+}
+
+static inline ui_widget_border_t ui_widget_border(bool enabled, f32 thickness, ui_widget_color_t color)
+{
+    ui_widget_border_t widget_border =
+    {
+        .enabled = enabled,
+        .thickness = thickness,
+        .color = color,
+    };
+
+    return widget_border;
 }
 
 static ui_widget_key ui_widget_get_key(ui_widget_key parent_widget_key, const char* data, u64 size)
@@ -416,23 +460,18 @@ static inline void ui_widget_build(ui_widget_t* widget, const char* widget_name,
     widget->border.enabled = widget_desc->border.enabled;
     widget->border.thickness = widget_desc->border.thickness;
 
-    f32 sum_color = 0.0f;
-    
-    for (i32 color_index = 0; color_index < array_count(widget->color); ++color_index)
-    {
-        widget->color[color_index] = widget_desc->color[color_index];
-        widget->border.color[color_index] = widget_desc->border.color[color_index];
+    widget->color = widget_desc->color;
+    widget->border.color = widget_desc->border.color;
 
-        sum_color += widget_desc->color[color_index];
-    }
+    f32 sum_color = widget->color.r + widget->color.g + widget->color.b + widget->color.a;
 
     // NOTE: Assing default color.
     if (sum_color == 0.0f)
     {
-        widget->color[0] = 0.0f;
-        widget->color[1] = 0.0f;
-        widget->color[2] = 0.0f;
-        widget->color[3] = 1.0f;
+        widget->color.r = 0.0f;
+        widget->color.g = 0.0f;
+        widget->color.b = 0.0f;
+        widget->color.a = 1.0f;
     }
     
     for (i32 axis = 0; axis < UI_WIDGET_AXIS_COUNT; ++axis)
@@ -599,7 +638,7 @@ static void ui_widget_calculate_layout(ui_widget_t* root_widget, ui_widget_axis_
         {
             layout_at += child_widget->fixed_size[axis];
         }
-        
+
         if (axis == UI_WIDGET_AXIS_X)
         {
             child_widget->rect.x = root_widget->rect.x + child_widget->position.xy[axis];
@@ -661,10 +700,10 @@ static void ui_widget_calculate_draw_rect_commands(ui_widget_t* root_widget)
             .rect.y = child_widget->rect.y,
             .rect.width = child_widget->rect.width,
             .rect.height = child_widget->rect.height,
-            .rect.r = child_widget->color[0],
-            .rect.g = child_widget->color[1],
-            .rect.b = child_widget->color[2],
-            .rect.a = child_widget->color[3],
+            .rect.r = child_widget->color.r,
+            .rect.g = child_widget->color.g,
+            .rect.b = child_widget->color.b,
+            .rect.a = child_widget->color.a,
         };
     }
 
@@ -690,10 +729,10 @@ static void ui_widget_calculate_draw_border_commands(ui_widget_t* root_widget)
                 .border.y = child_widget->rect.y - child_widget->border.thickness * 0.5f,
                 .border.width = child_widget->rect.width + child_widget->border.thickness,
                 .border.height = child_widget->rect.height + child_widget->border.thickness,
-                .border.r = child_widget->border.color[0],
-                .border.g = child_widget->border.color[1],
-                .border.b = child_widget->border.color[2],
-                .border.a = child_widget->border.color[3],
+                .border.r = child_widget->border.color.r,
+                .border.g = child_widget->border.color.g,
+                .border.b = child_widget->border.color.b,
+                .border.a = child_widget->border.color.a,
                 .border.thickness = child_widget->border.thickness,
             };  
         }
