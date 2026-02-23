@@ -50,6 +50,7 @@ typedef enum ui_widget_draw_kind_t
 {
     UI_WIDGET_DRAW_RECT,
     UI_WIDGET_DRAW_BORDER,
+    UI_WIDGET_DRAW_TEXT,
 } ui_widget_draw_kind_t;
 
 typedef struct ui_widget_draw_rect_t
@@ -67,6 +68,14 @@ typedef struct ui_widget_draw_border_t
     f32 thickness;
 } ui_widget_draw_border_t;
 
+typedef struct ui_widget_draw_text_t
+{
+    f32 x, y;
+    f32 width, height;
+    const char* label;
+    u32 length;
+} ui_widget_draw_text_t;
+
 typedef struct ui_widget_draw_command_t
 {
     ui_widget_draw_kind_t kind;
@@ -75,6 +84,7 @@ typedef struct ui_widget_draw_command_t
     {
         ui_widget_draw_rect_t rect;
         ui_widget_draw_border_t border;
+        ui_widget_draw_text_t text;
     };
 } ui_widget_draw_command_t;
 
@@ -96,6 +106,12 @@ typedef struct ui_widget_border_t
     ui_widget_color_t color;
 } ui_widget_border_t;
 
+typedef struct ui_widget_text_t
+{
+    const char* label;
+    u32 length;
+} ui_widget_text_t;
+
 typedef struct ui_widget_desc_t
 {
     ui_widget_size_t size[UI_WIDGET_AXIS_COUNT];
@@ -103,6 +119,7 @@ typedef struct ui_widget_desc_t
     f32 padding;
     ui_widget_color_t color;
     ui_widget_border_t border;
+    ui_widget_text_t text;
 } ui_widget_desc_t;
 
 typedef struct ui_widget_list_t
@@ -121,6 +138,8 @@ typedef struct ui_widget_t
     f32 padding;
     ui_widget_color_t color;
     ui_widget_border_t border;
+    char label[32];
+    u32 label_length;
 
     struct ui_widget_t* parent;
     struct ui_widget_t* hash_next;
@@ -482,6 +501,14 @@ static inline void ui_widget_build(ui_widget_t* widget, const char* widget_name,
     widget->child_axis = widget_desc->child_axis;
     widget->padding = widget_desc->padding;
 
+    if (widget_desc->text.label && widget_desc->text.length)
+    {
+        assert(widget_desc->text.length < array_count(widget->label));
+        memcpy(widget->label, widget_desc->text.label, widget_desc->text.length);
+        widget->label[widget_desc->text.length] = '\0';
+        widget->label_length = widget_desc->text.length;   
+    }
+
     // TODO: Right now, it is not supported to position widgets inside a widget group except it is directly under the root widget.
     if ((x != 0 || y != 0) && (widget->parent != global_ui->root_widget))
     {
@@ -705,6 +732,23 @@ static void ui_widget_calculate_draw_rect_commands(ui_widget_t* root_widget)
             .rect.b = child_widget->color.b,
             .rect.a = child_widget->color.a,
         };
+
+        if (child_widget->label && child_widget->label_length)
+        {
+            assert(global_ui->widget_draw_command_count < array_count(global_ui->widget_draw_commands) && "[UI] Invalid draw command count.");
+            ui_widget_draw_command_t* widget_draw_text_command = global_ui->widget_draw_commands + global_ui->widget_draw_command_count++;
+
+            *widget_draw_text_command = (ui_widget_draw_command_t)
+            {
+                .kind = UI_WIDGET_DRAW_TEXT,
+                .text.x = child_widget->rect.x,
+                .text.y = child_widget->rect.y,
+                .text.width = child_widget->rect.width,
+                .text.height = child_widget->rect.height,
+                .text.label = child_widget->label,
+                .text.length = child_widget->label_length,
+            };
+        }
     }
 
     for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)

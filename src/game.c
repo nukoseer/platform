@@ -1290,10 +1290,13 @@ update_function(update)
                     .color = ui_widget_color(0.06f, 0.06f, 0.06f, 1.0f),
                     .size = { ui_widget_parent_size(1.0f), ui_widget_pixel_size(24.0f) },
                 });
+                country_name_t country_name = country_get_name(game->country_index);
+                
                 ui_widget("ui-widget-2", (ui_widget_desc_t)
                 {
                     .size = { ui_widget_parent_size(1.0f), ui_widget_parent_size(1.0f) },
                     .color = ui_widget_color(0.04f, 0.04f, 0.04f, 1.0f),
+                    .text = { country_name.name, country_name.length },
                 });
                 ui_widget("ui-widget-3", (ui_widget_desc_t)
                 {
@@ -1584,6 +1587,19 @@ render_function(render)
                 f32 thickness = draw_border->thickness;
 
                 graphics->draw_rect(x, y, width, height, false, thickness, color[0], color[1], color[2], color[3]);
+            }
+            else if (command->kind == UI_WIDGET_DRAW_TEXT)
+            {
+                ui_widget_draw_text_t* draw_text = &command->text;
+                f32 x = draw_text->x;
+                f32 y = draw_text->y;
+                f32 width = draw_text->width;
+                f32 height = draw_text->height;
+                const char* label = draw_text->label;
+                u32 length = draw_text->length;
+                
+                graphics->draw_text(game->font, label, length, 0.6f, 0.6f, 0.6f, 1.0f,
+                                    TEXT_ALIGNMENT_LEADING, x, y, width, height);
             }
             else
             {
