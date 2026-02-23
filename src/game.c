@@ -1219,6 +1219,16 @@ init_function(init)
 #endif
 }
 
+static ui_measure_text_width_function(measure_text_width)
+{
+    graphics_2d_font_t graphics_font = *(graphics_2d_font_t*)font;
+    graphics_t* graphics = (graphics_t*)parameter;
+
+    f32 text_width = graphics->measure_text_width(graphics_font, text, text_length);
+
+    return text_width;
+}
+
 update_function(update)
 {
     memory_t* memory = platform->memory;
@@ -1267,7 +1277,10 @@ update_function(update)
         game->vignette = game->vignette == 0.0f ? 1.0f : 0.0f;
     }
 
-    ui_begin(game->memory_arena, (f32)platform->width, (f32)platform->height);
+    ui_begin(game->memory_arena, (f32)platform->width, (f32)platform->height, (ui_callback_list_t)
+    {
+        .measure_text_width = { (void*)measure_text_width, (void*)platform->graphics },
+    });
     {
         ui_widget_group_begin("ui-widget-group-1", 220, 220, (ui_widget_desc_t)
         {
@@ -1296,7 +1309,7 @@ update_function(update)
                 {
                     .size = { ui_widget_parent_size(1.0f), ui_widget_parent_size(1.0f) },
                     .color = ui_widget_color(0.04f, 0.04f, 0.04f, 1.0f),
-                    .text = { country_name.name, country_name.length },
+                    .label = ui_widget_label(&game->font, country_name.name, country_name.length),
                 });
                 ui_widget("ui-widget-3", (ui_widget_desc_t)
                 {
@@ -1595,10 +1608,10 @@ render_function(render)
                 f32 y = draw_text->y;
                 f32 width = draw_text->width;
                 f32 height = draw_text->height;
-                const char* label = draw_text->label;
+                const char* text = draw_text->text;
                 u32 length = draw_text->length;
                 
-                graphics->draw_text(game->font, label, length, 0.6f, 0.6f, 0.6f, 1.0f,
+                graphics->draw_text(game->font, text, length, 0.6f, 0.6f, 0.6f, 1.0f,
                                     TEXT_ALIGNMENT_LEADING, x, y, width, height);
             }
             else

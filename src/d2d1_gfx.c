@@ -6,13 +6,14 @@
 static d2d1_t global_d2d1 = { 0 };
 static dwrite_t global_dwrite = { 0 };
 
-static d2d1_t* d2d1_init(void)
+static d2d1_t* d2d1_init(f32 dpi)
 {
     HRESULT result = S_OK;
     d2d1_t* d2d1 = &global_d2d1;
     dwrite_t* dwrite = &global_dwrite;
 
     d2d1->dwrite = dwrite;
+    d2d1->dpi = dpi;
     
     result = DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, &IID_IDWriteFactory, (IUnknown**)&d2d1->dwrite->factory);
     assert(SUCCEEDED(result) && "[DWRITE] Failed to create factory.");

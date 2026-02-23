@@ -188,6 +188,13 @@ static bool set_process_dpi_aware(void)
     return result;
 }
 
+static f32 get_window_dpi(HWND hwnd)
+{
+    f32 dpi = (f32)GetDpiForWindow(hwnd);
+
+    return dpi;
+}
+
 static bool set_min_timer_resolution(void)
 {
     bool result = (timeBeginPeriod(1) == TIMERR_NOERROR);
@@ -551,7 +558,7 @@ static DWORD WINAPI main_thread(void* param)
     thread_pool_init(&thread_pool_queue, 8);
 
     window->d3d11 = d3d11_init();
-    window->d2d1 = d2d1_init();
+    window->d2d1 = d2d1_init(get_window_dpi(window->hwnd));
     window->swap_chain = d3d11_create_swap_chain(window->hwnd, window->d3d11);
 
     resize_back_buffer(window);
@@ -605,6 +612,7 @@ static DWORD WINAPI main_thread(void* param)
         .end_draw = gfx_2d_end_draw,
         .draw_text = gfx_2d_draw_text,
         .draw_rect = gfx_2d_draw_rect,
+        .measure_text_width = gfx_2d_measure_text_width,
     };
 
     io_t io =

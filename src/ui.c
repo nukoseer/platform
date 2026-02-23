@@ -1,3 +1,5 @@
+#define ui_measure_text_width_function(name) f32 name(void* font, const char* text, usize text_length, void* parameter)
+typedef ui_measure_text_width_function(ui_measure_text_width_f);
 
 typedef struct ui_widget_key
 {
@@ -72,7 +74,7 @@ typedef struct ui_widget_draw_text_t
 {
     f32 x, y;
     f32 width, height;
-    const char* label;
+    const char* text;
     u32 length;
 } ui_widget_draw_text_t;
 
@@ -106,11 +108,12 @@ typedef struct ui_widget_border_t
     ui_widget_color_t color;
 } ui_widget_border_t;
 
-typedef struct ui_widget_text_t
+typedef struct ui_widget_label_t
 {
-    const char* label;
+    void* font;
+    const char* text;
     u32 length;
-} ui_widget_text_t;
+} ui_widget_label_t;
 
 typedef struct ui_widget_desc_t
 {
@@ -119,7 +122,7 @@ typedef struct ui_widget_desc_t
     f32 padding;
     ui_widget_color_t color;
     ui_widget_border_t border;
-    ui_widget_text_t text;
+    ui_widget_label_t label;
 } ui_widget_desc_t;
 
 typedef struct ui_widget_list_t
@@ -138,8 +141,10 @@ typedef struct ui_widget_t
     f32 padding;
     ui_widget_color_t color;
     ui_widget_border_t border;
+    void* font;
     char label[32];
     u32 label_length;
+    f32 label_width;
 
     struct ui_widget_t* parent;
     struct ui_widget_t* hash_next;
@@ -159,6 +164,17 @@ typedef struct ui_stack_t
     u32 parent_count;
 } ui_stack_t;
 
+typedef struct ui_callback_t
+{
+    void* function;
+    void* parameter;
+} ui_callback_t;
+
+typedef struct ui_callback_list_t
+{
+    ui_callback_t measure_text_width;
+} ui_callback_list_t;
+
 typedef struct ui_t
 {
     memory_arena_t* arena;
@@ -168,6 +184,8 @@ typedef struct ui_t
     ui_widget_draw_command_t widget_draw_commands[64];
     u32 widget_draw_command_count;
     ui_widget_t* free_widgets;
+
+    ui_callback_list_t callback_list;
 } ui_t;
 
 #define UI_WIDGET_INITIAL_HASH 0xCBF29CE484222325ULL
@@ -249,6 +267,18 @@ static inline ui_widget_axis_t ui_widget_axis_y(void)
     ui_widget_axis_t widget_axis = UI_WIDGET_AXIS_Y;
 
     return widget_axis;
+}
+
+static inline ui_widget_label_t ui_widget_label(void* font, const char* label, u32 label_length)
+{
+    ui_widget_label_t widget_label =
+    {
+        .font = font,
+        .text = label,
+        .length = label_length,
+    };
+
+    return widget_label;
 }
 
 static inline ui_widget_color_t ui_widget_color(f32 r, f32 g, f32 b, f32 a)
@@ -501,12 +531,15 @@ static inline void ui_widget_build(ui_widget_t* widget, const char* widget_name,
     widget->child_axis = widget_desc->child_axis;
     widget->padding = widget_desc->padding;
 
-    if (widget_desc->text.label && widget_desc->text.length)
+    if (widget_desc->label.text && widget_desc->label.length)
     {
-        assert(widget_desc->text.length < array_count(widget->label));
-        memcpy(widget->label, widget_desc->text.label, widget_desc->text.length);
-        widget->label[widget_desc->text.length] = '\0';
-        widget->label_length = widget_desc->text.length;   
+        widget->font = widget_desc->label.font;
+        assert(widget_desc->label.length < array_count(widget->label));
+        memcpy(widget->label, widget_desc->label.text, widget_desc->label.length);
+        widget->label[widget_desc->label.length] = '\0';
+        widget->label_length = widget_desc->label.length;
+        ui_measure_text_width_f* measure_text_width = (ui_measure_text_width_f*)global_ui->callback_list.measure_text_width.function;
+        widget->label_width = measure_text_width(widget->font, widget->label, widget->label_length, global_ui->callback_list.measure_text_width.parameter);
     }
 
     // TODO: Right now, it is not supported to position widgets inside a widget group except it is directly under the root widget.
@@ -698,6 +731,15 @@ static void ui_widget_print_info(ui_widget_t* root_widget)
             root_widget->rect.x, root_widget->rect.y,
             root_widget->rect.width, root_widget->rect.height);
 
+    if (root_widget->label && root_widget->label_length)
+    {
+        fprintf(stderr, 
+            "   - label: %s\n"
+            "   - label length: %u\n"
+            "   - label width: %f\n",
+            root_widget->label, root_widget->label_length, root_widget->label_width);
+    }
+
     for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
     {
         ui_widget_print_info(child_widget);
@@ -745,7 +787,7 @@ static void ui_widget_calculate_draw_rect_commands(ui_widget_t* root_widget)
                 .text.y = child_widget->rect.y,
                 .text.width = child_widget->rect.width,
                 .text.height = child_widget->rect.height,
-                .text.label = child_widget->label,
+                .text.text = child_widget->label,
                 .text.length = child_widget->label_length,
             };
         }
@@ -788,13 +830,14 @@ static void ui_widget_calculate_draw_border_commands(ui_widget_t* root_widget)
     }
 }
 
-static void ui_begin(memory_arena_t* memory_arena, f32 width, f32 height)
+static void ui_begin(memory_arena_t* memory_arena, f32 width, f32 height, ui_callback_list_t callback_list)
 {
     if (!global_ui)
     {
         memory_arena_t* ui_arena = ma_create_sub_arena(memory_arena, MIBIBYTES(4));
         global_ui = (ui_t*)ma_push_size_zero(ui_arena, sizeof(ui_t));
         global_ui->arena = ui_arena;
+        global_ui->callback_list = callback_list;
     }
 
     // NOTE: This is for making sure that ui_end() is called at the end of previous frame.
