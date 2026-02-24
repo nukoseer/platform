@@ -480,6 +480,9 @@ typedef graphics_2d_draw_rect_function(graphics_2d_draw_rect_f);
 #define graphics_2d_measure_text_width_function(name) f32 name(graphics_2d_font_t font, const char* text, size_t text_length)
 typedef graphics_2d_measure_text_width_function(graphics_2d_measure_text_width_f);
 
+#define graphics_2d_get_line_height_function(name) f32 name(graphics_2d_font_t font)
+typedef graphics_2d_get_line_height_function(graphics_2d_get_line_height_f);
+
 typedef struct graphics_t
 {
     union
@@ -535,6 +538,7 @@ typedef struct graphics_t
             graphics_2d_draw_text_f* draw_text;
             graphics_2d_draw_rect_f* draw_rect;
             graphics_2d_measure_text_width_f* measure_text_width;
+            graphics_2d_get_line_height_f* get_line_height;
         };
 
         void* functions_2d[sizeof(struct graphics_2d_functions) / sizeof(void*)];

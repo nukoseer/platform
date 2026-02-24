@@ -1,6 +1,9 @@
 #define ui_measure_text_width_function(name) f32 name(void* font, const char* text, usize text_length, void* parameter)
 typedef ui_measure_text_width_function(ui_measure_text_width_f);
 
+#define ui_get_line_height_function(name) f32 name(void* font, void* parameter)
+typedef ui_get_line_height_function(ui_get_line_height_f);
+
 typedef struct ui_widget_key
 {
     u64 value;
@@ -108,11 +111,24 @@ typedef struct ui_widget_border_t
     ui_widget_color_t color;
 } ui_widget_border_t;
 
+typedef enum ui_widget_alignment_kind_t
+{
+    UI_WIDGET_ALIGNMENT_LEADING,
+    UI_WIDGET_ALIGNMENT_TRAILING,
+    UI_WIDGET_ALIGNMENT_CENTER,
+} ui_widget_alignment_kind_t;
+
+typedef struct ui_widget_alignment_t
+{
+    u32 value[UI_WIDGET_AXIS_COUNT];
+} ui_widget_alignment_t;
+
 typedef struct ui_widget_label_t
 {
     void* font;
     const char* text;
     u32 length;
+    ui_widget_alignment_t alignment;
 } ui_widget_label_t;
 
 typedef struct ui_widget_desc_t
@@ -145,6 +161,8 @@ typedef struct ui_widget_t
     char label[32];
     u32 label_length;
     f32 label_width;
+    f32 label_height;
+    ui_widget_alignment_t label_alignment;
 
     struct ui_widget_t* parent;
     struct ui_widget_t* hash_next;
@@ -156,6 +174,7 @@ typedef struct ui_widget_t
 
     f32 fixed_size[UI_WIDGET_AXIS_COUNT];
     ui_widget_rect_t rect;
+    ui_widget_rect_t label_rect;
 } ui_widget_t;
 
 typedef struct ui_stack_t
@@ -173,6 +192,7 @@ typedef struct ui_callback_t
 typedef struct ui_callback_list_t
 {
     ui_callback_t measure_text_width;
+    ui_callback_t get_line_height;
 } ui_callback_list_t;
 
 typedef struct ui_t
@@ -269,13 +289,45 @@ static inline ui_widget_axis_t ui_widget_axis_y(void)
     return widget_axis;
 }
 
-static inline ui_widget_label_t ui_widget_label(void* font, const char* label, u32 label_length)
+static inline ui_widget_alignment_t ui_widget_align_center(void)
+{
+    ui_widget_alignment_t widget_alignment =
+    {
+        .value = { UI_WIDGET_ALIGNMENT_CENTER, UI_WIDGET_ALIGNMENT_CENTER },
+    };
+
+    return widget_alignment;
+}
+
+static inline ui_widget_alignment_t ui_widget_align_leading(void)
+{
+    ui_widget_alignment_t widget_alignment =
+    {
+        .value = { UI_WIDGET_ALIGNMENT_LEADING, UI_WIDGET_ALIGNMENT_LEADING },
+    };
+
+    return widget_alignment;
+}
+
+static inline ui_widget_alignment_t ui_widget_align_trailing(void)
+{
+    ui_widget_alignment_t widget_alignment =
+    {
+        .value = { UI_WIDGET_ALIGNMENT_TRAILING, UI_WIDGET_ALIGNMENT_TRAILING },
+    };
+
+    return widget_alignment;
+}
+
+static inline ui_widget_label_t ui_widget_label(void* font, const char* label, u32 label_length,
+                                                ui_widget_alignment_t alignment)
 {
     ui_widget_label_t widget_label =
     {
         .font = font,
         .text = label,
         .length = label_length,
+        .alignment = alignment,
     };
 
     return widget_label;
@@ -539,7 +591,10 @@ static inline void ui_widget_build(ui_widget_t* widget, const char* widget_name,
         widget->label[widget_desc->label.length] = '\0';
         widget->label_length = widget_desc->label.length;
         ui_measure_text_width_f* measure_text_width = (ui_measure_text_width_f*)global_ui->callback_list.measure_text_width.function;
+        ui_get_line_height_f* get_line_height = (ui_get_line_height_f*)global_ui->callback_list.get_line_height.function;
         widget->label_width = measure_text_width(widget->font, widget->label, widget->label_length, global_ui->callback_list.measure_text_width.parameter);
+        widget->label_height = get_line_height(widget->font, global_ui->callback_list.get_line_height.parameter);
+        widget->label_alignment = widget_desc->label.alignment;
     }
 
     // TODO: Right now, it is not supported to position widgets inside a widget group except it is directly under the root widget.
@@ -686,6 +741,65 @@ static void ui_widget_calculate_size_violations(ui_widget_t* root_widget, ui_wid
     }
 }
 
+static void ui_widget_calculate_label_alignment(ui_widget_t* widget, ui_widget_axis_t axis)
+{
+    if (widget->label && widget->label_length)
+    {
+        switch (widget->label_alignment.value[axis])
+        {
+            case UI_WIDGET_ALIGNMENT_LEADING:
+            {
+                if (axis == UI_WIDGET_AXIS_X)
+                {
+                    widget->label_rect.x = widget->rect.x + widget->padding;
+                }
+                else if (axis == UI_WIDGET_AXIS_Y)
+                {
+                    widget->label_rect.y = widget->rect.y + widget->padding;
+                }
+            } break;
+
+            case UI_WIDGET_ALIGNMENT_TRAILING:
+            {
+                if (axis == UI_WIDGET_AXIS_X)
+                {
+                    widget->label_rect.x = widget->rect.x + widget->rect.width - widget->padding - widget->label_width;   
+                }
+                else if (axis == UI_WIDGET_AXIS_Y)
+                {
+                    widget->label_rect.y = widget->rect.y + widget->rect.height - widget->padding - widget->label_height;
+                }
+            } break;
+
+            case UI_WIDGET_ALIGNMENT_CENTER:
+            {
+                if (axis == UI_WIDGET_AXIS_X)
+                {
+                    widget->label_rect.x = widget->rect.x + (widget->rect.width - widget->label_width) * 0.5f;
+                }
+                else if (axis == UI_WIDGET_AXIS_Y)
+                {
+                    widget->label_rect.y = widget->rect.y + (widget->rect.height - widget->label_height) * 0.5f;
+                }
+            } break;
+
+            default:
+            {
+                assert(!"[UI] Invalid label alignment.");
+            } break;
+        }
+
+        if (axis == UI_WIDGET_AXIS_X)
+        {
+            widget->label_rect.width = widget->label_width;
+        }
+        else if (axis == UI_WIDGET_AXIS_Y)
+        {
+            widget->label_rect.height = widget->label_height;
+        }
+    }
+}
+
 static void ui_widget_calculate_layout(ui_widget_t* root_widget, ui_widget_axis_t axis)
 {
     f32 layout_at = root_widget->padding;
@@ -703,11 +817,15 @@ static void ui_widget_calculate_layout(ui_widget_t* root_widget, ui_widget_axis_
         {
             child_widget->rect.x = root_widget->rect.x + child_widget->position.xy[axis];
             child_widget->rect.width = child_widget->fixed_size[axis];
+
+            ui_widget_calculate_label_alignment(child_widget, axis);
         }
         else if (axis == UI_WIDGET_AXIS_Y)
         {
             child_widget->rect.y = root_widget->rect.y + child_widget->position.xy[axis];
             child_widget->rect.height = child_widget->fixed_size[axis];
+
+            ui_widget_calculate_label_alignment(child_widget, axis);
         }
         else
         {
@@ -736,8 +854,10 @@ static void ui_widget_print_info(ui_widget_t* root_widget)
         fprintf(stderr, 
             "   - label: %s\n"
             "   - label length: %u\n"
-            "   - label width: %f\n",
-            root_widget->label, root_widget->label_length, root_widget->label_width);
+            "   - label width: %f\n"
+            "   - label height: %f\n",
+            root_widget->label, root_widget->label_length,
+            root_widget->label_width, root_widget->label_height);
     }
 
     for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
@@ -749,7 +869,7 @@ static void ui_widget_print_info(ui_widget_t* root_widget)
     {
         fprintf(stderr, "[UI] State:\n"
             "   - arena remaining size: %zu\n"
-            "   - draw rect count: %u\n",
+            "   - draw command count: %u\n",
                 ma_get_remaining_size(global_ui->arena),
                 global_ui->widget_draw_command_count);
     }
@@ -783,10 +903,10 @@ static void ui_widget_calculate_draw_rect_commands(ui_widget_t* root_widget)
             *widget_draw_text_command = (ui_widget_draw_command_t)
             {
                 .kind = UI_WIDGET_DRAW_TEXT,
-                .text.x = child_widget->rect.x,
-                .text.y = child_widget->rect.y,
-                .text.width = child_widget->rect.width,
-                .text.height = child_widget->rect.height,
+                .text.x = child_widget->label_rect.x,
+                .text.y = child_widget->label_rect.y,
+                .text.width = child_widget->label_rect.width,
+                .text.height = child_widget->label_rect.height,
                 .text.text = child_widget->label,
                 .text.length = child_widget->label_length,
             };

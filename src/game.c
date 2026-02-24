@@ -1229,6 +1229,16 @@ static ui_measure_text_width_function(measure_text_width)
     return text_width;
 }
 
+static ui_get_line_height_function(get_line_height)
+{
+    graphics_2d_font_t graphics_font = *(graphics_2d_font_t*)font;
+    graphics_t* graphics = (graphics_t*)parameter;
+
+    f32 line_height = graphics->get_line_height(graphics_font);
+
+    return line_height;
+}
+
 update_function(update)
 {
     memory_t* memory = platform->memory;
@@ -1279,7 +1289,8 @@ update_function(update)
 
     ui_begin(game->memory_arena, (f32)platform->width, (f32)platform->height, (ui_callback_list_t)
     {
-        .measure_text_width = { (void*)measure_text_width, (void*)platform->graphics },
+        .measure_text_width = { measure_text_width, platform->graphics },
+        .get_line_height = { get_line_height, platform->graphics },
     });
     {
         ui_widget_group_begin("ui-widget-group-1", 220, 220, (ui_widget_desc_t)
@@ -1309,7 +1320,7 @@ update_function(update)
                 {
                     .size = { ui_widget_parent_size(1.0f), ui_widget_parent_size(1.0f) },
                     .color = ui_widget_color(0.04f, 0.04f, 0.04f, 1.0f),
-                    .label = ui_widget_label(&game->font, country_name.name, country_name.length),
+                    .label = ui_widget_label(&game->font, country_name.name, country_name.length, ui_widget_align_center()),
                 });
                 ui_widget("ui-widget-3", (ui_widget_desc_t)
                 {
@@ -1587,6 +1598,8 @@ render_function(render)
                 f32 color[4] = { draw_rect->r, draw_rect->g, draw_rect->b, draw_rect->a };
                 
                 graphics->draw_rect(x, y, width, height, true, 0.0f, color[0], color[1], color[2], color[3]);
+                // graphics->draw_rect(x + (width - 1.0f) * 0.5f, y, 1.0f, height, true, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f);
+                // graphics->draw_rect(x, y + (height - 1.0f) * 0.5f, width, 1.0f, true, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f);
             }
             else if (command->kind == UI_WIDGET_DRAW_BORDER)
             {

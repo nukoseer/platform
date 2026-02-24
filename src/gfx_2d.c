@@ -4,7 +4,8 @@ typedef struct gfx_2d_font_t
     u32 generation;
     IDWriteTextFormat* text_format;
     char font_name[32];
-    float font_size;
+    f32 font_size;
+    f32 line_height;
     u32 next_free_index;
 } gfx_2d_font_t;
 
@@ -71,6 +72,20 @@ static graphics_2d_create_font_function(gfx_2d_create_font)
     result = IDWriteTextFormat_SetWordWrapping(text_format, DWRITE_WORD_WRAPPING_NO_WRAP);
     assert(SUCCEEDED(result) && "[GFX2D] Failed to set word wrapping.");
 
+    IDWriteTextLayout* text_layout = 0;
+    const f32 max_width = 10000.0f;
+    const f32 max_height = 10000.0f;
+
+    result = IDWriteFactory_CreateTextLayout(global_d2d1.dwrite->factory, L"A", 1,
+                                             text_format,
+                                             max_width, max_height, &text_layout);
+    assert(SUCCEEDED(result) && text_layout && "[GFX2D] Failed to create text layout.");
+
+    DWRITE_TEXT_METRICS text_metrics = { 0 };
+    IDWriteTextLayout_GetMetrics(text_layout, &text_metrics);
+    f32 line_height = text_metrics.height * (global_d2d1.dpi / 96.0f);
+    IDWriteTextLayout_Release(text_layout);
+
     u32 font_index = next_font_index();
     gfx_2d_font_t* gfx_2d_font = global_fonts + font_index;
     u32 font_generation = gfx_2d_font->generation;
@@ -80,6 +95,7 @@ static graphics_2d_create_font_function(gfx_2d_create_font)
         .generation = font_generation,
         .text_format = text_format,
         .font_size = font_size,
+        .line_height = line_height,
     };
     
     memcpy(gfx_2d_font->font_name, font_name, length);
@@ -235,4 +251,20 @@ static graphics_2d_measure_text_width_function(gfx_2d_measure_text_width)
 
     return text_width;
 }
-    
+
+static graphics_2d_get_line_height_function(gfx_2d_get_line_height)
+{
+    u32 font_generation = get_generation(font.platform);
+    u32 font_index = get_index(font.platform);
+    gfx_2d_font_t* gfx_2d_font = global_fonts + font_index;
+
+    if (font_generation != gfx_2d_font->generation)
+    {
+        assert(!"[GFX2D] Font generation does not match.");
+        return 0.0f;
+    }
+
+    return gfx_2d_font->line_height;
+}
+
+

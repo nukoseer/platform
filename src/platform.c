@@ -613,6 +613,7 @@ static DWORD WINAPI main_thread(void* param)
         .draw_text = gfx_2d_draw_text,
         .draw_rect = gfx_2d_draw_rect,
         .measure_text_width = gfx_2d_measure_text_width,
+        .get_line_height = gfx_2d_get_line_height,
     };
 
     io_t io =
