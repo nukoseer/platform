@@ -1312,7 +1312,7 @@ update_function(update)
                 ui_widget("ui-widget-1", (ui_widget_desc_t)
                 {
                     .color = ui_widget_color(0.06f, 0.06f, 0.06f, 1.0f),
-                    .size = { ui_widget_parent_size(1.0f), ui_widget_pixel_size(24.0f) },
+                    .size = { ui_widget_parent_size(1.0f), ui_widget_pixel_size(200.0f) },
                 });
                 country_name_t country_name = country_get_name(game->country_index);
                 
@@ -1321,11 +1321,17 @@ update_function(update)
                     .size = { ui_widget_parent_size(1.0f), ui_widget_parent_size(1.0f) },
                     .color = ui_widget_color(0.04f, 0.04f, 0.04f, 1.0f),
                     .label = ui_widget_label(&game->font, country_name.name, country_name.length, ui_widget_align_center()),
+                    .padding = 16.0f,
                 });
                 ui_widget("ui-widget-3", (ui_widget_desc_t)
                 {
                     .color = ui_widget_color(0.06f, 0.06f, 0.06f, 1.0f),
-                    .size = { ui_widget_parent_size(1.0f), ui_widget_pixel_size(24.0f) },
+                    .size = { ui_widget_parent_size(1.0f), ui_widget_pixel_size(40.0f) },
+                });
+                ui_widget("ui-widget-4", (ui_widget_desc_t)
+                {
+                    .color = ui_widget_color(0.06f, 0.06f, 0.06f, 1.0f),
+                    .size = { ui_widget_parent_size(1.0f), ui_widget_parent_size(1.0f) },
                 });
             }
             ui_widget_group_end();

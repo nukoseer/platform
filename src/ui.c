@@ -691,6 +691,7 @@ static void ui_widget_calculate_size_violations(ui_widget_t* root_widget, ui_wid
     {
         f32 total_child_size = 0.0f;
         f32 parent_dependent_child_size = 0.0f;
+        f32 pixel_child_size = 0.0f;
         
         for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
         {
@@ -700,39 +701,68 @@ static void ui_widget_calculate_size_violations(ui_widget_t* root_widget, ui_wid
             {
                 parent_dependent_child_size += child_widget->fixed_size[axis];
             }
+            else if (child_widget->size[axis].kind == UI_WIDGET_SIZE_PIXEL)
+            {
+                pixel_child_size += child_widget->fixed_size[axis];
+            }
         }
 
-        f32 violation_amount = total_child_size - (root_widget->fixed_size[axis] - root_widget->padding * 2.0f);
-        f32 fix_percentage = 0.0f;
+        f32 remaining_size = (root_widget->fixed_size[axis] - root_widget->padding * 2.0f) - pixel_child_size;
 
-        // NOTE: Right now we prefer to correct size violations by reducing the sizes of parent dependent children.
-        // If there are no parent dependent children, we reduce the sizes of all children.
-        // Idk if this makes sense.
-        if (parent_dependent_child_size == 0.0f)
-        {
-            fix_percentage = violation_amount / total_child_size;
-        }
-        else
-        {
-            fix_percentage = violation_amount / parent_dependent_child_size;
-        }
-        
-        if (violation_amount > 0.0f)
+        if (remaining_size <= 0.0f)
         {
             for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
             {
-                if (parent_dependent_child_size == 0.0f)
+                if (child_widget->size[axis].kind == UI_WIDGET_SIZE_PARENT)
                 {
-                    f32 fix_amount = fix_percentage * child_widget->fixed_size[axis];
-                    child_widget->fixed_size[axis] -= fix_amount;
-                }
-                else if (child_widget->size[axis].kind == UI_WIDGET_SIZE_PARENT)
-                {
-                    f32 fix_amount = fix_percentage * child_widget->fixed_size[axis];
-                    child_widget->fixed_size[axis] -= fix_amount;
+                    child_widget->fixed_size[axis] = 0.0f;
                 }
             }
         }
+        else if (parent_dependent_child_size > remaining_size && parent_dependent_child_size > 0.0f)
+        {
+            f32 scale = remaining_size / parent_dependent_child_size;
+
+            for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
+            {
+                if (child_widget->size[axis].kind == UI_WIDGET_SIZE_PARENT)
+                {
+                    child_widget->fixed_size[axis] *= scale;
+                }
+            }
+        }
+        
+        // f32 violation_amount = total_child_size - (root_widget->fixed_size[axis] - root_widget->padding * 2.0f);
+        // f32 fix_percentage = 0.0f;
+
+        // // NOTE: Right now we prefer to correct size violations by reducing the sizes of parent dependent children.
+        // // If there are no parent dependent children, we reduce the sizes of all children.
+        // // Idk if this makes sense.
+        // if (parent_dependent_child_size == 0.0f)
+        // {
+        //     fix_percentage = violation_amount / total_child_size;
+        // }
+        // else
+        // {
+        //     fix_percentage = violation_amount / parent_dependent_child_size;
+        // }
+        
+        // if (violation_amount > 0.0f)
+        // {
+        //     for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
+        //     {
+        //         if (parent_dependent_child_size == 0.0f)
+        //         {
+        //             f32 fix_amount = fix_percentage * child_widget->fixed_size[axis];
+        //             child_widget->fixed_size[axis] -= fix_amount;
+        //         }
+        //         else if (child_widget->size[axis].kind == UI_WIDGET_SIZE_PARENT)
+        //         {
+        //             f32 fix_amount = fix_percentage * child_widget->fixed_size[axis];
+        //             child_widget->fixed_size[axis] -= fix_amount;
+        //         }
+        //     }
+        // }
     }
 
     for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
@@ -897,6 +927,18 @@ static void ui_widget_calculate_draw_rect_commands(ui_widget_t* root_widget)
 
         if (child_widget->label && child_widget->label_length)
         {
+            f32 border_x = child_widget->label_rect.x - child_widget->padding;
+            f32 border_y = child_widget->label_rect.y - child_widget->padding;
+            f32 border_width = child_widget->label_rect.width + child_widget->padding * 2.0f;
+            f32 border_height = child_widget->label_rect.height + child_widget->padding * 2.0f;
+
+            if (border_x < child_widget->rect.x || border_y < child_widget->rect.y ||
+                border_x + border_width > child_widget->rect.x + child_widget->rect.width ||
+                border_y + border_height > child_widget->rect.y + child_widget->rect.height)
+            {
+                continue;
+            }
+            
             assert(global_ui->widget_draw_command_count < array_count(global_ui->widget_draw_commands) && "[UI] Invalid draw command count.");
             ui_widget_draw_command_t* widget_draw_text_command = global_ui->widget_draw_commands + global_ui->widget_draw_command_count++;
 
@@ -909,6 +951,22 @@ static void ui_widget_calculate_draw_rect_commands(ui_widget_t* root_widget)
                 .text.height = child_widget->label_rect.height,
                 .text.text = child_widget->label,
                 .text.length = child_widget->label_length,
+            };
+
+            ui_widget_draw_command_t* widget_draw_border_command = global_ui->widget_draw_commands + global_ui->widget_draw_command_count++;
+
+            *widget_draw_border_command = (ui_widget_draw_command_t)
+            {
+                .kind = UI_WIDGET_DRAW_BORDER,
+                .border.x = child_widget->label_rect.x - child_widget->padding,
+                .border.y = child_widget->label_rect.y - child_widget->padding,
+                .border.width = child_widget->label_rect.width + child_widget->padding * 2.0f,
+                .border.height = child_widget->label_rect.height + child_widget->padding * 2.0f,
+                .border.r = 1.0f,
+                .border.g = 1.0f,
+                .border.b = 1.0f,
+                .border.a = 1.0f,
+                .border.thickness = 1.0f,
             };
         }
     }
@@ -967,8 +1025,10 @@ static void ui_begin(memory_arena_t* memory_arena, f32 width, f32 height, ui_cal
     ui_widget_t* root_widget = ui_widget_get(root_widget_key);
 
     root_widget->name = "root_widget";
-    root_widget->size[0] = ui_widget_pixel_size(width);
-    root_widget->size[1] = ui_widget_pixel_size(height);
+    root_widget->size[UI_WIDGET_AXIS_X] = ui_widget_pixel_size(width);
+    root_widget->size[UI_WIDGET_AXIS_Y] = ui_widget_pixel_size(height);
+    root_widget->rect.width = root_widget->size[UI_WIDGET_AXIS_X].value;
+    root_widget->rect.height = root_widget->size[UI_WIDGET_AXIS_Y].value;
     root_widget->child_axis = UI_WIDGET_AXIS_Y;
 
     global_ui->root_widget = root_widget;
