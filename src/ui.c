@@ -13,6 +13,7 @@ typedef enum ui_widget_size_kind_t
 {
     UI_WIDGET_SIZE_PIXEL,
     UI_WIDGET_SIZE_PARENT,
+    UI_WIDGET_SIZE_CONTENT,
     
     UI_WIDGET_SIZE_COUNT,
 } ui_widget_size_kind_t;
@@ -75,6 +76,7 @@ typedef struct ui_widget_draw_border_t
 
 typedef struct ui_widget_draw_text_t
 {
+    void* font;
     f32 x, y;
     f32 width, height;
     const char* text;
@@ -160,8 +162,7 @@ typedef struct ui_widget_t
     void* font;
     char label[32];
     u32 label_length;
-    f32 label_width;
-    f32 label_height;
+    f32 label_size[UI_WIDGET_AXIS_COUNT];
     ui_widget_alignment_t label_alignment;
 
     struct ui_widget_t* parent;
@@ -257,6 +258,17 @@ static inline ui_widget_size_t ui_widget_pixel_size(f32 pixel_value)
     {
         .kind = UI_WIDGET_SIZE_PIXEL,
         .value = pixel_value,
+    };
+
+    return widget_size;
+}
+
+static inline ui_widget_size_t ui_widget_content_size(void)
+{
+    ui_widget_size_t widget_size =
+    {
+        .kind = UI_WIDGET_SIZE_CONTENT,
+        .value = 0.0f,
     };
 
     return widget_size;
@@ -592,8 +604,8 @@ static inline void ui_widget_build(ui_widget_t* widget, const char* widget_name,
         widget->label_length = widget_desc->label.length;
         ui_measure_text_width_f* measure_text_width = (ui_measure_text_width_f*)global_ui->callback_list.measure_text_width.function;
         ui_get_line_height_f* get_line_height = (ui_get_line_height_f*)global_ui->callback_list.get_line_height.function;
-        widget->label_width = measure_text_width(widget->font, widget->label, widget->label_length, global_ui->callback_list.measure_text_width.parameter);
-        widget->label_height = get_line_height(widget->font, global_ui->callback_list.get_line_height.parameter);
+        widget->label_size[UI_WIDGET_AXIS_X] = measure_text_width(widget->font, widget->label, widget->label_length, global_ui->callback_list.measure_text_width.parameter);
+        widget->label_size[UI_WIDGET_AXIS_Y] = get_line_height(widget->font, global_ui->callback_list.get_line_height.parameter);
         widget->label_alignment = widget_desc->label.alignment;
     }
 
@@ -639,6 +651,27 @@ static void ui_widget_calculate_pixel_sizes(ui_widget_t* root_widget, ui_widget_
     for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
     {
         ui_widget_calculate_pixel_sizes(child_widget, axis);
+    }
+}
+
+static void ui_widget_calculate_content_sizes(ui_widget_t* root_widget, ui_widget_axis_t axis)
+{
+    if (root_widget->size[axis].kind == UI_WIDGET_SIZE_CONTENT)
+    {
+        f32 content_size = root_widget->label_size[axis];
+
+        for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
+        {
+            ui_widget_calculate_content_sizes(child_widget, axis);
+            content_size += child_widget->fixed_size[axis];
+        }
+
+        root_widget->fixed_size[axis] = content_size + root_widget->padding * 2.0f;
+    }
+
+    for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
+    {
+        ui_widget_calculate_content_sizes(child_widget, axis);
     }
 }
 
@@ -689,14 +722,11 @@ static void ui_widget_calculate_size_violations(ui_widget_t* root_widget, ui_wid
 
     if (root_widget->child_axis == axis)
     {
-        f32 total_child_size = 0.0f;
         f32 parent_dependent_child_size = 0.0f;
         f32 pixel_child_size = 0.0f;
         
         for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
         {
-            total_child_size += child_widget->fixed_size[axis];
-
             if (child_widget->size[axis].kind == UI_WIDGET_SIZE_PARENT)
             {
                 parent_dependent_child_size += child_widget->fixed_size[axis];
@@ -731,38 +761,6 @@ static void ui_widget_calculate_size_violations(ui_widget_t* root_widget, ui_wid
                 }
             }
         }
-        
-        // f32 violation_amount = total_child_size - (root_widget->fixed_size[axis] - root_widget->padding * 2.0f);
-        // f32 fix_percentage = 0.0f;
-
-        // // NOTE: Right now we prefer to correct size violations by reducing the sizes of parent dependent children.
-        // // If there are no parent dependent children, we reduce the sizes of all children.
-        // // Idk if this makes sense.
-        // if (parent_dependent_child_size == 0.0f)
-        // {
-        //     fix_percentage = violation_amount / total_child_size;
-        // }
-        // else
-        // {
-        //     fix_percentage = violation_amount / parent_dependent_child_size;
-        // }
-        
-        // if (violation_amount > 0.0f)
-        // {
-        //     for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
-        //     {
-        //         if (parent_dependent_child_size == 0.0f)
-        //         {
-        //             f32 fix_amount = fix_percentage * child_widget->fixed_size[axis];
-        //             child_widget->fixed_size[axis] -= fix_amount;
-        //         }
-        //         else if (child_widget->size[axis].kind == UI_WIDGET_SIZE_PARENT)
-        //         {
-        //             f32 fix_amount = fix_percentage * child_widget->fixed_size[axis];
-        //             child_widget->fixed_size[axis] -= fix_amount;
-        //         }
-        //     }
-        // }
     }
 
     for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
@@ -771,46 +769,70 @@ static void ui_widget_calculate_size_violations(ui_widget_t* root_widget, ui_wid
     }
 }
 
+static inline f32 ui_widget_label_content_position(ui_widget_t* widget, ui_widget_axis_t axis)
+{
+    f32 content_position = 0.0f;
+
+    if (axis == UI_WIDGET_AXIS_X)
+    {
+        content_position = widget->rect.x + widget->padding;
+    }
+    else if (axis == UI_WIDGET_AXIS_Y)
+    {
+        content_position = widget->rect.y + widget->padding;
+    }
+    else
+    {
+        assert(!"[UI] Invalid axis.");
+    }
+
+    return content_position;
+}
+
+static inline f32 ui_widget_label_content_size(ui_widget_t* widget, ui_widget_axis_t axis)
+{
+    f32 content_size = 0.0f;
+
+    if (axis == UI_WIDGET_AXIS_X)
+    {
+        content_size = widget->rect.width - widget->padding * 2.0f;
+    }
+    else if (axis == UI_WIDGET_AXIS_Y)
+    {
+        content_size = widget->rect.height - widget->padding * 2.0f;
+    }
+    else
+    {
+        assert(!"[UI] Invalid axis.");
+    }
+
+    return content_size > 0.0f ? content_size : 0.0f;
+}
+
 static void ui_widget_calculate_label_alignment(ui_widget_t* widget, ui_widget_axis_t axis)
 {
     if (widget->label && widget->label_length)
     {
+        f32 position = 0.0f;
+        f32 content_position = ui_widget_label_content_position(widget, axis);
+        f32 content_size = ui_widget_label_content_size(widget, axis);
+        
         switch (widget->label_alignment.value[axis])
         {
             case UI_WIDGET_ALIGNMENT_LEADING:
             {
-                if (axis == UI_WIDGET_AXIS_X)
-                {
-                    widget->label_rect.x = widget->rect.x + widget->padding;
-                }
-                else if (axis == UI_WIDGET_AXIS_Y)
-                {
-                    widget->label_rect.y = widget->rect.y + widget->padding;
-                }
+                position = content_position;
             } break;
 
             case UI_WIDGET_ALIGNMENT_TRAILING:
             {
-                if (axis == UI_WIDGET_AXIS_X)
-                {
-                    widget->label_rect.x = widget->rect.x + widget->rect.width - widget->padding - widget->label_width;   
-                }
-                else if (axis == UI_WIDGET_AXIS_Y)
-                {
-                    widget->label_rect.y = widget->rect.y + widget->rect.height - widget->padding - widget->label_height;
-                }
+                position = content_position + content_size - widget->label_size[axis];
+                
             } break;
 
             case UI_WIDGET_ALIGNMENT_CENTER:
             {
-                if (axis == UI_WIDGET_AXIS_X)
-                {
-                    widget->label_rect.x = widget->rect.x + (widget->rect.width - widget->label_width) * 0.5f;
-                }
-                else if (axis == UI_WIDGET_AXIS_Y)
-                {
-                    widget->label_rect.y = widget->rect.y + (widget->rect.height - widget->label_height) * 0.5f;
-                }
+                position = content_position + (content_size - widget->label_size[axis]) * 0.5f;
             } break;
 
             default:
@@ -819,13 +841,20 @@ static void ui_widget_calculate_label_alignment(ui_widget_t* widget, ui_widget_a
             } break;
         }
 
+        if (position < content_position)
+        {
+            position = content_position;
+        }
+
         if (axis == UI_WIDGET_AXIS_X)
         {
-            widget->label_rect.width = widget->label_width;
+            widget->label_rect.x = position;
+            widget->label_rect.width = widget->label_size[axis];
         }
         else if (axis == UI_WIDGET_AXIS_Y)
         {
-            widget->label_rect.height = widget->label_height;
+            widget->label_rect.y = position;
+            widget->label_rect.height = widget->label_size[axis];
         }
     }
 }
@@ -887,7 +916,7 @@ static void ui_widget_print_info(ui_widget_t* root_widget)
             "   - label width: %f\n"
             "   - label height: %f\n",
             root_widget->label, root_widget->label_length,
-            root_widget->label_width, root_widget->label_height);
+            root_widget->label_size[UI_WIDGET_AXIS_X], root_widget->label_size[UI_WIDGET_AXIS_Y]);
     }
 
     for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
@@ -909,16 +938,45 @@ static void ui_widget_calculate_draw_rect_commands(ui_widget_t* root_widget)
 {
     for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
     {
+        f32 rect_x = child_widget->rect.x;
+        f32 rect_y = child_widget->rect.y;
+        f32 rect_width = child_widget->rect.width;
+        f32 rect_height = child_widget->rect.height;
+
+        if (rect_x > root_widget->rect.x + root_widget->rect.width ||
+            rect_y > root_widget->rect.y + root_widget->rect.height)
+        {
+            continue;
+        }
+        else if (rect_x + rect_width > root_widget->rect.x ||
+                 rect_y + rect_height > root_widget->rect.y)
+        {
+            f32 x_overlap = max(0.0f, min(rect_x + rect_width, root_widget->rect.x + root_widget->rect.width) -
+                max(rect_x, root_widget->rect.x));
+            f32 y_overlap = max(0.0f, min(rect_y + rect_height, root_widget->rect.y + root_widget->rect.height) -
+                max(rect_y, root_widget->rect.y));
+
+            if (x_overlap <= 0.0f || y_overlap <= 0.0f)
+            {
+                continue;
+            }
+
+            rect_x = max(rect_x, root_widget->rect.x);
+            rect_y = max(rect_y, root_widget->rect.y);
+            rect_width = x_overlap;
+            rect_height = y_overlap;
+        }
+        
         assert(global_ui->widget_draw_command_count < array_count(global_ui->widget_draw_commands) && "[UI] Invalid draw command count.");
         ui_widget_draw_command_t* widget_draw_command = global_ui->widget_draw_commands + global_ui->widget_draw_command_count++;
         
         *widget_draw_command = (ui_widget_draw_command_t)
         {
             .kind = UI_WIDGET_DRAW_RECT,
-            .rect.x = child_widget->rect.x,
-            .rect.y = child_widget->rect.y,
-            .rect.width = child_widget->rect.width,
-            .rect.height = child_widget->rect.height,
+            .rect.x = rect_x,
+            .rect.y = rect_y,
+            .rect.width = rect_width,
+            .rect.height = rect_height,
             .rect.r = child_widget->color.r,
             .rect.g = child_widget->color.g,
             .rect.b = child_widget->color.b,
@@ -945,6 +1003,7 @@ static void ui_widget_calculate_draw_rect_commands(ui_widget_t* root_widget)
             *widget_draw_text_command = (ui_widget_draw_command_t)
             {
                 .kind = UI_WIDGET_DRAW_TEXT,
+                .text.font = child_widget->font,
                 .text.x = child_widget->label_rect.x,
                 .text.y = child_widget->label_rect.y,
                 .text.width = child_widget->label_rect.width,
@@ -953,21 +1012,21 @@ static void ui_widget_calculate_draw_rect_commands(ui_widget_t* root_widget)
                 .text.length = child_widget->label_length,
             };
 
-            ui_widget_draw_command_t* widget_draw_border_command = global_ui->widget_draw_commands + global_ui->widget_draw_command_count++;
+            // ui_widget_draw_command_t* widget_draw_border_command = global_ui->widget_draw_commands + global_ui->widget_draw_command_count++;
 
-            *widget_draw_border_command = (ui_widget_draw_command_t)
-            {
-                .kind = UI_WIDGET_DRAW_BORDER,
-                .border.x = child_widget->label_rect.x - child_widget->padding,
-                .border.y = child_widget->label_rect.y - child_widget->padding,
-                .border.width = child_widget->label_rect.width + child_widget->padding * 2.0f,
-                .border.height = child_widget->label_rect.height + child_widget->padding * 2.0f,
-                .border.r = 1.0f,
-                .border.g = 1.0f,
-                .border.b = 1.0f,
-                .border.a = 1.0f,
-                .border.thickness = 1.0f,
-            };
+            // *widget_draw_border_command = (ui_widget_draw_command_t)
+            // {
+            //     .kind = UI_WIDGET_DRAW_BORDER,
+            //     .border.x = child_widget->label_rect.x - child_widget->padding,
+            //     .border.y = child_widget->label_rect.y - child_widget->padding,
+            //     .border.width = child_widget->label_rect.width + child_widget->padding * 2.0f,
+            //     .border.height = child_widget->label_rect.height + child_widget->padding * 2.0f,
+            //     .border.r = 1.0f,
+            //     .border.g = 1.0f,
+            //     .border.b = 1.0f,
+            //     .border.a = 1.0f,
+            //     .border.thickness = 1.0f,
+            // };
         }
     }
 
@@ -1047,6 +1106,7 @@ static ui_widget_draw_command_list_t ui_end(void)
     for (i32 axis = 0; axis < UI_WIDGET_AXIS_COUNT; ++axis)
     {
         ui_widget_calculate_pixel_sizes(global_ui->root_widget, axis);
+        ui_widget_calculate_content_sizes(global_ui->root_widget, axis);
         ui_widget_calculate_parent_dependent_sizes(global_ui->root_widget, axis);
         ui_widget_calculate_size_violations(global_ui->root_widget, axis);
         ui_widget_calculate_layout(global_ui->root_widget, axis);

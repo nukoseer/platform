@@ -228,7 +228,8 @@ typedef struct game_t
     graphics_program_t skybox_program;
 
 #if FONT_ENABLE
-    graphics_2d_font_t font;
+    graphics_2d_font_t font_16;
+    graphics_2d_font_t font_35;
     vec4 font_color;
 #endif
     ui_widget_draw_command_list_t widget_draw_command_list;
@@ -1212,7 +1213,8 @@ init_function(init)
     });
 
 #if FONT_ENABLE
-    game->font = graphics->create_font("Consolas", 12);
+    game->font_16 = graphics->create_font("Google Sans", 16);
+    game->font_35 = graphics->create_font("Google Sans", 35);
     // game->font_color = vec4(0.8313f, 0.0f, 0.4705f, 1.0f);
     // game->font_color = vec4(0.38f, 0.38f, 0.38f, 1.0f);
     game->font_color = v4(0.6862f, 0.6862f, 0.6862f, 1.0f);
@@ -1293,45 +1295,46 @@ update_function(update)
         .get_line_height = { get_line_height, platform->graphics },
     });
     {
-        ui_widget_group_begin("ui-widget-group-1", 220, 220, (ui_widget_desc_t)
+        ui_widget_group_begin("ui-widget-group-1", platform->width - 440.0f, platform->height - 230.0f, (ui_widget_desc_t)
         {
-            .size = { ui_widget_pixel_size(360.0f), ui_widget_pixel_size(360.0f) },
+            .size = { ui_widget_pixel_size(420.0f), ui_widget_content_size() },
             .child_axis = ui_widget_axis_y(),
-            .padding = 4.0f,
+            .padding = 8.0f,
             .border = ui_widget_border(true, 1.0f, ui_widget_color(0.4f, 0.4f, 0.4f, 0.4f)),
         });
         {
             ui_widget_group_begin("ui-widget-group-2", 0, 0, (ui_widget_desc_t)
             {
-                .size = { ui_widget_parent_size(1.0f), ui_widget_parent_size(1.0f) },
+                .size = { ui_widget_parent_size(1.0f), ui_widget_content_size() },
                 .child_axis = ui_widget_axis_y(),
-                .padding = 1.0f,
+                .padding = 16.0f,
                 .border = ui_widget_border(true, 1.0f, ui_widget_color(0.4f, 0.4f, 0.4f, 0.4f)),
             });
             {
-                ui_widget("ui-widget-1", (ui_widget_desc_t)
-                {
-                    .color = ui_widget_color(0.06f, 0.06f, 0.06f, 1.0f),
-                    .size = { ui_widget_parent_size(1.0f), ui_widget_pixel_size(200.0f) },
-                });
                 country_name_t country_name = country_get_name(game->country_index);
                 
+                ui_widget("ui-widget-1", (ui_widget_desc_t)
+                {
+                    .size = { ui_widget_parent_size(1.0f), ui_widget_content_size() },
+                    // .color = ui_widget_color(0.04f, 0.04f, 0.04f, 1.0f),
+                    .label = ui_widget_label(&game->font_16, "Country / Region", 16, ui_widget_align_leading()),
+                });
+
                 ui_widget("ui-widget-2", (ui_widget_desc_t)
                 {
-                    .size = { ui_widget_parent_size(1.0f), ui_widget_parent_size(1.0f) },
-                    .color = ui_widget_color(0.04f, 0.04f, 0.04f, 1.0f),
-                    .label = ui_widget_label(&game->font, country_name.name, country_name.length, ui_widget_align_center()),
-                    .padding = 16.0f,
+                    .size = { ui_widget_parent_size(1.0f), ui_widget_content_size() },
+                    // .color = ui_widget_color(0.04f, 0.04f, 0.04f, 1.0f),
+                    .label = ui_widget_label(&game->font_35, country_name.name ? country_name.name : "Not Selected", country_name.length ? country_name.length : 12, ui_widget_align_leading()),
                 });
                 ui_widget("ui-widget-3", (ui_widget_desc_t)
                 {
-                    .color = ui_widget_color(0.06f, 0.06f, 0.06f, 1.0f),
-                    .size = { ui_widget_parent_size(1.0f), ui_widget_pixel_size(40.0f) },
+                    .size = { ui_widget_parent_size(1.0f), ui_widget_pixel_size(8.0f) },
                 });
                 ui_widget("ui-widget-4", (ui_widget_desc_t)
                 {
-                    .color = ui_widget_color(0.06f, 0.06f, 0.06f, 1.0f),
-                    .size = { ui_widget_parent_size(1.0f), ui_widget_parent_size(1.0f) },
+                    .size = { ui_widget_parent_size(1.0f), ui_widget_pixel_size(40.0f) },
+                    .color = ui_widget_color(0.04f, 0.04f, 0.04f, 1.0f),
+                    .border = ui_widget_border(true, 1.0f, ui_widget_color(0.4f, 0.4f, 0.4f, 0.4f)),
                 });
             }
             ui_widget_group_end();
@@ -1574,7 +1577,7 @@ render_function(render)
 
         if ((frame_ms_length = snprintf(frame_ms_text, sizeof(frame_ms_text), "%.2f ms", platform->delta_time * 1000)) > 0)
         {
-            graphics->draw_text(game->font, frame_ms_text, frame_ms_length,
+            graphics->draw_text(game->font_16, frame_ms_text, frame_ms_length,
                                 game->font_color.r, game->font_color.g, game->font_color.b, game->font_color.a,
                                 TEXT_ALIGNMENT_TRAILING, 0.0f - 8.0f, 0.0f + 8.0f, (f32)platform->width, (f32)platform->height);
         }
@@ -1582,7 +1585,7 @@ render_function(render)
         country_name_t country_name = country_get_name(game->country_index);
         if (country_name.name && country_name.length)
         {
-            graphics->draw_text(game->font, country_name.name, country_name.length,
+            graphics->draw_text(game->font_16, country_name.name, country_name.length,
                                 game->font_color.r, game->font_color.g, game->font_color.b, game->font_color.a,
                                 TEXT_ALIGNMENT_LEADING, 8.0f, 8.0f, (f32)platform->width, (f32)platform->height);
         }
@@ -1623,6 +1626,7 @@ render_function(render)
             else if (command->kind == UI_WIDGET_DRAW_TEXT)
             {
                 ui_widget_draw_text_t* draw_text = &command->text;
+                graphics_2d_font_t font = *(graphics_2d_font_t*)draw_text->font;
                 f32 x = draw_text->x;
                 f32 y = draw_text->y;
                 f32 width = draw_text->width;
@@ -1630,7 +1634,7 @@ render_function(render)
                 const char* text = draw_text->text;
                 u32 length = draw_text->length;
                 
-                graphics->draw_text(game->font, text, length, 0.6f, 0.6f, 0.6f, 1.0f,
+                graphics->draw_text(font, text, length, 0.6f, 0.6f, 0.6f, 1.0f,
                                     TEXT_ALIGNMENT_LEADING, x, y, width, height);
             }
             else
