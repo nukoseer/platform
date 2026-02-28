@@ -20,8 +20,7 @@ cbuffer global_params : register(b0)
 
 cbuffer global_sphere_params : register(b1)
 {
-    float3 _pad0;
-    float alpha;
+    float4 color;
 };
 
 float ease_in_out_circ(float t)
@@ -40,7 +39,7 @@ PS_INPUT vs(VS_INPUT input)
     float lon = radians(input.position.x);
     float lat = radians(input.position.y);
 
-    float t = ease_in_out_circ(smoothstep(0.0, 1.0, alpha));
+    float t = ease_in_out_circ(smoothstep(0.0, 1.0, color.a));
 
     float4 position = float4(cos(lat) * sin(lon) * t, sin(lat) * t, cos(lat) * cos(lon) * t, 1.0);
     
@@ -81,37 +80,42 @@ float3 reflect(float3 incoming, float3 normal)
     return incoming - 2.0 * dot(incoming, normal) * normal;
 }
 
+//float4 ps(PS_INPUT input) : SV_TARGET
+//{
+//    float3 n = normalize(input.normal_world);
+//    float3 v = normalize(camera_world.xyz - input.position_world);
+//    float3 l = normalize(float3(0.0, 4.0, 2.0));
+//    // float3 l = normalize(float3(2.0, 2.0, 1.5));
+//    float3 albedo = float3(0.18, 0.18, 0.18);
+//    // float3 albedo = float3(0.01, 0.01, 0.01);
+//    float3 diffuse_color = float3(0.02, 0.02, 0.02);
+//    float diffuse_intensity = 1.0;
+//    float3 light_color = float3(1.0, 1.0, 1.0);
+//    float light_intensity = 1.0;
+//    float specular_power = 32;
+//    float ks = 0.08;
+//
+//    // float3 hit_color = albedo / 3.14159265358979323846 * light_intensity * light_color * max(0.0, dot(n, l));
+//    // float3 dithered_color = saturate(hit_color) + dither8x8(input.position.xy);
+//    // return float4(dithered_color, smoothstep(0.0, 1.0, color.a));
+//
+//    float n_dot_l = saturate(dot(n, l));
+//    float visibility = step(0.0, n_dot_l);
+//
+//    float3 diffuse = visibility * albedo * n_dot_l * diffuse_color * diffuse_intensity;
+//    
+//    float3 r = reflect(-l, n);
+//    float3 specular = visibility * pow(max(0.0, dot(r, v)), specular_power) * light_color * light_intensity;
+//
+//    float3 output_color = diffuse + ks * specular;
+//
+//    // NOTE: Apply dithering to avoid banding.
+//    float3 dithered_color = saturate(output_color) + dither8x8(input.position.xy);
+//
+//    return float4(saturate(dithered_color), smoothstep(0.0, 1.0, color.a));
+//}
+
 float4 ps(PS_INPUT input) : SV_TARGET
 {
-    float3 n = normalize(input.normal_world);
-    float3 v = normalize(camera_world.xyz - input.position_world);
-    float3 l = normalize(float3(0.0, 4.0, 2.0));
-    // float3 l = normalize(float3(2.0, 2.0, 1.5));
-    float3 albedo = float3(0.18, 0.18, 0.18);
-    // float3 albedo = float3(0.01, 0.01, 0.01);
-    float3 diffuse_color = float3(0.02, 0.02, 0.02);
-    float diffuse_intensity = 1.0;
-    float3 light_color = float3(1.0, 1.0, 1.0);
-    float light_intensity = 1.0;
-    float specular_power = 32;
-    float ks = 0.08;
-
-    // float3 hit_color = albedo / 3.14159265358979323846 * light_intensity * light_color * max(0.0, dot(n, l));
-    // float3 dithered_color = saturate(hit_color) + dither8x8(input.position.xy);
-    // return float4(dithered_color, smoothstep(0.0, 1.0, alpha));
-
-    float n_dot_l = saturate(dot(n, l));
-    float visibility = step(0.0, n_dot_l);
-
-    float3 diffuse = visibility * albedo * n_dot_l * diffuse_color * diffuse_intensity;
-    
-    float3 r = reflect(-l, n);
-    float3 specular = visibility * pow(max(0.0, dot(r, v)), specular_power) * light_color * light_intensity;
-
-    float3 color = diffuse + ks * specular;
-
-    // NOTE: Apply dithering to avoid banding.
-    float3 dithered_color = saturate(color) + dither8x8(input.position.xy);
-
-    return float4(saturate(dithered_color), smoothstep(0.0, 1.0, alpha));
+    return color;
 }

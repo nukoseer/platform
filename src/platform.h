@@ -328,7 +328,7 @@ typedef struct graphics_target_t
 typedef struct graphics_pass_desc_t
 {
     bool clear_color;
-    f32 clear_rgba[4];
+    vec4 clear_rgba;
 
     // TODO: clear_depth/stencil, use_depth/stencil
     // color_load/store, depth_load/store, stencil_load/store

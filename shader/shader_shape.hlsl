@@ -12,6 +12,7 @@ struct PS_INPUT
 {
     float4 position : SV_POSITION;
     float side : TEXCOORD;
+    //float clip : SV_ClipDistance;
 };
 
 cbuffer global_param : register(b0)
@@ -114,6 +115,16 @@ PS_INPUT vs(VS_INPUT input)
 
     output.position = float4(new_position.xy * clip.w, clip.z, clip.w);
     output.side = input.side;
+
+    //float4 sphere_center = float4(0, 0, 0 ,1);
+    //float4 sphere_vs = mul(view_matrix, sphere_center); // sphere center in view space
+    //// n_vs: unit vector from center to camera (camera is at origin in view space)
+    //float3 n_vs = normalize(-sphere_vs.xyz);
+    //// v_vs: center -> point (in view space)
+    //float3 v_vs = mul(view_matrix, position).xyz - sphere_vs.xyz;
+    //float cosphi = dot(normalize(v_vs), n_vs);
+    //
+    //output.clip = cosphi - sin(radians(30.0f));
     
     return output;
 }

@@ -1566,8 +1566,14 @@ static graphics_begin_pass_function(gfx_begin_pass)
 
         if (pass_desc->clear_color)
         {
+            FLOAT clear_rgba[4] =
+            {
+                pass_desc->clear_rgba.r, pass_desc->clear_rgba.g,
+                pass_desc->clear_rgba.b, pass_desc->clear_rgba.a
+            };
+
             assert(gfx_target->render_target && "[GFX] Invalid depth stencil view.");
-            ID3D11DeviceContext_ClearRenderTargetView(global_d3d11.context, gfx_target->render_target, pass_desc->clear_rgba);
+            ID3D11DeviceContext_ClearRenderTargetView(global_d3d11.context, gfx_target->render_target, clear_rgba);
         }
 
         if (pass_desc->clear_depth)

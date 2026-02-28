@@ -63,14 +63,14 @@ typedef struct ui_widget_draw_rect_t
 {
     f32 x, y;
     f32 width, height;
-    f32 r, g, b, a;
+    vec4 color;
 } ui_widget_draw_rect_t;
 
 typedef struct ui_widget_draw_border_t
 {
     f32 x, y;
     f32 width, height;
-    f32 r, g, b, a;
+    vec4 color;
     f32 thickness;
 } ui_widget_draw_border_t;
 
@@ -81,6 +81,7 @@ typedef struct ui_widget_draw_text_t
     f32 width, height;
     const char* text;
     u32 length;
+    vec4 color;
 } ui_widget_draw_text_t;
 
 typedef struct ui_widget_draw_command_t
@@ -103,7 +104,7 @@ typedef struct ui_widget_draw_command_list_t
 
 typedef struct ui_widget_color_t
 {
-    f32 r, g, b, a;
+    vec4 rgba;
 } ui_widget_color_t;
 
 typedef struct ui_widget_border_t
@@ -130,6 +131,7 @@ typedef struct ui_widget_label_t
     void* font;
     const char* text;
     u32 length;
+    vec4 color;
     ui_widget_alignment_t alignment;
 } ui_widget_label_t;
 
@@ -160,6 +162,7 @@ typedef struct ui_widget_t
     ui_widget_color_t color;
     ui_widget_border_t border;
     void* font;
+    vec4 font_color;
     char label[32];
     u32 label_length;
     f32 label_size[UI_WIDGET_AXIS_COUNT];
@@ -332,13 +335,14 @@ static inline ui_widget_alignment_t ui_widget_align_trailing(void)
 }
 
 static inline ui_widget_label_t ui_widget_label(void* font, const char* label, u32 label_length,
-                                                ui_widget_alignment_t alignment)
+                                                ui_widget_color_t color, ui_widget_alignment_t alignment)
 {
     ui_widget_label_t widget_label =
     {
         .font = font,
         .text = label,
         .length = label_length,
+        .color = color.rgba,
         .alignment = alignment,
     };
 
@@ -349,10 +353,20 @@ static inline ui_widget_color_t ui_widget_color(f32 r, f32 g, f32 b, f32 a)
 {
     ui_widget_color_t widget_color =
     {
-        .r = r,
-        .g = g,
-        .b = b,
-        .a = a,
+        .rgba.r = r,
+        .rgba.g = g,
+        .rgba.b = b,
+        .rgba.a = a,
+    };
+
+    return widget_color;
+}
+
+static inline ui_widget_color_t ui_widget_color_v4(vec4 color)
+{
+    ui_widget_color_t widget_color =
+    {
+        .rgba = color,
     };
 
     return widget_color;
@@ -576,15 +590,12 @@ static inline void ui_widget_build(ui_widget_t* widget, const char* widget_name,
     widget->color = widget_desc->color;
     widget->border.color = widget_desc->border.color;
 
-    f32 sum_color = widget->color.r + widget->color.g + widget->color.b + widget->color.a;
+    f32 sum_color = widget->color.rgba.r + widget->color.rgba.g + widget->color.rgba.b + widget->color.rgba.a;
 
     // NOTE: Assing default color.
     if (sum_color == 0.0f)
     {
-        widget->color.r = 0.0f;
-        widget->color.g = 0.0f;
-        widget->color.b = 0.0f;
-        widget->color.a = 1.0f;
+        widget->color.rgba = v4(0.0f, 0.0f, 0.0f, 1.0f);
     }
     
     for (i32 axis = 0; axis < UI_WIDGET_AXIS_COUNT; ++axis)
@@ -607,6 +618,7 @@ static inline void ui_widget_build(ui_widget_t* widget, const char* widget_name,
         widget->label_size[UI_WIDGET_AXIS_X] = measure_text_width(widget->font, widget->label, widget->label_length, global_ui->callback_list.measure_text_width.parameter);
         widget->label_size[UI_WIDGET_AXIS_Y] = get_line_height(widget->font, global_ui->callback_list.get_line_height.parameter);
         widget->label_alignment = widget_desc->label.alignment;
+        widget->font_color = widget_desc->label.color;
     }
 
     // TODO: Right now, it is not supported to position widgets inside a widget group except it is directly under the root widget.
@@ -628,7 +640,7 @@ static void ui_widget_group_begin(const char* widget_name, f32 x, f32 y, ui_widg
     ui_push_parent_widget(widget);
 }
 
-static inline ui_widget_group_end(void)
+static inline void ui_widget_group_end(void)
 {
     ui_pop_parent_widget();
 }
@@ -811,7 +823,7 @@ static inline f32 ui_widget_label_content_size(ui_widget_t* widget, ui_widget_ax
 
 static void ui_widget_calculate_label_alignment(ui_widget_t* widget, ui_widget_axis_t axis)
 {
-    if (widget->label && widget->label_length)
+    if (widget->label_length)
     {
         f32 position = 0.0f;
         f32 content_position = ui_widget_label_content_position(widget, axis);
@@ -908,7 +920,7 @@ static void ui_widget_print_info(ui_widget_t* root_widget)
             root_widget->rect.x, root_widget->rect.y,
             root_widget->rect.width, root_widget->rect.height);
 
-    if (root_widget->label && root_widget->label_length)
+    if (root_widget->label_length)
     {
         fprintf(stderr, 
             "   - label: %s\n"
@@ -977,13 +989,10 @@ static void ui_widget_calculate_draw_rect_commands(ui_widget_t* root_widget)
             .rect.y = rect_y,
             .rect.width = rect_width,
             .rect.height = rect_height,
-            .rect.r = child_widget->color.r,
-            .rect.g = child_widget->color.g,
-            .rect.b = child_widget->color.b,
-            .rect.a = child_widget->color.a,
+            .rect.color = child_widget->color.rgba,
         };
 
-        if (child_widget->label && child_widget->label_length)
+        if (child_widget->label_length)
         {
             f32 border_x = child_widget->label_rect.x - child_widget->padding;
             f32 border_y = child_widget->label_rect.y - child_widget->padding;
@@ -1010,6 +1019,7 @@ static void ui_widget_calculate_draw_rect_commands(ui_widget_t* root_widget)
                 .text.height = child_widget->label_rect.height,
                 .text.text = child_widget->label,
                 .text.length = child_widget->label_length,
+                .text.color = child_widget->font_color,
             };
 
             // ui_widget_draw_command_t* widget_draw_border_command = global_ui->widget_draw_commands + global_ui->widget_draw_command_count++;
@@ -1052,10 +1062,7 @@ static void ui_widget_calculate_draw_border_commands(ui_widget_t* root_widget)
                 .border.y = child_widget->rect.y - child_widget->border.thickness * 0.5f,
                 .border.width = child_widget->rect.width + child_widget->border.thickness,
                 .border.height = child_widget->rect.height + child_widget->border.thickness,
-                .border.r = child_widget->border.color.r,
-                .border.g = child_widget->border.color.g,
-                .border.b = child_widget->border.color.b,
-                .border.a = child_widget->border.color.a,
+                .border.color = child_widget->border.color.rgba,
                 .border.thickness = child_widget->border.thickness,
             };  
         }

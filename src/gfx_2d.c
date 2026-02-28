@@ -236,7 +236,7 @@ static graphics_2d_measure_text_width_function(gfx_2d_measure_text_width)
     MultiByteToWideChar(CP_UTF8, 0, text, -1, wchar_text, wchar_size);
     u32 wchar_length = (u32)(wchar_size - 1);
 
-    HRESULT result = IDWriteFactory_CreateTextLayout(global_d2d1.dwrite->factory, wchar_text, wchar_size,
+    HRESULT result = IDWriteFactory_CreateTextLayout(global_d2d1.dwrite->factory, wchar_text, wchar_length,
                                                      gfx_2d_font->text_format,
                                                      max_width, max_height, &text_layout);
     assert(SUCCEEDED(result) && text_layout && "[GFX2D] Failed to create text layout.");

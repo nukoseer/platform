@@ -57,8 +57,7 @@ typedef struct skybox_param_t
 
 typedef struct sphere_param_t
 {
-    vec3 _pad0;
-    f32 alpha;
+    vec4 color;
 } sphere_param_t;
 
 typedef struct sphere_info_t
@@ -116,7 +115,7 @@ typedef struct glow_merge_param_t
 {
     vec2 viewport_size;
     f32 intensity;
-    f32 _pad;
+    f32 glow;
 } glow_merge_param_t;
 
 typedef struct post_param_t
@@ -133,14 +132,15 @@ typedef struct post_param_t
 
 typedef struct glow_mask_param_t
 {
-    vec4 glow_color;
+    vec3 glow_color;
+    f32 glow;
 } glow_mask_param_t;
 
-typedef struct glow_blur_setting_t
+typedef struct glow_blur_param_t
 {
     f32 inverse_dst_size[2];
     f32 direction[2];
-} glow_blur_setting_t;
+} glow_blur_param_t;
 
 typedef struct camera_t
 {
@@ -162,6 +162,24 @@ typedef struct skybox_vertex_t
     vec3 position;
 } skybox_vertex_t;
 
+typedef enum theme_type_t
+{
+    THEME_TYPE_LIGHT,
+    THEME_TYPE_DARK,
+
+    THEME_TYPE_COUNT,
+} theme_type_t;
+
+typedef struct theme_t
+{
+    vec4 bg_color;
+    vec4 fg_color;
+    vec4 sphere_grid_color;
+    vec4 highlight_color;
+    vec4 font_color;
+    bool dark_mode;
+} theme_t;
+
 typedef struct game_t
 {
     memory_arena_t* memory_arena;
@@ -170,6 +188,10 @@ typedef struct game_t
     graphics_texture_t offscreen_scene_msaa;
     graphics_texture_t offscreen_depth_msaa;
     graphics_target_t offscreen_target_msaa;
+
+    graphics_texture_t merge_scene;
+    graphics_texture_t merge_scene_msaa;
+    graphics_target_t merge_target_msaa;
     
     graphics_pipeline_t default_pipeline;
     graphics_pipeline_t pre_multiplied_pipeline;
@@ -190,7 +212,7 @@ typedef struct game_t
     shape_info_t shape_info;
     skybox_info_t skybox_info;
 
-    glow_mask_param_t glow_mask_setting;
+    glow_mask_param_t glow_mask_param;
     graphics_buffer_t glow_mask_buffer;
     graphics_texture_t glow_mask_msaa;
     graphics_texture_t glow_mask;
@@ -202,7 +224,7 @@ typedef struct game_t
     graphics_shader_t glow_mask_pixel_shader;
     graphics_program_t glow_mask_program;
 
-    glow_blur_setting_t glow_blur_setting;
+    glow_blur_param_t glow_blur_param;
     graphics_buffer_t blur_buffer;
     graphics_shader_t blur_vertex_shader;
     graphics_shader_t blur_pixel_shader;
@@ -227,6 +249,10 @@ typedef struct game_t
     graphics_shader_t skybox_pixel_shader;
     graphics_program_t skybox_program;
 
+    
+    theme_t themes[THEME_TYPE_COUNT];
+    u32 current_theme_index;
+    
 #if FONT_ENABLE
     graphics_2d_font_t font_16;
     graphics_2d_font_t font_35;
@@ -393,11 +419,14 @@ static void resize_offscreen_buffer(platform_t* platform, game_t* game)
     {
         graphics->delete_target(game->offscreen_target_msaa);
         graphics->delete_target(game->glow_mask_msaa_target);
+        graphics->delete_target(game->merge_target_msaa);
         graphics->delete_target(game->glow_a_target);
         graphics->delete_target(game->glow_b_target);
         graphics->delete_texture_2d(game->offscreen_scene);
         graphics->delete_texture_2d(game->offscreen_scene_msaa);
         graphics->delete_texture_2d(game->offscreen_depth_msaa);
+        graphics->delete_texture_2d(game->merge_scene);
+        graphics->delete_texture_2d(game->merge_scene_msaa);
         graphics->delete_texture_2d(game->glow_mask_msaa);
         graphics->delete_texture_2d(game->glow_mask);
         graphics->delete_texture_2d(game->glow_a);
@@ -430,6 +459,23 @@ static void resize_offscreen_buffer(platform_t* platform, game_t* game)
             .width = platform->width,
             .height = platform->height,
             .sample_count = 8,
+        }, 0, 0);
+
+        game->merge_scene_msaa = graphics->create_texture_2d(&(graphics_texture_2d_desc_t)
+        {
+            .format = FORMAT_R16G16B16A16_FLOAT,
+            .bind = BIND_SHADER_RESOURCE | BIND_RENDER_TARGET,
+            .width = platform->width,
+            .height = platform->height,
+            .sample_count = 8,
+        }, 0, 0);
+
+        game->merge_scene = graphics->create_texture_2d(&(graphics_texture_2d_desc_t)
+        {
+            .format = FORMAT_R16G16B16A16_FLOAT,
+            .bind = BIND_SHADER_RESOURCE | BIND_RENDER_TARGET,
+            .width = platform->width,
+            .height = platform->height,
         }, 0, 0);
 
         game->glow_mask_msaa = graphics->create_texture_2d(&(graphics_texture_2d_desc_t)
@@ -469,6 +515,7 @@ static void resize_offscreen_buffer(platform_t* platform, game_t* game)
 
         // NOTE: Create RenderTargetView for offscreen_scene to render.
         game->offscreen_target_msaa = graphics->create_target(&(graphics_target_desc_t){ .color = game->offscreen_scene_msaa, .depth = game->offscreen_depth_msaa });
+        game->merge_target_msaa = graphics->create_target(&(graphics_target_desc_t){ .color = game->merge_scene_msaa, .depth = game->offscreen_depth_msaa });
         game->glow_mask_msaa_target = graphics->create_target(&(graphics_target_desc_t){ .color = game->glow_mask_msaa, .depth = game->offscreen_depth_msaa });
         game->glow_a_target = graphics->create_target(&(graphics_target_desc_t){ .color = game->glow_a });
         game->glow_b_target = graphics->create_target(&(graphics_target_desc_t){ .color = game->glow_b });
@@ -1212,12 +1259,37 @@ init_function(init)
         .attribute_count = 0,
     });
 
+    // NOTE: Light and dark themes.
+    game->themes[0] = (theme_t)
+    {
+        .bg_color = v4(1.0f, 0.9803f, 0.9411f, 1.0f),
+        .fg_color = v4(0.090f, 0.090f, 0.090f, 1.0f),
+        .sphere_grid_color = v4(0.4f, 0.4f, 0.4f, 0.25f),
+        .highlight_color = v4(0.80f, 0.070f, 0.070f, 1.0f),
+        .font_color = v4(0.090f, 0.090f, 0.090f, 1.0f),
+        .dark_mode = false,
+    };
+    
+    game->themes[1] = (theme_t)
+    {
+        .bg_color = v4(0.005f, 0.005f, 0.005f, 1.0f),
+        .fg_color = v4(0.1058f, 0.9921f, 0.6117f, 1.0f),
+        .sphere_grid_color = v4(0.006f, 0.006f, 0.006f, 1.0f),
+        .highlight_color = v4(1.0f, 1.0f, 1.0f, 1.0f),
+        .font_color = v4(0.1058f, 0.9921f, 0.6117f, 1.0f),
+        // .font_color = v4(0.6f, 0.6f, 0.6f, 1.0f),
+        .dark_mode = true,
+    };
+
+    game->current_theme_index = 0;
+
 #if FONT_ENABLE
     game->font_16 = graphics->create_font("Google Sans", 16);
     game->font_35 = graphics->create_font("Google Sans", 35);
     // game->font_color = vec4(0.8313f, 0.0f, 0.4705f, 1.0f);
     // game->font_color = vec4(0.38f, 0.38f, 0.38f, 1.0f);
-    game->font_color = v4(0.6862f, 0.6862f, 0.6862f, 1.0f);
+    // game->font_color = v4(0.6862f, 0.6862f, 0.6862f, 1.0f);
+    // game->font_color = v4(0.090f, 0.090f, 0.090f, 1.0f);
 #endif
 }
 
@@ -1239,6 +1311,36 @@ static ui_get_line_height_function(get_line_height)
     f32 line_height = graphics->get_line_height(graphics_font);
 
     return line_height;
+}
+
+static theme_t* get_current_theme(game_t* game)
+{
+    return &game->themes[game->current_theme_index];
+}
+
+static void update_theme(game_t* game, theme_type_t theme_type)
+{
+    u32 new_theme_index = 0;
+    
+    switch (theme_type)
+    {
+        case THEME_TYPE_LIGHT:
+        {
+            new_theme_index = THEME_TYPE_DARK;
+        } break;
+
+        case THEME_TYPE_DARK:
+        {
+            new_theme_index = THEME_TYPE_LIGHT;
+        } break;
+
+        default:
+        {
+            assert("[THEME] Invalid theme type.");
+        }
+    }
+
+    game->current_theme_index = new_theme_index;
 }
 
 update_function(update)
@@ -1274,11 +1376,18 @@ update_function(update)
         }
     }
 
-    if (input_is_key_released(input, KEY_G))
+    game->glow_intensity = 2.0f;
+    
+    if (get_current_theme(game)->dark_mode)
     {
-        game->glow_intensity = game->glow_intensity == 0.0f ? 0.3f : 0.0f;
+        game->glow_intensity = 0.3f;
     }
 
+    if (input_is_key_released(input, KEY_C))
+    {
+        update_theme(game, game->current_theme_index);
+    }
+    
     if (input_is_key_released(input, KEY_I))
     {
         game->invert = game->invert == 0.0f ? 1.0f : 0.0f;
@@ -1289,10 +1398,13 @@ update_function(update)
         game->vignette = game->vignette == 0.0f ? 1.0f : 0.0f;
     }
 
+    theme_t* theme = get_current_theme(game);
+
+#if FONT_ENABLE
     ui_begin(game->memory_arena, (f32)platform->width, (f32)platform->height, (ui_callback_list_t)
     {
-        .measure_text_width = { measure_text_width, platform->graphics },
-        .get_line_height = { get_line_height, platform->graphics },
+        .measure_text_width = { (void*)measure_text_width, platform->graphics },
+        .get_line_height = { (void*)get_line_height, platform->graphics },
     });
     {
         ui_widget_group_begin("ui-widget-group-1", platform->width - 440.0f, platform->height - 230.0f, (ui_widget_desc_t)
@@ -1300,7 +1412,8 @@ update_function(update)
             .size = { ui_widget_pixel_size(420.0f), ui_widget_content_size() },
             .child_axis = ui_widget_axis_y(),
             .padding = 8.0f,
-            .border = ui_widget_border(true, 1.0f, ui_widget_color(0.4f, 0.4f, 0.4f, 0.4f)),
+            .color = ui_widget_color_v4(theme->bg_color),
+            .border = ui_widget_border(true, 1.0f, ui_widget_color_v4(theme->fg_color)),
         });
         {
             ui_widget_group_begin("ui-widget-group-2", 0, 0, (ui_widget_desc_t)
@@ -1308,7 +1421,8 @@ update_function(update)
                 .size = { ui_widget_parent_size(1.0f), ui_widget_content_size() },
                 .child_axis = ui_widget_axis_y(),
                 .padding = 16.0f,
-                .border = ui_widget_border(true, 1.0f, ui_widget_color(0.4f, 0.4f, 0.4f, 0.4f)),
+                .color = ui_widget_color_v4(theme->bg_color),
+                .border = ui_widget_border(true, 1.0f, ui_widget_color_v4(theme->fg_color)),
             });
             {
                 country_name_t country_name = country_get_name(game->country_index);
@@ -1316,25 +1430,30 @@ update_function(update)
                 ui_widget("ui-widget-1", (ui_widget_desc_t)
                 {
                     .size = { ui_widget_parent_size(1.0f), ui_widget_content_size() },
-                    // .color = ui_widget_color(0.04f, 0.04f, 0.04f, 1.0f),
-                    .label = ui_widget_label(&game->font_16, "Country / Region", 16, ui_widget_align_leading()),
+                    .color = ui_widget_color_v4(theme->bg_color),
+                    .label = ui_widget_label(&game->font_16, "Country / Region", 16,
+                    ui_widget_color_v4(theme->font_color), ui_widget_align_leading()),
                 });
 
                 ui_widget("ui-widget-2", (ui_widget_desc_t)
                 {
                     .size = { ui_widget_parent_size(1.0f), ui_widget_content_size() },
-                    // .color = ui_widget_color(0.04f, 0.04f, 0.04f, 1.0f),
-                    .label = ui_widget_label(&game->font_35, country_name.name ? country_name.name : "Not Selected", country_name.length ? country_name.length : 12, ui_widget_align_leading()),
+                    .color = ui_widget_color_v4(theme->bg_color),
+                    .label = ui_widget_label(&game->font_35,
+                    country_name.name ? country_name.name : "Not Selected",
+                    country_name.length ? country_name.length : 12,
+                    ui_widget_color_v4(theme->font_color), ui_widget_align_leading()),
                 });
                 ui_widget("ui-widget-3", (ui_widget_desc_t)
                 {
                     .size = { ui_widget_parent_size(1.0f), ui_widget_pixel_size(8.0f) },
+                    .color = ui_widget_color_v4(theme->bg_color),
                 });
                 ui_widget("ui-widget-4", (ui_widget_desc_t)
                 {
                     .size = { ui_widget_parent_size(1.0f), ui_widget_pixel_size(40.0f) },
-                    .color = ui_widget_color(0.04f, 0.04f, 0.04f, 1.0f),
-                    .border = ui_widget_border(true, 1.0f, ui_widget_color(0.4f, 0.4f, 0.4f, 0.4f)),
+                    .color = ui_widget_color_v4(theme->bg_color),
+                    .border = ui_widget_border(true, 1.0f, ui_widget_color_v4(theme->fg_color)),
                 });
             }
             ui_widget_group_end();
@@ -1343,6 +1462,7 @@ update_function(update)
     }
     ui_widget_draw_command_list_t widget_draw_command_list = ui_end();
     game->widget_draw_command_list = widget_draw_command_list;
+#endif
 }
 
 render_function(render)
@@ -1351,6 +1471,7 @@ render_function(render)
     graphics_t* graphics = platform->graphics;
     game_t* game = (game_t*)memory->permanent;
     camera_t* camera = &game->camera;
+    theme_t* theme = get_current_theme(game);
 
     resize_offscreen_buffer(platform, game);
 
@@ -1358,39 +1479,41 @@ render_function(render)
     game->transform_param.view = camera->view;
     game->transform_param.projection = camera->projection;
     game->transform_param.camera_world = v4v(camera->position, 0.0f);
-
+    
     graphics->begin_pass(game->offscreen_target_msaa, &(graphics_pass_desc_t)
     {
-        .clear_color = true, .clear_rgba = { 0.005f, 0.005f, 0.005f, 1.0f },
+        .clear_color = true,
+        .clear_rgba = v4v(srgb_to_linear(theme->bg_color.rgb), theme->bg_color.a),
         .clear_depth = true, .clear_depth_value = 1.0f
     });
-    {
-        skybox_param_t skybox_param =
-        {
-            .view_no_translation = camera->view_no_translation,
-            .projection = camera->projection,
-            .yaw = global_earth_yaw,
-            .pitch = global_earth_pitch,
-            .shape = game->shape_value,
-        };
+    // {
+    //     skybox_param_t skybox_param =
+    //     {
+    //         .view_no_translation = camera->view_no_translation,
+    //         .projection = camera->projection,
+    //         .yaw = global_earth_yaw,
+    //         .pitch = global_earth_pitch,
+    //         .shape = game->shape_value,
+    //     };
 
-        graphics->update_buffer(game->skybox_info.param_buffer, &skybox_param, 0, sizeof(skybox_param_t));
-        graphics->set_buffer(game->skybox_info.param_buffer, STAGE_VERTEX_SHADER, 0, 0, 0);
-        graphics->set_buffer(game->skybox_info.param_buffer, STAGE_PIXEL_SHADER, 0, 0, 0);
-        graphics->set_vertex_buffer(game->skybox_info.vertex_buffer, 0, sizeof(skybox_vertex_t), 0);
-        graphics->set_index_buffer(game->skybox_info.index_buffer, 0);
-        graphics->set_program(game->skybox_info.program);
-        graphics->set_srvs(STAGE_PIXEL_SHADER, &game->skybox_info.texture, 1, 0);
-        graphics->set_samplers(STAGE_PIXEL_SHADER, &game->linear_sampler, 1, 0);
-        graphics->set_pipeline(game->pre_multiplied_pipeline);
-        graphics->draw_indexed(TOPOLOGY_TRIANGLE_LIST, game->skybox_info.index_buffer.size, 0, 0);
-    }
+    //     graphics->update_buffer(game->skybox_info.param_buffer, &skybox_param, 0, sizeof(skybox_param_t));
+    //     graphics->set_buffer(game->skybox_info.param_buffer, STAGE_VERTEX_SHADER, 0, 0, 0);
+    //     graphics->set_buffer(game->skybox_info.param_buffer, STAGE_PIXEL_SHADER, 0, 0, 0);
+    //     graphics->set_vertex_buffer(game->skybox_info.vertex_buffer, 0, sizeof(skybox_vertex_t), 0);
+    //     graphics->set_index_buffer(game->skybox_info.index_buffer, 0);
+    //     graphics->set_program(game->skybox_info.program);
+    //     graphics->set_srvs(STAGE_PIXEL_SHADER, &game->skybox_info.texture, 1, 0);
+    //     graphics->set_samplers(STAGE_PIXEL_SHADER, &game->linear_sampler, 1, 0);
+    //     graphics->set_pipeline(game->pre_multiplied_pipeline);
+    //     graphics->draw_indexed(TOPOLOGY_TRIANGLE_LIST, game->skybox_info.index_buffer.size, 0, 0);
+    // }
     graphics->end_pass();
     
     graphics->begin_pass(game->offscreen_target_msaa, &(graphics_pass_desc_t){ 0 });
     {
         sphere_info_t* sphere_info = &game->sphere_info;
-        sphere_info->param.alpha = game->shape_value;
+        // sphere_info->param.color = v4(0.0f, 0.0f, 0.0f, game->shape_value);
+        sphere_info->param.color = v4v(srgb_to_linear(theme->bg_color.rgb), game->shape_value);
         graphics->update_buffer(game->transform_buffer, &game->transform_param, 0, sizeof(game->transform_param));
         graphics->update_buffer(sphere_info->param_buffer, &sphere_info->param, 0, sizeof(sphere_info->param));
         graphics->set_buffer(game->transform_buffer, STAGE_VERTEX_SHADER, 0, 0, 0);
@@ -1422,7 +1545,7 @@ render_function(render)
 
     graphics->begin_pass(game->offscreen_target_msaa, &(graphics_pass_desc_t){ 0 });
     {
-        shape_param->color = v4(0.006f, 0.006f, 0.006f, 1.0f);
+        shape_param->color = theme->sphere_grid_color;
 
         sphere_info_t* sphere_info = &game->sphere_info;
 
@@ -1451,8 +1574,10 @@ render_function(render)
         graphics->set_buffer(shape_info->param_buffer, STAGE_VERTEX_SHADER, 1, 0, 0);
         
         // game->glow_mask_setting.glow_color = v4v(srgb_to_linear(v3(0.9964f, 0.8431f, 0.4941f)), 1.0f);
-        game->glow_mask_setting.glow_color = v4v(srgb_to_linear(v3(0.1058f, 0.9921f, 0.6117f)), 1.0f);
-        graphics->update_buffer(game->glow_mask_buffer, &game->glow_mask_setting, 0, sizeof(game->glow_mask_setting));
+        game->glow_mask_param.glow_color = srgb_to_linear(theme->fg_color.rgb);
+        game->glow_mask_param.glow = theme->dark_mode ? 1.0f : 0.0f;
+        
+        graphics->update_buffer(game->glow_mask_buffer, &game->glow_mask_param, 0, sizeof(game->glow_mask_param));
         graphics->set_buffer(game->glow_mask_buffer, STAGE_PIXEL_SHADER, 0, 0, 0);
         graphics->set_program(game->glow_mask_program);
         graphics->set_pipeline(game->alphaoff_pipeline);
@@ -1465,12 +1590,12 @@ render_function(render)
     // NOTE: Horizontal blur. glow_mask -> glow_a.
     graphics->begin_pass(game->glow_a_target, &(graphics_pass_desc_t){ 0 });
     {
-        game->glow_blur_setting = (glow_blur_setting_t)
+        game->glow_blur_param = (glow_blur_param_t)
         {
             .inverse_dst_size = { 1.0f / game->glow_a.width, 1.0f / game->glow_a.height },
             .direction = { 1.0f, 0.0f }
         };
-        graphics->update_buffer(game->blur_buffer, &game->glow_blur_setting, 0, sizeof(game->glow_blur_setting));
+        graphics->update_buffer(game->blur_buffer, &game->glow_blur_param, 0, sizeof(game->glow_blur_param));
         graphics->set_buffer(game->blur_buffer, STAGE_PIXEL_SHADER, 0, 0, 0);
         graphics->set_program(game->blur_program);
         graphics->set_pipeline(game->alphaoff_pipeline);
@@ -1483,12 +1608,12 @@ render_function(render)
     // NOTE: Vertical blur. glow_a -> glow_b.
     graphics->begin_pass(game->glow_b_target, &(graphics_pass_desc_t){ 0 });
     {
-        game->glow_blur_setting = (glow_blur_setting_t)
+        game->glow_blur_param = (glow_blur_param_t)
         {
             .inverse_dst_size = { 1.0f / game->glow_b.width, 1.0f / game->glow_b.height },
             .direction = { 0.0f, 1.0f }
         };
-        graphics->update_buffer(game->blur_buffer, &game->glow_blur_setting, 0, sizeof(game->glow_blur_setting));
+        graphics->update_buffer(game->blur_buffer, &game->glow_blur_param, 0, sizeof(game->glow_blur_param));
         graphics->set_buffer(game->blur_buffer, STAGE_PIXEL_SHADER, 0, 0, 0);
         graphics->set_program(game->blur_program);
         graphics->set_pipeline(game->alphaoff_pipeline);
@@ -1498,22 +1623,28 @@ render_function(render)
     }
     graphics->end_pass();
 
+    graphics->resolve_texture(game->offscreen_scene, game->offscreen_scene_msaa);
+    
     // // NOTE: Merge pass. offscreen_scene + glow -> offscreen_scene.
-    graphics->begin_pass(game->offscreen_target_msaa, &(graphics_pass_desc_t){ 0 });
+    graphics->begin_pass(game->merge_target_msaa, &(graphics_pass_desc_t){ 0 });
     {
         game->glow_merge_param.viewport_size = (vec2){ (f32)platform->width, (f32)platform->height };
         game->glow_merge_param.intensity = game->glow_intensity;
+        game->glow_merge_param.glow = theme->dark_mode ? 1.0f : 0.0f;
         graphics->update_buffer(game->glow_merge_param_buffer, &game->glow_merge_param, 0, sizeof(game->glow_merge_param));
         graphics->set_buffer(game->glow_merge_param_buffer, STAGE_PIXEL_SHADER, 0, 0, 0);
         graphics->set_program(game->glow_merge_program);
-        graphics->set_pipeline(game->additive_pipeline);
-        graphics->set_samplers(STAGE_PIXEL_SHADER, &game->linear_sampler, 1, 0);
-        graphics->set_srvs(STAGE_PIXEL_SHADER, &game->glow_b, 1, 0);
+        // graphics->set_pipeline(game->additive_pipeline);
+        graphics->set_pipeline(game->alphaoff_pipeline);
+        graphics_sampler_t samplers[] = { game->point_sampler, game->linear_sampler };
+        graphics->set_samplers(STAGE_PIXEL_SHADER, samplers, 2, 0);
+        graphics_texture_t srvs[] = { game->offscreen_scene, game->glow_b };
+        graphics->set_srvs(STAGE_PIXEL_SHADER, srvs, 2, 0);
         graphics->draw(TOPOLOGY_TRIANGLE_LIST, 3, 0);
     }
     graphics->end_pass();
 
-    graphics->begin_pass(game->offscreen_target_msaa, &(graphics_pass_desc_t){ 0 });
+    graphics->begin_pass(game->merge_target_msaa, &(graphics_pass_desc_t){ 0 });
     {
         country_mesh_data_t* country_mesh_data = &game->country_data.mesh;
         
@@ -1525,7 +1656,9 @@ render_function(render)
         graphics->set_pipeline(game->d_test_pipeline);
 
         // shape_param->color = v4v(srgb_to_linear(v3(0.9964f, 0.8431f, 0.4941f)), 1.0f);
-        shape_param->color = v4v(srgb_to_linear(v3(0.1058f, 0.9921f, 0.6117f)), 1.0f);
+        // shape_param->color = v4v(srgb_to_linear(v3(0.1058f, 0.9921f, 0.6117f)), 1.0f);
+        // shape_param->color = v4v(srgb_to_linear(v3(0.070f, 0.070f, 0.070f)), 1.0f);
+        shape_param->color = v4v(srgb_to_linear(theme->fg_color.rgb), theme->fg_color.a);
         shape_param->line_thickness = 2.0f;
 
         graphics->update_buffer(shape_info->param_buffer, shape_param, 0, sizeof(shape_param_t));
@@ -1535,8 +1668,7 @@ render_function(render)
 
         if (country_is_valid_index(game->country_index))
         {
-            // shape_param->color = v4(0.2f, 0.2f, 0.2f, 0.7f);
-            shape_param->color = v4(1.0f, 1.0f, 1.0f, 1.0f);
+            shape_param->color = v4v(srgb_to_linear(theme->highlight_color.rgb), theme->highlight_color.a);
             graphics->update_buffer(shape_info->param_buffer, shape_param, 0, sizeof(shape_param_t));
             graphics->set_buffer(shape_info->param_buffer, STAGE_VERTEX_SHADER | STAGE_PIXEL_SHADER, 1, 0, 0);
 
@@ -1547,7 +1679,7 @@ render_function(render)
     }
     graphics->end_pass();
 
-    graphics->resolve_texture(game->offscreen_scene, game->offscreen_scene_msaa);
+    graphics->resolve_texture(game->merge_scene, game->merge_scene_msaa);
     
     // NOTE: Post pass rendering to backbuffer.
     graphics->begin_pass(graphics->get_backbuffer_target(), &(graphics_pass_desc_t){ .clear_color = true,  });
@@ -1563,22 +1695,22 @@ render_function(render)
         graphics->set_program(game->post_program);
         graphics->set_pipeline(game->alphaoff_pipeline);
         graphics->set_samplers(STAGE_PIXEL_SHADER, &game->point_sampler, 1, 0);
-        graphics->set_srvs(STAGE_PIXEL_SHADER, &game->offscreen_scene, 1, 0);
+        graphics->set_srvs(STAGE_PIXEL_SHADER, &game->merge_scene, 1, 0);
         graphics->draw(TOPOLOGY_TRIANGLE_LIST, 3, 0);
     }
     graphics->end_pass();
 
 
+#if FONT_ENABLE
     graphics->begin_draw();
     {
-#if FONT_ENABLE
         char frame_ms_text[32] = { 0 };
         size_t frame_ms_length = 0;
 
         if ((frame_ms_length = snprintf(frame_ms_text, sizeof(frame_ms_text), "%.2f ms", platform->delta_time * 1000)) > 0)
         {
             graphics->draw_text(game->font_16, frame_ms_text, frame_ms_length,
-                                game->font_color.r, game->font_color.g, game->font_color.b, game->font_color.a,
+                                theme->font_color.r, theme->font_color.g, theme->font_color.b, theme->font_color.a,
                                 TEXT_ALIGNMENT_TRAILING, 0.0f - 8.0f, 0.0f + 8.0f, (f32)platform->width, (f32)platform->height);
         }
 
@@ -1586,10 +1718,9 @@ render_function(render)
         if (country_name.name && country_name.length)
         {
             graphics->draw_text(game->font_16, country_name.name, country_name.length,
-                                game->font_color.r, game->font_color.g, game->font_color.b, game->font_color.a,
+                                theme->font_color.r, theme->font_color.g, theme->font_color.b, theme->font_color.a,
                                 TEXT_ALIGNMENT_LEADING, 8.0f, 8.0f, (f32)platform->width, (f32)platform->height);
         }
-#endif
 
         ui_widget_draw_command_list_t* widget_draw_command_list = &game->widget_draw_command_list;
         for (u32 i = 0; i < widget_draw_command_list->command_count; ++i)
@@ -1604,11 +1735,9 @@ render_function(render)
                 f32 y = draw_rect->y;
                 f32 width = draw_rect->width;
                 f32 height = draw_rect->height;
-                f32 color[4] = { draw_rect->r, draw_rect->g, draw_rect->b, draw_rect->a };
+                vec4 color = draw_rect->color;
                 
-                graphics->draw_rect(x, y, width, height, true, 0.0f, color[0], color[1], color[2], color[3]);
-                // graphics->draw_rect(x + (width - 1.0f) * 0.5f, y, 1.0f, height, true, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f);
-                // graphics->draw_rect(x, y + (height - 1.0f) * 0.5f, width, 1.0f, true, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f);
+                graphics->draw_rect(x, y, width, height, true, 0.0f, color.r, color.g, color.b, color.a);
             }
             else if (command->kind == UI_WIDGET_DRAW_BORDER)
             {
@@ -1618,10 +1747,10 @@ render_function(render)
                 f32 y = draw_border->y;
                 f32 width = draw_border->width;
                 f32 height = draw_border->height;
-                f32 color[4] = { draw_border->r, draw_border->g, draw_border->b, draw_border->a };
+                vec4 color = draw_border->color;
                 f32 thickness = draw_border->thickness;
 
-                graphics->draw_rect(x, y, width, height, false, thickness, color[0], color[1], color[2], color[3]);
+                graphics->draw_rect(x, y, width, height, false, thickness, color.r, color.g, color.b, color.a);
             }
             else if (command->kind == UI_WIDGET_DRAW_TEXT)
             {
@@ -1631,10 +1760,11 @@ render_function(render)
                 f32 y = draw_text->y;
                 f32 width = draw_text->width;
                 f32 height = draw_text->height;
+                vec4 color = draw_text->color;
                 const char* text = draw_text->text;
                 u32 length = draw_text->length;
                 
-                graphics->draw_text(font, text, length, 0.6f, 0.6f, 0.6f, 1.0f,
+                graphics->draw_text(font, text, length, color.r, color.g, color.b, color.a,
                                     TEXT_ALIGNMENT_LEADING, x, y, width, height);
             }
             else
@@ -1644,5 +1774,6 @@ render_function(render)
         }
     }
     graphics->end_draw();
+#endif
 
 }

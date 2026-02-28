@@ -1,3 +1,4 @@
+#include <intrin.h>
 
 typedef struct platform_thread_pool_entry_t
 {
