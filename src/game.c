@@ -248,10 +248,9 @@ typedef struct game_t
     graphics_shader_t skybox_vertex_shader;
     graphics_shader_t skybox_pixel_shader;
     graphics_program_t skybox_program;
-
     
     theme_t themes[THEME_TYPE_COUNT];
-    u32 current_theme_index;
+    theme_type_t current_theme_type;
     
 #if FONT_ENABLE
     graphics_2d_font_t font_16;
@@ -777,6 +776,37 @@ static void init_shape(const graphics_t* graphics, shape_info_t* shape_info)
     });
 }
 
+static void init_theme(game_t* game)
+{
+    // NOTE: Light and dark themes.
+    game->themes[THEME_TYPE_LIGHT] = (theme_t)
+    {
+        .bg_color = v4(1.0f, 0.9803f, 0.9411f, 1.0f),
+        // .fg_color = v4(0.090f, 0.090f, 0.090f, 1.0f),
+        // .fg_color = v4(0.1607f, 0.1372f, 0.1803f, 1.0f),
+        .fg_color = v4(0.2745f, 0.2431f, 0.2941f, 1.0f),
+        .sphere_grid_color = v4(0.4f, 0.4f, 0.4f, 0.25f),
+        .highlight_color = v4(0.80f, 0.070f, 0.070f, 1.0f),
+        // .font_color = v4(0.090f, 0.090f, 0.090f, 1.0f),
+        // .font_color = v4(0.1607f, 0.1372f, 0.1803f, 1.0f),
+        .font_color = v4(0.2745f, 0.2431f, 0.2941f, 1.0f),
+        .dark_mode = false,
+    };
+
+    game->themes[THEME_TYPE_DARK] = (theme_t)
+    {
+        .bg_color = v4(0.005f, 0.005f, 0.005f, 1.0f),
+        .fg_color = v4(0.1058f, 0.9921f, 0.6117f, 1.0f),
+        .sphere_grid_color = v4(0.006f, 0.006f, 0.006f, 1.0f),
+        .highlight_color = v4(1.0f, 1.0f, 1.0f, 1.0f),
+        .font_color = v4(0.1058f, 0.9921f, 0.6117f, 1.0f),
+        // .font_color = v4(0.6f, 0.6f, 0.6f, 1.0f),
+        .dark_mode = true,
+    };
+
+    game->current_theme_type = THEME_TYPE_LIGHT;
+}
+
 typedef struct skybox_t
 {
     memory_arena_t* memory_arena;
@@ -1099,6 +1129,7 @@ init_function(init)
     init_shape(graphics, &game->shape_info);
     init_skybox(memory_arena, graphics, io, thread_pool, &game->skybox_info);
     init_country_data(memory_arena, graphics, io, &game->country_data);
+    init_theme(game);
 
     game->shape_value = 1.0f;
     game->shape_direction = 1.0f;
@@ -1259,37 +1290,9 @@ init_function(init)
         .attribute_count = 0,
     });
 
-    // NOTE: Light and dark themes.
-    game->themes[0] = (theme_t)
-    {
-        .bg_color = v4(1.0f, 0.9803f, 0.9411f, 1.0f),
-        .fg_color = v4(0.090f, 0.090f, 0.090f, 1.0f),
-        .sphere_grid_color = v4(0.4f, 0.4f, 0.4f, 0.25f),
-        .highlight_color = v4(0.80f, 0.070f, 0.070f, 1.0f),
-        .font_color = v4(0.090f, 0.090f, 0.090f, 1.0f),
-        .dark_mode = false,
-    };
-    
-    game->themes[1] = (theme_t)
-    {
-        .bg_color = v4(0.005f, 0.005f, 0.005f, 1.0f),
-        .fg_color = v4(0.1058f, 0.9921f, 0.6117f, 1.0f),
-        .sphere_grid_color = v4(0.006f, 0.006f, 0.006f, 1.0f),
-        .highlight_color = v4(1.0f, 1.0f, 1.0f, 1.0f),
-        .font_color = v4(0.1058f, 0.9921f, 0.6117f, 1.0f),
-        // .font_color = v4(0.6f, 0.6f, 0.6f, 1.0f),
-        .dark_mode = true,
-    };
-
-    game->current_theme_index = 0;
-
 #if FONT_ENABLE
     game->font_16 = graphics->create_font("Google Sans", 16);
     game->font_35 = graphics->create_font("Google Sans", 35);
-    // game->font_color = vec4(0.8313f, 0.0f, 0.4705f, 1.0f);
-    // game->font_color = vec4(0.38f, 0.38f, 0.38f, 1.0f);
-    // game->font_color = v4(0.6862f, 0.6862f, 0.6862f, 1.0f);
-    // game->font_color = v4(0.090f, 0.090f, 0.090f, 1.0f);
 #endif
 }
 
@@ -1315,23 +1318,23 @@ static ui_get_line_height_function(get_line_height)
 
 static theme_t* get_current_theme(game_t* game)
 {
-    return &game->themes[game->current_theme_index];
+    return &game->themes[game->current_theme_type];
 }
 
 static void update_theme(game_t* game, theme_type_t theme_type)
 {
-    u32 new_theme_index = 0;
+    theme_type_t new_theme_type = THEME_TYPE_LIGHT;
     
     switch (theme_type)
     {
         case THEME_TYPE_LIGHT:
         {
-            new_theme_index = THEME_TYPE_DARK;
+            new_theme_type = THEME_TYPE_DARK;
         } break;
 
         case THEME_TYPE_DARK:
         {
-            new_theme_index = THEME_TYPE_LIGHT;
+            new_theme_type = THEME_TYPE_LIGHT;
         } break;
 
         default:
@@ -1340,7 +1343,7 @@ static void update_theme(game_t* game, theme_type_t theme_type)
         }
     }
 
-    game->current_theme_index = new_theme_index;
+    game->current_theme_type = new_theme_type;
 }
 
 update_function(update)
@@ -1385,7 +1388,7 @@ update_function(update)
 
     if (input_is_key_released(input, KEY_C))
     {
-        update_theme(game, game->current_theme_index);
+        update_theme(game, game->current_theme_type);
     }
     
     if (input_is_key_released(input, KEY_I))
