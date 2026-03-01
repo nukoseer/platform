@@ -1407,7 +1407,7 @@ update_function(update)
         .get_line_height = { (void*)get_line_height, platform->graphics },
     });
     {
-        ui_widget_group_begin("ui-widget-group-1", platform->width - 440.0f, platform->height - 230.0f, (ui_widget_desc_t)
+        ui_widget_group_begin("ui-widget-group-1", platform->width - 440.0f, platform->height - 170.0f, (ui_widget_desc_t)
         {
             .size = { ui_widget_pixel_size(420.0f), ui_widget_content_size() },
             .child_axis = ui_widget_axis_y(),
@@ -1451,9 +1451,8 @@ update_function(update)
                 });
                 ui_widget("ui-widget-4", (ui_widget_desc_t)
                 {
-                    .size = { ui_widget_parent_size(1.0f), ui_widget_pixel_size(40.0f) },
-                    .color = ui_widget_color_v4(theme->bg_color),
-                    .border = ui_widget_border(true, 1.0f, ui_widget_color_v4(theme->fg_color)),
+                    .size = { ui_widget_parent_size(1.0f), ui_widget_pixel_size(4.0f) },
+                    .color = ui_widget_color_v4(theme->fg_color),
                 });
             }
             ui_widget_group_end();
