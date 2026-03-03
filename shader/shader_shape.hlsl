@@ -32,6 +32,8 @@ cbuffer global_globe_param : register(b1)
     float2 scale;
     float2 viewport_size;
     float4 color;
+    float lift;
+    float3 _pad;
 };
 
 PS_INPUT vs(VS_INPUT input)
@@ -48,6 +50,10 @@ PS_INPUT vs(VS_INPUT input)
     float3 p_globe_position = float3(cos(p_lat) * sin(p_lon), sin(p_lat), cos(p_lat) * cos(p_lon)) * 1.005;
     float3 globe_position = float3(cos(lat) * sin(lon), sin(lat), cos(lat) * cos(lon)) * 1.005;
     float3 n_globe_position = float3(cos(n_lat) * sin(n_lon), sin(n_lat), cos(n_lat) * cos(n_lon)) * 1.005;
+
+    p_globe_position = p_globe_position + p_globe_position * lift;
+    globe_position = globe_position + globe_position * lift;
+    n_globe_position = n_globe_position + n_globe_position * lift;
 
     p_globe_position = rotate_y(p_globe_position, radians(yaw));
     p_globe_position = rotate_x(p_globe_position, radians(pitch));
@@ -99,18 +105,38 @@ PS_INPUT vs(VS_INPUT input)
 
     float2 perp0 = float2(-dir0.y, dir0.x);
     float2 perp1 = float2(-dir1.y, dir1.x);
-
-    float2 miter_dir = perp0 + perp1;
-
-    float2 scale = 1.0 / dot(miter_dir, perp1);
-    float miter_level = 2.0;
-    scale = clamp(scale, -miter_level, miter_level);
-
+    
     float thickness = line_thickness;
     float half_thickness = thickness * 0.5;
     float2 ndc_per_pixel = 2.0 / viewport_size;
 
-    float2 offset = miter_dir * scale * half_thickness * ndc_per_pixel * input.side;
+    float2 miter_dir = perp0 + perp1;
+    float miter_len = length(miter_dir);
+    float miter_level = 5.0;
+
+    float2 offset;
+    if (miter_len < 1e-4)
+    {
+        // Opposite directions (hairpin) — just use one perpendicular
+        offset = perp0 * half_thickness * ndc_per_pixel * input.side;
+    }
+    else
+    {
+        float2 miter_norm = miter_dir / miter_len; // normalize
+        float miter_scale = 1.0 / dot(miter_norm, perp1);
+
+        if (abs(miter_scale) > miter_level)
+        {
+            // Miter limit exceeded — fall back to perpendicular (bevel)
+            offset = perp1 * half_thickness * ndc_per_pixel * input.side;
+        }
+        else
+        {
+            // miter_scale = clamp(miter_scale, -1.5, 1.5);
+            offset = miter_norm * miter_scale * half_thickness * ndc_per_pixel * input.side;
+        }
+    }
+    
     float2 new_position = ndc + offset;
 
     output.position = float4(new_position.xy * clip.w, clip.z, clip.w);
@@ -133,7 +159,7 @@ float4 ps(PS_INPUT input) : SV_TARGET
 {
     float distance = abs(input.side);
     float width = fwidth(distance);
-    
+
     float alpha = 1.0 - smoothstep(1.0 - width, 1.0 + width, distance);
     
     return float4(color.rgb, alpha);

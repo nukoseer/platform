@@ -84,6 +84,8 @@ typedef struct shape_param_t
     vec2 scale;
     vec2 viewport_size;
     vec4 color;
+    f32 lift;
+    f32 _pad[3];
 } shape_param_t;
 
 typedef struct shape_info_t
@@ -785,7 +787,7 @@ static void init_theme(game_t* game)
         // .fg_color = v4(0.090f, 0.090f, 0.090f, 1.0f),
         // .fg_color = v4(0.1607f, 0.1372f, 0.1803f, 1.0f),
         .fg_color = v4(0.2745f, 0.2431f, 0.2941f, 1.0f),
-        .sphere_grid_color = v4(0.4f, 0.4f, 0.4f, 0.25f),
+        .sphere_grid_color = v4(0.55f, 0.55f, 0.55f, 1.0f),
         .highlight_color = v4(0.80f, 0.070f, 0.070f, 1.0f),
         // .font_color = v4(0.090f, 0.090f, 0.090f, 1.0f),
         // .font_color = v4(0.1607f, 0.1372f, 0.1803f, 1.0f),
@@ -797,7 +799,7 @@ static void init_theme(game_t* game)
     {
         .bg_color = v4(0.005f, 0.005f, 0.005f, 1.0f),
         .fg_color = v4(0.1058f, 0.9921f, 0.6117f, 1.0f),
-        .sphere_grid_color = v4(0.006f, 0.006f, 0.006f, 1.0f),
+        .sphere_grid_color = v4(0.008f, 0.008f, 0.008f, 1.0f),
         .highlight_color = v4(1.0f, 1.0f, 1.0f, 1.0f),
         .font_color = v4(0.1058f, 0.9921f, 0.6117f, 1.0f),
         // .font_color = v4(0.6f, 0.6f, 0.6f, 1.0f),
@@ -1544,6 +1546,7 @@ render_function(render)
     shape_param->line_thickness = 1.0f;
     shape_param->scale = v2(scale_x, scale_y);
     shape_param->viewport_size = v2((f32)game->offscreen_scene.width, (f32)game->offscreen_scene.height);
+    shape_param->lift = 0.0f;
 
     graphics->begin_pass(game->offscreen_target_msaa, &(graphics_pass_desc_t){ 0 });
     {
@@ -1567,7 +1570,7 @@ render_function(render)
     {
         country_mesh_data_t* country_mesh_data = &game->country_data.mesh;
         
-        shape_info->param.line_thickness = 2.0f;
+        shape_info->param.line_thickness = 2.5f;
         graphics->update_buffer(game->transform_buffer, &game->transform_param, 0, sizeof(game->transform_param));
         graphics->update_buffer(shape_info->param_buffer, shape_param, 0, sizeof(shape_param_t));
         graphics->set_vertex_buffer(country_mesh_data->vertex_buffer, 0, country_mesh_data->vertex_stride, 0);
@@ -1661,7 +1664,7 @@ render_function(render)
         // shape_param->color = v4v(srgb_to_linear(v3(0.1058f, 0.9921f, 0.6117f)), 1.0f);
         // shape_param->color = v4v(srgb_to_linear(v3(0.070f, 0.070f, 0.070f)), 1.0f);
         shape_param->color = v4v(srgb_to_linear(theme->fg_color.rgb), theme->fg_color.a);
-        shape_param->line_thickness = 2.0f;
+        shape_param->line_thickness = 2.5f;
 
         graphics->update_buffer(shape_info->param_buffer, shape_param, 0, sizeof(shape_param_t));
         graphics->set_buffer(shape_info->param_buffer, STAGE_VERTEX_SHADER | STAGE_PIXEL_SHADER, 1, 0, 0);
@@ -1670,6 +1673,8 @@ render_function(render)
 
         if (country_is_valid_index(game->country_index))
         {
+            shape_param->line_thickness = 4.0f;
+            shape_param->lift = 0.01f;
             shape_param->color = v4v(srgb_to_linear(theme->highlight_color.rgb), theme->highlight_color.a);
             graphics->update_buffer(shape_info->param_buffer, shape_param, 0, sizeof(shape_param_t));
             graphics->set_buffer(shape_info->param_buffer, STAGE_VERTEX_SHADER | STAGE_PIXEL_SHADER, 1, 0, 0);
