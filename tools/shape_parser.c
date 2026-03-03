@@ -133,40 +133,36 @@ size_t parse_shape_file(void* header, u8* memory, u8* shape_file_buffer, size_t 
                     {
                         u32 start = parts[i] + part_index;
                         u32 end = ((i + 1 < shape_content->part_count) ? parts[i + 1] : shape_content->point_count) + part_index;
+                        u32 raw_count = end - start;
 
-                        for (u32 j = start; j + 1 < end; ++j)
+                        for (u32 j = 0; j < raw_count - 1; ++j)
                         {
-                            u32 num_points = end - start;
-
-                            for (u32 k = 0; k < num_points; ++k)
-                            {
-                                u32 current = start + k;
-                                u32 next = start + ((k + 1) % num_points);
+                            u32 current = start + j;
+                            u32 next = start + (j + 1);
                                 
-                                u32 current_left = 2 * current + 0;
-                                u32 current_right = 2 * current + 1;
-                                u32 next_left = 2 * next + 0;
-                                u32 next_right = 2 * next + 1;
+                            u32 current_left = 2 * current + 0;
+                            u32 current_right = 2 * current + 1;
+                            u32 next_left = 2 * next + 0;
+                            u32 next_right = 2 * next + 1;
 
-                                if (print_format & PRINT_MESH_INDICES)
-                                {
-                                    *(u16*)(memory + memory_offset) = current_left;
-                                    memory_offset += sizeof(u16);
-                                    *(u16*)(memory + memory_offset) = current_right;
-                                    memory_offset += sizeof(u16);
-                                    *(u16*)(memory + memory_offset) = next_left;
-                                    memory_offset += sizeof(u16);
-                                    *(u16*)(memory + memory_offset) = next_left;
-                                    memory_offset += sizeof(u16);
-                                    *(u16*)(memory + memory_offset) = current_right;
-                                    memory_offset += sizeof(u16);
-                                    *(u16*)(memory + memory_offset) = next_right;
-                                    memory_offset += sizeof(u16);
+                            if (print_format & PRINT_MESH_INDICES)
+                            {
+                                *(u16*)(memory + memory_offset) = current_left;
+                                memory_offset += sizeof(u16);
+                                *(u16*)(memory + memory_offset) = current_right;
+                                memory_offset += sizeof(u16);
+                                *(u16*)(memory + memory_offset) = next_left;
+                                memory_offset += sizeof(u16);
+                                *(u16*)(memory + memory_offset) = next_left;
+                                memory_offset += sizeof(u16);
+                                *(u16*)(memory + memory_offset) = current_right;
+                                memory_offset += sizeof(u16);
+                                *(u16*)(memory + memory_offset) = next_right;
+                                memory_offset += sizeof(u16);
 
-                                    ((country_border_mesh_file_header_t*)header)->index_count += 6;
-                                }
-                                ++temp_index_count;
+                                ((country_border_mesh_file_header_t*)header)->index_count += 6;
                             }
+                            ++temp_index_count;
                         }
                     }
                 }
@@ -195,62 +191,71 @@ size_t parse_shape_file(void* header, u8* memory, u8* shape_file_buffer, size_t 
                 uint8_t* point_ptr = part_ptr + (shape_content->part_count * sizeof(u32));
                 point_t* points = (point_t*)(point_ptr);
 
-                for (u32 i = 0; i < shape_content->point_count; ++i)
+                for (u32 i = 0; i < shape_content->part_count; ++i)
                 {
-                    u32 p_i = (i == 0) ? shape_content->point_count - 1 : i - 1;
-                    u32 c_i = i;
-                    u32 n_i = (i + 1) % shape_content->point_count;
+                    u32 start = parts[i];
+                    u32 end = (i + 1 < shape_content->part_count)
+                        ? parts[i + 1]
+                        : shape_content->point_count;
+                    u32 count = end - start;
 
-                    f32 p_lon = (f32)points[p_i].x;
-                    f32 p_lat = (f32)points[p_i].y;
-                    f32 n_lon = (f32)points[n_i].x;
-                    f32 n_lat = (f32)points[n_i].y;
-                    
-                    f32 lon = (f32)points[c_i].x;
-                    f32 lat = (f32)points[c_i].y;
-
-                    f32 lon_rad = lon * (f32)DEG2RAD;
-                    f32 lat_rad = lat * (f32)DEG2RAD;
-
-                    f32 x = cosf(lat_rad) * sinf(lon_rad) /* radius */;
-                    f32 y = sinf(lat_rad) /* radius */;
-                    f32 z = cosf(lat_rad) * cosf(lon_rad) /* radius */;
-
-                    (void)x, (void)y, (void)z;
-                    
-                    if (print_format & PRINT_MESH_POINTS)
+                    for (u32 j = 0; j < count; ++j)
                     {
-                        country_border_mesh_vertex_t vertex1 =
+                        u32 p_i = start + ((j - 1) % count);
+                        u32 c_i = start + j;
+                        u32 n_i = start + ((j + 1) % count);
+
+                        f32 p_lon = (f32)points[p_i].x;
+                        f32 p_lat = (f32)points[p_i].y;
+                        f32 n_lon = (f32)points[n_i].x;
+                        f32 n_lat = (f32)points[n_i].y;
+                    
+                        f32 lon = (f32)points[c_i].x;
+                        f32 lat = (f32)points[c_i].y;
+
+                        f32 lon_rad = lon * (f32)DEG2RAD;
+                        f32 lat_rad = lat * (f32)DEG2RAD;
+
+                        f32 x = cosf(lat_rad) * sinf(lon_rad) /* radius */;
+                        f32 y = sinf(lat_rad) /* radius */;
+                        f32 z = cosf(lat_rad) * cosf(lon_rad) /* radius */;
+
+                        (void)x, (void)y, (void)z;
+                    
+                        if (print_format & PRINT_MESH_POINTS)
                         {
-                            .prev = v2(p_lon, p_lat),
-                            .current = v2(lon, lat),
-                            .next = v2(n_lon, n_lat),
-                            .side = -1.0f,
-                        };
+                            country_border_mesh_vertex_t vertex1 =
+                            {
+                                .prev = v2(p_lon, p_lat),
+                                .current = v2(lon, lat),
+                                .next = v2(n_lon, n_lat),
+                                .side = -1.0f,
+                            };
 
-                        country_border_mesh_vertex_t vertex2 =
+                            country_border_mesh_vertex_t vertex2 =
+                            {
+                                .prev = v2(p_lon, p_lat),
+                                .current = v2(lon, lat),
+                                .next = v2(n_lon, n_lat),
+                                .side = 1.0f,
+                            };
+
+                            memcpy(memory + memory_offset, &vertex1, sizeof(country_border_mesh_vertex_t));
+                            memory_offset += sizeof(country_border_mesh_vertex_t);
+                            memcpy(memory + memory_offset, &vertex2, sizeof(country_border_mesh_vertex_t));
+                            memory_offset += sizeof(country_border_mesh_vertex_t);
+
+                            ((country_border_mesh_file_header_t*)header)->vertex_count += 2;
+                        }
+                        else if (print_format & PRINT_POINTS)
                         {
-                            .prev = v2(p_lon, p_lat),
-                            .current = v2(lon, lat),
-                            .next = v2(n_lon, n_lat),
-                            .side = 1.0f,
-                        };
+                            country_border_point_t border_point = { lon, lat };
 
-                        memcpy(memory + memory_offset, &vertex1, sizeof(country_border_mesh_vertex_t));
-                        memory_offset += sizeof(country_border_mesh_vertex_t);
-                        memcpy(memory + memory_offset, &vertex2, sizeof(country_border_mesh_vertex_t));
-                        memory_offset += sizeof(country_border_mesh_vertex_t);
+                            memcpy(memory + memory_offset, &border_point, sizeof(country_border_point_t));
+                            memory_offset += sizeof(country_border_point_t);
 
-                        ((country_border_mesh_file_header_t*)header)->vertex_count += 2;
-                    }
-                    else if (print_format & PRINT_POINTS)
-                    {
-                        country_border_point_t border_point = { lon, lat };
-
-                        memcpy(memory + memory_offset, &border_point, sizeof(country_border_point_t));
-                        memory_offset += sizeof(country_border_point_t);
-
-                        ((country_border_file_header_t*)header)->point_count += 1;
+                            ((country_border_file_header_t*)header)->point_count += 1;
+                        }
                     }
                 }
             }
