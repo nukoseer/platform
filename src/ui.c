@@ -13,6 +13,7 @@ typedef enum ui_widget_size_kind_t
 {
     UI_WIDGET_SIZE_PIXEL,
     UI_WIDGET_SIZE_PARENT,
+    UI_WIDGET_SIZE_CHILDREN,
     UI_WIDGET_SIZE_CONTENT,
     
     UI_WIDGET_SIZE_COUNT,
@@ -266,6 +267,19 @@ static inline ui_widget_size_t ui_widget_pixel_size(f32 pixel_value)
     return widget_size;
 }
 
+static inline ui_widget_size_t ui_widget_parent_size(f32 parent_size_percentage)
+{
+    assert(parent_size_percentage >= 0.0f && parent_size_percentage <= 1.0f && "[UI] Invalid parent size percentage.");
+
+    ui_widget_size_t widget_size =
+    {
+        .kind = UI_WIDGET_SIZE_PARENT,
+        .value = parent_size_percentage,
+    };
+
+    return widget_size;
+}
+
 static inline ui_widget_size_t ui_widget_content_size(void)
 {
     ui_widget_size_t widget_size =
@@ -277,14 +291,12 @@ static inline ui_widget_size_t ui_widget_content_size(void)
     return widget_size;
 }
 
-static inline ui_widget_size_t ui_widget_parent_size(f32 parent_size_percentage)
+static inline ui_widget_size_t ui_widget_children_size(void)
 {
-    assert(parent_size_percentage >= 0.0f && parent_size_percentage <= 1.0f && "[UI] Invalid parent size percentage.");
-
     ui_widget_size_t widget_size =
     {
-        .kind = UI_WIDGET_SIZE_PARENT,
-        .value = parent_size_percentage,
+        .kind = UI_WIDGET_SIZE_CHILDREN,
+        .value = 0.0f,
     };
 
     return widget_size;
@@ -636,6 +648,13 @@ static void ui_widget_group_begin(const char* widget_name, f32 x, f32 y, ui_widg
     ui_widget_key widget_key = ui_widget_get_key_from_string(ui_top_parent_widget()->key, widget_name);
     ui_widget_t* widget = ui_widget_get(widget_key);
 
+    for (i32 axis = 0; axis < UI_WIDGET_AXIS_COUNT; ++axis)
+    {
+        ui_widget_size_kind_t size_kind = widget_desc.size[axis].kind;
+
+        assert(size_kind != UI_WIDGET_SIZE_CONTENT && "[UI] Widget groups cannot have content size.");
+    }
+
     ui_widget_build(widget, widget_name, x, y, &widget_desc);
     ui_push_parent_widget(widget);
 }
@@ -650,6 +669,13 @@ static void ui_widget(const char* widget_name, ui_widget_desc_t widget_desc)
     ui_widget_key widget_key = ui_widget_get_key_from_string(ui_top_parent_widget()->key, widget_name);
     ui_widget_t* widget = ui_widget_get(widget_key);
 
+    for (i32 axis = 0; axis < UI_WIDGET_AXIS_COUNT; ++axis)
+    {
+        ui_widget_size_kind_t size_kind = widget_desc.size[axis].kind;
+
+        assert(size_kind != UI_WIDGET_SIZE_CHILDREN && "[UI] Widgets cannot have children size.");
+    }
+
     ui_widget_build(widget, widget_name, 0.0f, 0.0f, &widget_desc);
 }
 
@@ -663,27 +689,6 @@ static void ui_widget_calculate_pixel_sizes(ui_widget_t* root_widget, ui_widget_
     for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
     {
         ui_widget_calculate_pixel_sizes(child_widget, axis);
-    }
-}
-
-static void ui_widget_calculate_content_sizes(ui_widget_t* root_widget, ui_widget_axis_t axis)
-{
-    if (root_widget->size[axis].kind == UI_WIDGET_SIZE_CONTENT)
-    {
-        f32 content_size = root_widget->label_size[axis];
-
-        for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
-        {
-            ui_widget_calculate_content_sizes(child_widget, axis);
-            content_size += child_widget->fixed_size[axis];
-        }
-
-        root_widget->fixed_size[axis] = content_size + root_widget->padding * 2.0f;
-    }
-
-    for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
-    {
-        ui_widget_calculate_content_sizes(child_widget, axis);
     }
 }
 
@@ -712,6 +717,41 @@ static void ui_widget_calculate_parent_dependent_sizes(ui_widget_t* root_widget,
     for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
     {
         ui_widget_calculate_parent_dependent_sizes(child_widget, axis);
+    }
+}
+
+static void ui_widget_calculate_children_dependent_sizes(ui_widget_t* root_widget, ui_widget_axis_t axis)
+{
+    if (root_widget->size[axis].kind == UI_WIDGET_SIZE_CHILDREN)
+    {
+        f32 children_size = 0.0f;
+
+        for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
+        {
+            children_size += child_widget->fixed_size[axis];
+        }
+
+        root_widget->fixed_size[axis] = children_size + root_widget->padding * 2.0f;
+    }
+
+    for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
+    {
+        ui_widget_calculate_children_dependent_sizes(child_widget, axis);
+    }
+}
+
+static void ui_widget_calculate_content_sizes(ui_widget_t* root_widget, ui_widget_axis_t axis)
+{
+    if (root_widget->size[axis].kind == UI_WIDGET_SIZE_CONTENT)
+    {
+        f32 content_size = root_widget->label_size[axis];
+
+        root_widget->fixed_size[axis] = content_size + root_widget->padding * 2.0f;
+    }
+
+    for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
+    {
+        ui_widget_calculate_content_sizes(child_widget, axis);
     }
 }
 
@@ -1115,6 +1155,7 @@ static ui_widget_draw_command_list_t ui_end(void)
         ui_widget_calculate_pixel_sizes(global_ui->root_widget, axis);
         ui_widget_calculate_content_sizes(global_ui->root_widget, axis);
         ui_widget_calculate_parent_dependent_sizes(global_ui->root_widget, axis);
+        ui_widget_calculate_children_dependent_sizes(global_ui->root_widget, axis);
         ui_widget_calculate_size_violations(global_ui->root_widget, axis);
         ui_widget_calculate_layout(global_ui->root_widget, axis);
     }

@@ -1414,7 +1414,7 @@ update_function(update)
     {
         ui_widget_group_begin("ui-widget-group-1", platform->width - 440.0f, platform->height - 170.0f, (ui_widget_desc_t)
         {
-            .size = { ui_widget_pixel_size(420.0f), ui_widget_content_size() },
+            .size = { ui_widget_pixel_size(420.0f), ui_widget_children_size() },
             .child_axis = ui_widget_axis_y(),
             .padding = 8.0f,
             .color = ui_widget_color_v4(theme->bg_color),
@@ -1423,7 +1423,7 @@ update_function(update)
         {
             ui_widget_group_begin("ui-widget-group-2", 0, 0, (ui_widget_desc_t)
             {
-                .size = { ui_widget_parent_size(1.0f), ui_widget_content_size() },
+                .size = { ui_widget_parent_size(1.0f), ui_widget_children_size() },
                 .child_axis = ui_widget_axis_y(),
                 .padding = 16.0f,
                 .color = ui_widget_color_v4(theme->bg_color),
