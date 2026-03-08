@@ -726,9 +726,30 @@ static void ui_widget_calculate_children_dependent_sizes(ui_widget_t* root_widge
     {
         f32 children_size = 0.0f;
 
-        for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
+        if (root_widget->child_axis == axis)
         {
-            children_size += child_widget->fixed_size[axis];
+            for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
+            {
+                ui_widget_calculate_children_dependent_sizes(child_widget, axis);
+                children_size += child_widget->fixed_size[axis];
+            }
+        }
+        else
+        {
+            f32 max_child_size = 0.0f;
+
+            for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
+            {
+                ui_widget_calculate_children_dependent_sizes(child_widget, axis);
+                
+                if (child_widget->fixed_size[axis] > max_child_size)
+                {
+                    
+                    max_child_size = child_widget->fixed_size[axis];
+                }
+            }
+
+            children_size = max_child_size;
         }
 
         root_widget->fixed_size[axis] = children_size + root_widget->padding * 2.0f;
@@ -1154,8 +1175,8 @@ static ui_widget_draw_command_list_t ui_end(void)
     {
         ui_widget_calculate_pixel_sizes(global_ui->root_widget, axis);
         ui_widget_calculate_content_sizes(global_ui->root_widget, axis);
-        ui_widget_calculate_parent_dependent_sizes(global_ui->root_widget, axis);
         ui_widget_calculate_children_dependent_sizes(global_ui->root_widget, axis);
+        ui_widget_calculate_parent_dependent_sizes(global_ui->root_widget, axis);
         ui_widget_calculate_size_violations(global_ui->root_widget, axis);
         ui_widget_calculate_layout(global_ui->root_widget, axis);
     }

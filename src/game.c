@@ -16,6 +16,9 @@
 #include "../shader/vertex_shader_shape.h"
 #include "../shader/pixel_shader_shape.h"
 
+#include "../shader/vertex_shader_shape_ui.h"
+#include "../shader/pixel_shader_shape_ui.h"
+
 #include "../shader/vertex_shader_sphere.h"
 #include "../shader/pixel_shader_sphere.h"
 
@@ -99,6 +102,24 @@ typedef struct shape_info_t
 
     shape_param_t param;
 } shape_info_t;
+
+typedef struct shape_ui_param_t
+{
+    vec4 color;
+    vec2 viewport_size;
+    vec2 center;
+    f32 _pad[4];
+} shape_ui_param_t;
+
+typedef struct shape_info_ui_t
+{
+    graphics_buffer_t param_buffer;
+    graphics_buffer_t vertex_buffer;
+    graphics_shader_t vertex_shader;
+    graphics_shader_t pixel_shader;
+    graphics_program_t program;
+    shape_ui_param_t param;
+} shape_info_ui_t;
 
 typedef struct skybox_info_t
 {
@@ -212,6 +233,7 @@ typedef struct game_t
 
     sphere_info_t sphere_info;
     shape_info_t shape_info;
+    shape_info_ui_t shape_info_ui;
     skybox_info_t skybox_info;
 
     glow_mask_param_t glow_mask_param;
@@ -310,6 +332,7 @@ typedef struct bmp_image_t
     u32 pitch;
 } bmp_image_t;
 
+static bool global_orbiting_mode;
 static f32 global_earth_yaw;
 static f32 global_earth_pitch;
 static bool global_earth_reset;
@@ -778,6 +801,49 @@ static void init_shape(const graphics_t* graphics, shape_info_t* shape_info)
     });
 }
 
+static void init_shape_ui(const graphics_t* graphics, shape_info_ui_t* shape_info_ui, country_data_t* country_data)
+{
+    shape_info_ui->param_buffer = graphics->create_buffer(&(graphics_buffer_desc_t)
+    {
+        .size = sizeof(shape_ui_param_t),
+        .usage = USAGE_DYNAMIC,
+        .bind = BIND_CONSTANT_BUFFER,
+    });
+
+    shape_info_ui->vertex_buffer = graphics->create_buffer(&(graphics_buffer_desc_t)
+    {
+        .data = country_data->query.border_points,
+        .size = country_data->query.border_point_count * sizeof(country_border_point_t),
+        .usage = USAGE_IMMUTABLE,
+        .bind = BIND_VERTEX_BUFFER,
+    });
+
+    shape_info_ui->vertex_shader = graphics->create_shader(&(graphics_shader_desc_t)
+    {
+        .bytecode = vshader_shape_ui,
+        .bytecode_size = sizeof(vshader_shape_ui),
+        .stage = STAGE_VERTEX_SHADER,
+    });
+
+    shape_info_ui->pixel_shader = graphics->create_shader(&(graphics_shader_desc_t)
+    {
+        .bytecode = pshader_shape_ui,
+        .bytecode_size = sizeof(pshader_shape_ui),
+        .stage = STAGE_PIXEL_SHADER,
+    });
+
+    shape_info_ui->program = graphics->create_program(&(graphics_program_desc_t)
+    {
+        .vertex_shader = shape_info_ui->vertex_shader,
+        .pixel_shader = shape_info_ui->pixel_shader,
+        .attributes = (graphics_vertex_attribute_t[])
+        {
+            { "POSITION", FORMAT_R32G32_FLOAT, offsetof(country_border_point_t, lonlat), 0, 0, 0, 0 },
+        },
+        .attribute_count = 1,
+    });
+}
+
 static void init_theme(game_t* game)
 {
     // NOTE: Light and dark themes.
@@ -1058,10 +1124,19 @@ static u8 earth_find_country_index_under_cursor(const platform_t* platform, game
 
 static void earth_rotation(const input_t* input, f32 delta_time)
 {
+    if (input_is_key_released(input, KEY_O))
+    {
+        global_orbiting_mode = !global_orbiting_mode;
+    }
+    
     if (input_is_key_pressed(input, KEY_MOUSE_LEFT))
     {
         global_earth_yaw += 3.0f * input->mouse_delta.x * delta_time;
         global_earth_pitch += 3.0f * -input->mouse_delta.y * delta_time;
+    }
+    else if (global_orbiting_mode)
+    {
+        global_earth_yaw += 10.0f * delta_time;
     }
 
     global_earth_pitch = clamp(-90.0f, global_earth_pitch, 90.0f);
@@ -1125,12 +1200,13 @@ init_function(init)
     memory_arena_t* memory_arena = ma_initialize(memory->permanent + sizeof(game_t), memory->permanent_size - sizeof(game_t));
     game->memory_arena = memory_arena;
 
+    init_country_data(memory_arena, graphics, io, &game->country_data);
     init_camera(&game->camera, v3(0.0f, 0.0f, 2.5f), v3(0.0f, 0.0f, 0.0f),
                 60.0f, (f32)platform->width / (f32)platform->height);
     init_sphere(graphics, &game->sphere_info);
     init_shape(graphics, &game->shape_info);
+    init_shape_ui(graphics, &game->shape_info_ui, &game->country_data);
     init_skybox(memory_arena, graphics, io, thread_pool, &game->skybox_info);
-    init_country_data(memory_arena, graphics, io, &game->country_data);
     init_theme(game);
 
     game->shape_value = 1.0f;
@@ -1412,9 +1488,9 @@ update_function(update)
         .get_line_height = { (void*)get_line_height, platform->graphics },
     });
     {
-        ui_widget_group_begin("ui-widget-group-1", platform->width - 440.0f, platform->height - 170.0f, (ui_widget_desc_t)
+        ui_widget_group_begin("ui-widget-group-1", platform->width - 640.0f, platform->height - 170.0f, (ui_widget_desc_t)
         {
-            .size = { ui_widget_pixel_size(420.0f), ui_widget_children_size() },
+            .size = { ui_widget_pixel_size(620.0f), ui_widget_children_size() },
             .child_axis = ui_widget_axis_y(),
             .padding = 8.0f,
             .color = ui_widget_color_v4(theme->bg_color),
@@ -1430,38 +1506,70 @@ update_function(update)
                 .border = ui_widget_border(true, 1.0f, ui_widget_color_v4(theme->fg_color)),
             });
             {
-                country_name_t country_name = country_get_name(game->country_index);
+                ui_widget_group_begin("ui-widget-group-3", 0, 0, (ui_widget_desc_t)
+                {
+                    .size = { ui_widget_parent_size(1.0f), ui_widget_children_size() },
+                    .child_axis = ui_widget_axis_x(),
+                    .color = ui_widget_color_v4(theme->bg_color),
+                });
+                {
+                    ui_widget_group_begin("ui-widget-group-4", 0, 0, (ui_widget_desc_t)
+                    {
+                        .size = { ui_widget_parent_size(0.5f), ui_widget_children_size() },
+                        .child_axis = ui_widget_axis_y(),
+                        .color = ui_widget_color_v4(theme->bg_color),
+                    });
+                    {
+                        country_name_t country_name = country_get_name(game->country_index);
                 
-                ui_widget("ui-widget-1", (ui_widget_desc_t)
-                {
-                    .size = { ui_widget_parent_size(1.0f), ui_widget_content_size() },
-                    .color = ui_widget_color_v4(theme->bg_color),
-                    .label = ui_widget_label(&game->font_16, "Country / Region", 16,
-                    ui_widget_color_v4(theme->font_color), ui_widget_align_leading()),
-                });
+                        ui_widget("ui-widget-1", (ui_widget_desc_t)
+                        {
+                            .size = { ui_widget_parent_size(1.0f), ui_widget_content_size() },
+                            .color = ui_widget_color_v4(theme->bg_color),
+                            .label = ui_widget_label(&game->font_16, "Country / Region", 16,
+                            ui_widget_color_v4(theme->font_color), ui_widget_align_leading()),
+                        });
 
-                ui_widget("ui-widget-2", (ui_widget_desc_t)
-                {
-                    .size = { ui_widget_parent_size(1.0f), ui_widget_content_size() },
-                    .color = ui_widget_color_v4(theme->bg_color),
-                    .label = ui_widget_label(&game->font_35,
-                    country_name.name ? country_name.name : "Not Selected",
-                    country_name.length ? country_name.length : 12,
-                    ui_widget_color_v4(theme->font_color), ui_widget_align_leading()),
-                });
-                ui_widget("ui-widget-3", (ui_widget_desc_t)
-                {
-                    .size = { ui_widget_parent_size(1.0f), ui_widget_pixel_size(8.0f) },
-                    .color = ui_widget_color_v4(theme->bg_color),
-                });
-                ui_widget("ui-widget-4", (ui_widget_desc_t)
-                {
-                    .size = { ui_widget_parent_size(1.0f), ui_widget_pixel_size(4.0f) },
-                    .color = ui_widget_color_v4(theme->fg_color),
-                });
+                        ui_widget("ui-widget-2", (ui_widget_desc_t)
+                        {
+                            .size = { ui_widget_parent_size(1.0f), ui_widget_content_size() },
+                            .color = ui_widget_color_v4(theme->bg_color),
+                            .label = ui_widget_label(&game->font_35,
+                            country_name.name ? country_name.name : "Not Selected",
+                            country_name.length ? country_name.length : 12,
+                            ui_widget_color_v4(theme->font_color), ui_widget_align_leading()),
+                        });
+                    
+                    }
+                    ui_widget_group_end();
+                    ui_widget_group_begin("ui-widget-group-5", 0, 0, (ui_widget_desc_t)
+                    {
+                        .size = { ui_widget_parent_size(0.5f), ui_widget_parent_size(1.0f) },
+                        .child_axis = ui_widget_axis_y(),
+                        // .padding = 16.0f,
+                        .color = ui_widget_color_v4(theme->bg_color),
+                        .border = ui_widget_border(true, 1.0f, ui_widget_color_v4(theme->fg_color)),
+                    });
+                    {
+                    
+                    }
+                    ui_widget_group_end();
+                }
+                ui_widget_group_end();
             }
+            ui_widget("ui-widget-3", (ui_widget_desc_t)
+            {
+                .size = { ui_widget_parent_size(1.0f), ui_widget_pixel_size(8.0f) },
+                .color = ui_widget_color_v4(theme->bg_color),
+            });
+            ui_widget("ui-widget-4", (ui_widget_desc_t)
+            {
+                .size = { ui_widget_parent_size(1.0f), ui_widget_pixel_size(4.0f) },
+                .color = ui_widget_color_v4(theme->fg_color),
+            });
             ui_widget_group_end();
         }
+        
         ui_widget_group_end();
     }
     ui_widget_draw_command_list_t widget_draw_command_list = ui_end();
@@ -1707,6 +1815,38 @@ render_function(render)
     }
     graphics->end_pass();
 
+    if (country_is_valid_index(game->country_index))
+    {
+        graphics->begin_pass(graphics->get_backbuffer_target(), &(graphics_pass_desc_t){ 0 });
+        {
+            shape_info_ui_t* shape_info_ui = &game->shape_info_ui;
+            shape_ui_param_t* shape_ui_param = &shape_info_ui->param;
+
+            shape_ui_param->color = v4v(srgb_to_linear(theme->highlight_color.rgb), theme->highlight_color.a);
+            shape_ui_param->viewport_size = v2((f32)platform->width, (f32)platform->height);
+            shape_ui_param->center = global_shape_country_centers[game->country_index];
+
+            graphics->update_buffer(shape_info_ui->param_buffer, shape_ui_param, 0, sizeof(shape_ui_param_t));
+            graphics->set_buffer(shape_info_ui->param_buffer, STAGE_VERTEX_SHADER | STAGE_PIXEL_SHADER, 0, 0, 0);
+
+            graphics->set_vertex_buffer(shape_info_ui->vertex_buffer, 0, sizeof(country_border_point_t), 0);
+            graphics->set_program(shape_info_ui->program);
+            graphics->set_pipeline(game->default_pipeline);
+
+            country_range_t country_range = game->country_data.query.ranges[game->country_index];
+            
+            u32 part_offset = country_range.part_offset;
+            u32 part_count = country_range.part_count;
+
+            for (u32 part_index = 0; part_index < part_count; ++part_index)
+            {
+                country_border_part_range_t part_range = game->country_data.query.border_part_ranges[part_index + part_offset];
+                graphics->draw(TOPOLOGY_LINE_STRIP, part_range.point_count, part_range.point_index);
+
+            }
+        }
+        graphics->end_pass();
+    }
 
 #if FONT_ENABLE
     graphics->begin_draw();
