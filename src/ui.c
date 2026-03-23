@@ -804,7 +804,9 @@ static void ui_widget_calculate_size_violations(ui_widget_t* root_widget, ui_wid
             {
                 parent_dependent_child_size += child_widget->fixed_size[axis];
             }
-            else if (child_widget->size[axis].kind == UI_WIDGET_SIZE_PIXEL)
+            else if (child_widget->size[axis].kind == UI_WIDGET_SIZE_PIXEL ||
+                     child_widget->size[axis].kind == UI_WIDGET_SIZE_CONTENT ||
+                     child_widget->size[axis].kind == UI_WIDGET_SIZE_CHILDREN)
             {
                 pixel_child_size += child_widget->fixed_size[axis];
             }

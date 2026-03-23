@@ -426,6 +426,9 @@ typedef graphics_get_backbuffer_target_function(graphics_get_backbuffer_target_f
 #define graphics_get_target_size_function(name) void name(graphics_target_t target, u32* width, u32* height)
 typedef graphics_get_target_size_function(graphics_get_target_size_f);
 
+#define graphics_set_viewport_function(name) void name(f32 x, f32 y, f32 width, f32 height)
+typedef graphics_set_viewport_function(graphics_set_viewport_f);
+
 #define graphics_begin_pass_function(name) void name(graphics_target_t target, const graphics_pass_desc_t* pass_desc)
 typedef graphics_begin_pass_function(graphics_begin_pass_f);
 
@@ -514,6 +517,7 @@ typedef struct graphics_t
             graphics_set_pipeline_f* set_pipeline;
             graphics_get_backbuffer_target_f* get_backbuffer_target;
             graphics_get_target_size_f* get_target_size;
+            graphics_set_viewport_f* set_viewport;
             graphics_begin_pass_f* begin_pass;
             graphics_end_pass_f* end_pass;
             graphics_draw_f* draw;

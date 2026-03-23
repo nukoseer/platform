@@ -597,6 +597,7 @@ static DWORD WINAPI main_thread(void* param)
         .set_pipeline = gfx_set_pipeline,
         .get_backbuffer_target = gfx_get_backbuffer_target,
         .get_target_size = gfx_get_target_size,
+        .set_viewport = gfx_set_viewport,
         .begin_pass = gfx_begin_pass,
         .end_pass = gfx_end_pass,
         .draw = gfx_draw,

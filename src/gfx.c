@@ -1535,6 +1535,20 @@ static graphics_get_target_size_function(gfx_get_target_size)
     *height = (u32)gfx_target->height;
 }
 
+static graphics_set_viewport_function(gfx_set_viewport)
+{
+    D3D11_VIEWPORT viewport =
+    {
+        .TopLeftX = x,
+        .TopLeftY = y,
+        .Width = width,
+        .Height = height,
+        .MinDepth = 0,
+        .MaxDepth = 1,
+    };
+    ID3D11DeviceContext_RSSetViewports(global_d3d11.context, 1, &viewport);
+}
+
 static graphics_begin_pass_function(gfx_begin_pass)
 {
     u32 target_generation = get_generation(target.platform);

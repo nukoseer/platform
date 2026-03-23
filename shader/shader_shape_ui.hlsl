@@ -15,7 +15,11 @@ cbuffer global_shape_param : register(b0)
     float4 color;
     float2 viewport_size;
     float2 center;
-    float _pad[4];
+    float2 main_center;
+    float2 part_center;
+    float max_radius;
+    float zoom;
+    float _pad[2];
 };
 
 PS_INPUT vs(VS_INPUT input)
@@ -24,20 +28,15 @@ PS_INPUT vs(VS_INPUT input)
 
     float lon = radians(input.position.x);
     float lat = radians(input.position.y);
- 
-    // Offset so country center maps to origin
-    float center_x = radians(center.x);
-    float center_y = radians(center.y);
-    float2 offset = float2(lon - center_x, lat - center_y);
     
-    // Scale to reasonable screen size
-    float zoom = 1.0; // adjust to taste
+    float2 main_center_lonlat = radians(float2(main_center.x, main_center.y));
+    float2 part_center_lonlat = radians(float2(part_center.x, part_center.y));
     
-    // Aspect correction
-    float aspect = viewport_size.x / viewport_size.y;
-    
-    float2 position = float2(offset.x / aspect * zoom, offset.y * zoom);
+    float2 offset = float2(lon - main_center_lonlat.x, lat - main_center_lonlat.y);
 
+    float aspect = viewport_size.x / viewport_size.y;
+    float2 position = float2(offset.x / aspect * zoom, offset.y * zoom);
+    
     //float2 clip_offset = float2(
     //    (1200 / viewport_size.x) * 2.0 - 1.0,
     //    1.0 - (560 / viewport_size.y) * 2.0  // flip Y
