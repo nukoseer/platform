@@ -168,12 +168,6 @@ static graphics_2d_draw_text_function(gfx_2d_draw_text)
     D2D1_COLOR_F color = { r, g, b, a };
     ID2D1SolidColorBrush_SetColor(global_d2d1.solid_color_brush, &color);
 
-    // D2D1_ROUNDED_RECT rounded_rect =
-    // {
-    //     .rect = layout,
-    //     .radiusX = 2.0f, .radiusY = 2.0f,
-    // };
-    // ID2D1RenderTarget_DrawRoundedRectangle(window->d2d1->render_target, &rounded_rect, (ID2D1Brush*)window->d2d1->solid_color_brush, 1.0f, 0);
     ID2D1RenderTarget_DrawText(global_d2d1.render_target, wide_text, (UINT32)converted, gfx_2d_font->text_format,
                                &layout, (ID2D1Brush*)global_d2d1.solid_color_brush,
                                D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT,
@@ -200,6 +194,13 @@ static graphics_2d_draw_rect_function(gfx_2d_draw_rect)
     else
     {
         ID2D1RenderTarget_DrawRectangle(global_d2d1.render_target, &rect, (ID2D1Brush*)global_d2d1.solid_color_brush, thickness, 0);
+
+        // D2D1_ROUNDED_RECT rounded_rect =
+        // {
+        //     .rect = rect,
+        //     .radiusX = 16.0f, .radiusY = 16.0f,
+        // };
+        // ID2D1RenderTarget_DrawRoundedRectangle(global_d2d1.render_target, &rounded_rect, (ID2D1Brush*)global_d2d1.solid_color_brush, thickness, 0);
     }
 }
 

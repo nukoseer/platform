@@ -15,11 +15,8 @@ cbuffer global_shape_param : register(b0)
     float4 color;
     float2 viewport_size;
     float2 center;
-    float2 main_center;
-    float2 part_center;
-    float max_radius;
     float zoom;
-    float _pad[2];
+    float _pad[3];
 };
 
 PS_INPUT vs(VS_INPUT input)
@@ -29,10 +26,10 @@ PS_INPUT vs(VS_INPUT input)
     float lon = radians(input.position.x);
     float lat = radians(input.position.y);
     
-    float2 main_center_lonlat = radians(float2(main_center.x, main_center.y));
-    float2 part_center_lonlat = radians(float2(part_center.x, part_center.y));
+    float center_lon = radians(center.x);
+    float center_lat = radians(center.y);
     
-    float2 offset = float2(lon - main_center_lonlat.x, lat - main_center_lonlat.y);
+    float2 offset = float2(lon - center_lon, lat - center_lat);
 
     float aspect = viewport_size.x / viewport_size.y;
     float2 position = float2(offset.x / aspect * zoom, offset.y * zoom);

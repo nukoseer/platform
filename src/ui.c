@@ -188,17 +188,23 @@ typedef struct ui_stack_t
     u32 parent_count;
 } ui_stack_t;
 
+typedef struct ui_measure_text_width_t
+{
+    ui_measure_text_width_f* function;
+    void* parameter;
+} ui_measure_text_width_t;
+
+typedef struct ui_get_line_height_t
+{
+    ui_get_line_height_f* function;
+    void* parameter;
+} ui_get_line_height_t;
+
 typedef struct ui_callback_t
 {
-    void* function;
-    void* parameter;
+    ui_measure_text_width_t measure_text_width;
+    ui_get_line_height_t get_line_height;
 } ui_callback_t;
-
-typedef struct ui_callback_list_t
-{
-    ui_callback_t measure_text_width;
-    ui_callback_t get_line_height;
-} ui_callback_list_t;
 
 typedef struct ui_t
 {
@@ -210,10 +216,12 @@ typedef struct ui_t
     u32 widget_draw_command_count;
     ui_widget_t* free_widgets;
 
-    ui_callback_list_t callback_list;
+    ui_callback_t callback;
 } ui_t;
 
 #define UI_WIDGET_INITIAL_HASH 0xCBF29CE484222325ULL
+
+#define ui_widget_group(...) defer_loop(ui_widget_group_begin(__VA_ARGS__), ui_widget_group_end())
 
 static ui_t* global_ui;
 
@@ -620,15 +628,20 @@ static inline void ui_widget_build(ui_widget_t* widget, const char* widget_name,
 
     if (widget_desc->label.text && widget_desc->label.length)
     {
+        ui_callback_t* callback = &global_ui->callback;
+        ui_measure_text_width_t* measure_text_width = &callback->measure_text_width;
+        ui_get_line_height_t* get_line_height = &callback->get_line_height;
+        
         widget->font = widget_desc->label.font;
         assert(widget_desc->label.length < array_count(widget->label));
         memcpy(widget->label, widget_desc->label.text, widget_desc->label.length);
         widget->label[widget_desc->label.length] = '\0';
         widget->label_length = widget_desc->label.length;
-        ui_measure_text_width_f* measure_text_width = (ui_measure_text_width_f*)global_ui->callback_list.measure_text_width.function;
-        ui_get_line_height_f* get_line_height = (ui_get_line_height_f*)global_ui->callback_list.get_line_height.function;
-        widget->label_size[UI_WIDGET_AXIS_X] = measure_text_width(widget->font, widget->label, widget->label_length, global_ui->callback_list.measure_text_width.parameter);
-        widget->label_size[UI_WIDGET_AXIS_Y] = get_line_height(widget->font, global_ui->callback_list.get_line_height.parameter);
+        widget->label_size[UI_WIDGET_AXIS_X] = measure_text_width->function(widget->font, widget->label,
+                                                                            widget->label_length,
+                                                                            measure_text_width->parameter);
+        widget->label_size[UI_WIDGET_AXIS_Y] = get_line_height->function(widget->font,
+                                                                         get_line_height->parameter);
         widget->label_alignment = widget_desc->label.alignment;
         widget->font_color = widget_desc->label.color;
     }
@@ -1137,14 +1150,14 @@ static void ui_widget_calculate_draw_border_commands(ui_widget_t* root_widget)
     }
 }
 
-static void ui_begin(memory_arena_t* memory_arena, f32 width, f32 height, ui_callback_list_t callback_list)
+static void ui_begin(memory_arena_t* memory_arena, f32 width, f32 height, ui_callback_t callback)
 {
     if (!global_ui)
     {
         memory_arena_t* ui_arena = ma_create_sub_arena(memory_arena, MIBIBYTES(4));
         global_ui = (ui_t*)ma_push_size_zero(ui_arena, sizeof(ui_t));
         global_ui->arena = ui_arena;
-        global_ui->callback_list = callback_list;
+        global_ui->callback = callback;
     }
 
     // NOTE: This is for making sure that ui_end() is called at the end of previous frame.
