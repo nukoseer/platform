@@ -58,43 +58,20 @@ typedef enum ui_widget_draw_kind_t
     UI_WIDGET_DRAW_RECT,
     UI_WIDGET_DRAW_BORDER,
     UI_WIDGET_DRAW_TEXT,
+    UI_WIDGET_DRAW_CUSTOM,
 } ui_widget_draw_kind_t;
-
-typedef struct ui_widget_draw_rect_t
-{
-    f32 x, y;
-    f32 width, height;
-    vec4 color;
-} ui_widget_draw_rect_t;
-
-typedef struct ui_widget_draw_border_t
-{
-    f32 x, y;
-    f32 width, height;
-    vec4 color;
-    f32 thickness;
-} ui_widget_draw_border_t;
-
-typedef struct ui_widget_draw_text_t
-{
-    void* font;
-    f32 x, y;
-    f32 width, height;
-    const char* text;
-    u32 length;
-    vec4 color;
-} ui_widget_draw_text_t;
 
 typedef struct ui_widget_draw_command_t
 {
     ui_widget_draw_kind_t kind;
-
-    union
-    {
-        ui_widget_draw_rect_t rect;
-        ui_widget_draw_border_t border;
-        ui_widget_draw_text_t text;
-    };
+    f32 x, y;
+    f32 width, height;
+    vec4 color;
+    f32 thickness;
+    u32 flag;
+    void* font;
+    const char* text;
+    u32 length;
 } ui_widget_draw_command_t;
 
 typedef struct ui_widget_draw_command_list_t
@@ -144,6 +121,7 @@ typedef struct ui_widget_desc_t
     ui_widget_color_t color;
     ui_widget_border_t border;
     ui_widget_label_t label;
+    u32 flag;
 } ui_widget_desc_t;
 
 typedef struct ui_widget_list_t
@@ -151,6 +129,13 @@ typedef struct ui_widget_list_t
     struct ui_widget_t* first;
     struct ui_widget_t* last;
 } ui_widget_list_t;
+
+typedef struct ui_widget_text_link_t
+{
+    char text[32];
+    u32 length;
+    struct ui_widget_text_link_t* next;
+} ui_widget_text_link_t;
 
 typedef struct ui_widget_t
 {
@@ -164,6 +149,8 @@ typedef struct ui_widget_t
     ui_widget_border_t border;
     void* font;
     vec4 font_color;
+    ui_widget_text_link_t text_link;
+    
     char label[32];
     u32 label_length;
     f32 label_size[UI_WIDGET_AXIS_COUNT];
@@ -180,6 +167,7 @@ typedef struct ui_widget_t
     f32 fixed_size[UI_WIDGET_AXIS_COUNT];
     ui_widget_rect_t rect;
     ui_widget_rect_t label_rect;
+    u32 flag;
 } ui_widget_t;
 
 typedef struct ui_stack_t
@@ -646,6 +634,8 @@ static inline void ui_widget_build(ui_widget_t* widget, const char* widget_name,
         widget->font_color = widget_desc->label.color;
     }
 
+    widget->flag = widget_desc->flag;
+
     // TODO: Right now, it is not supported to position widgets inside a widget group except it is directly under the root widget.
     if ((x != 0 || y != 0) && (widget->parent != global_ui->root_widget))
     {
@@ -934,6 +924,28 @@ static void ui_widget_calculate_label_alignment(ui_widget_t* widget, ui_widget_a
             position = content_position;
         }
 
+        if (axis == UI_WIDGET_AXIS_X && widget->fixed_size[axis] < widget->label_size[axis])
+        {
+            ui_measure_text_width_t* measure_text_width = &global_ui->callback.measure_text_width;
+            f32 ellipsis_size = measure_text_width->function(widget->font, "...", 3, measure_text_width->parameter);
+            i32 label_length = widget->label_length - 1;
+
+            while (label_length > 0)
+            {
+                f32 label_size = measure_text_width->function(widget->font, widget->label, label_length, measure_text_width->parameter);
+
+                if (label_size + ellipsis_size < widget->fixed_size[UI_WIDGET_AXIS_X])
+                {
+                    widget->label_size[UI_WIDGET_AXIS_X] = label_size + ellipsis_size;
+                    widget->label_length = label_length + 3;
+                    memcpy(widget->label + label_length, "...", 3);
+                    break;
+                }
+                
+                --label_length;
+            }
+        }
+
         if (axis == UI_WIDGET_AXIS_X)
         {
             widget->label_rect.x = position;
@@ -1060,12 +1072,13 @@ static void ui_widget_calculate_draw_rect_commands(ui_widget_t* root_widget)
         
         *widget_draw_command = (ui_widget_draw_command_t)
         {
-            .kind = UI_WIDGET_DRAW_RECT,
-            .rect.x = rect_x,
-            .rect.y = rect_y,
-            .rect.width = rect_width,
-            .rect.height = rect_height,
-            .rect.color = child_widget->color.rgba,
+            .kind = child_widget->flag == 0 ? UI_WIDGET_DRAW_RECT : UI_WIDGET_DRAW_CUSTOM,
+            .x = rect_x,
+            .y = rect_y,
+            .width = rect_width,
+            .height = rect_height,
+            .color = child_widget->color.rgba,
+            .flag = child_widget->flag,
         };
 
         if (child_widget->label_length)
@@ -1088,31 +1101,16 @@ static void ui_widget_calculate_draw_rect_commands(ui_widget_t* root_widget)
             *widget_draw_text_command = (ui_widget_draw_command_t)
             {
                 .kind = UI_WIDGET_DRAW_TEXT,
-                .text.font = child_widget->font,
-                .text.x = child_widget->label_rect.x,
-                .text.y = child_widget->label_rect.y,
-                .text.width = child_widget->label_rect.width,
-                .text.height = child_widget->label_rect.height,
-                .text.text = child_widget->label,
-                .text.length = child_widget->label_length,
-                .text.color = child_widget->font_color,
+                .x = child_widget->label_rect.x,
+                .y = child_widget->label_rect.y,
+                .width = child_widget->label_rect.width,
+                .height = child_widget->label_rect.height,
+                .color = child_widget->font_color,
+                .font = child_widget->font,
+                .text = child_widget->label,
+                .length = child_widget->label_length,
+                .flag = child_widget->flag,
             };
-
-            // ui_widget_draw_command_t* widget_draw_border_command = global_ui->widget_draw_commands + global_ui->widget_draw_command_count++;
-
-            // *widget_draw_border_command = (ui_widget_draw_command_t)
-            // {
-            //     .kind = UI_WIDGET_DRAW_BORDER,
-            //     .border.x = child_widget->label_rect.x - child_widget->padding,
-            //     .border.y = child_widget->label_rect.y - child_widget->padding,
-            //     .border.width = child_widget->label_rect.width + child_widget->padding * 2.0f,
-            //     .border.height = child_widget->label_rect.height + child_widget->padding * 2.0f,
-            //     .border.r = 1.0f,
-            //     .border.g = 1.0f,
-            //     .border.b = 1.0f,
-            //     .border.a = 1.0f,
-            //     .border.thickness = 1.0f,
-            // };
         }
     }
 
@@ -1134,12 +1132,13 @@ static void ui_widget_calculate_draw_border_commands(ui_widget_t* root_widget)
             *widget_draw_command = (ui_widget_draw_command_t)
             {
                 .kind = UI_WIDGET_DRAW_BORDER,
-                .border.x = child_widget->rect.x - child_widget->border.thickness * 0.5f,
-                .border.y = child_widget->rect.y - child_widget->border.thickness * 0.5f,
-                .border.width = child_widget->rect.width + child_widget->border.thickness,
-                .border.height = child_widget->rect.height + child_widget->border.thickness,
-                .border.color = child_widget->border.color.rgba,
-                .border.thickness = child_widget->border.thickness,
+                .x = child_widget->rect.x - child_widget->border.thickness * 0.5f,
+                .y = child_widget->rect.y - child_widget->border.thickness * 0.5f,
+                .width = child_widget->rect.width + child_widget->border.thickness * 0.5f,
+                .height = child_widget->rect.height + child_widget->border.thickness * 0.5f,
+                .color = child_widget->border.color.rgba,
+                .thickness = child_widget->border.thickness,
+                .flag = child_widget->flag,
             };  
         }
     }

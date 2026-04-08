@@ -1485,11 +1485,11 @@ update_function(update)
         .get_line_height = { get_line_height, platform->graphics },
     });
     {
-        ui_widget_group("ui-widget-group-1", platform->width - 500.0f, platform->height - 320.0f, (ui_widget_desc_t)
+        ui_widget_group("ui-widget-group-1", 10.0f, 10.0f, (ui_widget_desc_t)
         {
-            .size = { ui_widget_pixel_size(480.0f), ui_widget_children_size() },
+            .size = { ui_widget_pixel_size(500.0f), ui_widget_children_size() },
             .child_axis = ui_widget_axis_y(),
-            .padding = 32.0f,
+            .padding = 8.0f,
             .color = ui_widget_color_v4(theme->bg_color),
             .border = ui_widget_border(true, 1.0f, ui_widget_color_v4(theme->fg_color)),
         })
@@ -1512,7 +1512,7 @@ update_function(update)
                 {
                     ui_widget_group("ui-widget-group-44", 0, 0, (ui_widget_desc_t)
                     {
-                        .size = { ui_widget_parent_size(1.0f), ui_widget_parent_size(1.0f) },
+                        .size = { ui_widget_parent_size(0.5f), ui_widget_parent_size(1.0f) },
                         .child_axis = ui_widget_axis_y(),
                         .color = ui_widget_color_v4(theme->bg_color),
                     })
@@ -1560,11 +1560,12 @@ update_function(update)
 
                     ui_widget_group("ui-widget-group-5", 0, 0, (ui_widget_desc_t)
                     {
-                        .size = { ui_widget_pixel_size(200.0f), ui_widget_pixel_size(200.0f) },
+                        .size = { ui_widget_parent_size(0.5f), ui_widget_pixel_size(200.0f) },
                         .child_axis = ui_widget_axis_y(),
                         // .padding = 16.0f,
                         .color = ui_widget_color_v4(theme->bg_color),
                         // .border = ui_widget_border(true, 1.0f, ui_widget_color_v4(theme->fg_color)),
+                        .flag = 1,
                     })
                     {
                         
@@ -1829,6 +1830,8 @@ render_function(render)
     
 
 #if FONT_ENABLE
+    ui_widget_draw_command_t* country_draw_command = 0;
+        
     graphics->begin_draw();
     {
         char frame_ms_text[32] = { 0 };
@@ -1852,49 +1855,51 @@ render_function(render)
         ui_widget_draw_command_list_t* widget_draw_command_list = &game->widget_draw_command_list;
         for (u32 i = 0; i < widget_draw_command_list->command_count; ++i)
         {
-            ui_widget_draw_command_t* command = widget_draw_command_list->commands + i;
+            ui_widget_draw_command_t* draw_command = widget_draw_command_list->commands + i;
 
-            if (command->kind == UI_WIDGET_DRAW_RECT)
+            if (draw_command->kind == UI_WIDGET_DRAW_RECT)
             {
-                ui_widget_draw_rect_t* draw_rect = &command->rect;
-                
-                f32 x = draw_rect->x;
-                f32 y = draw_rect->y;
-                f32 width = draw_rect->width;
-                f32 height = draw_rect->height;
-                vec4 color = draw_rect->color;
-                
+                f32 x = draw_command->x;
+                f32 y = draw_command->y;
+                f32 width = draw_command->width;
+                f32 height = draw_command->height;
+                vec4 color = draw_command->color;
+
                 graphics->draw_rect(x, y, width, height, true, 0.0f, color.r, color.g, color.b, color.a);
             }
-            else if (command->kind == UI_WIDGET_DRAW_BORDER)
+            else if (draw_command->kind == UI_WIDGET_DRAW_BORDER)
             {
-                ui_widget_draw_border_t* draw_border = &command->border;
-                
-                f32 x = draw_border->x;
-                f32 y = draw_border->y;
-                f32 width = draw_border->width;
-                f32 height = draw_border->height;
-                vec4 color = draw_border->color;
-                f32 thickness = draw_border->thickness;
+                f32 x = draw_command->x;
+                f32 y = draw_command->y;
+                f32 width = draw_command->width;
+                f32 height = draw_command->height;
+                vec4 color = draw_command->color;
+                f32 thickness = draw_command->thickness;
 
                 graphics->draw_rect(x, y, width, height, false, thickness, color.r, color.g, color.b, color.a);
             }
-            else if (command->kind == UI_WIDGET_DRAW_TEXT)
+            else if (draw_command->kind == UI_WIDGET_DRAW_TEXT)
             {
-                ui_widget_draw_text_t* draw_text = &command->text;
-                graphics_2d_font_t font = *(graphics_2d_font_t*)draw_text->font;
-                f32 x = draw_text->x;
-                f32 y = draw_text->y;
-                f32 width = draw_text->width;
-                f32 height = draw_text->height;
-                vec4 color = draw_text->color;
-                const char* text = draw_text->text;
-                u32 length = draw_text->length;
+                graphics_2d_font_t font = *(graphics_2d_font_t*)draw_command->font;
+                f32 x = draw_command->x;
+                f32 y = draw_command->y;
+                f32 width = draw_command->width;
+                f32 height = draw_command->height;
+                vec4 color = draw_command->color;
+                const char* text = draw_command->text;
+                u32 length = draw_command->length;
                 
                 graphics->draw_text(font, text, length, color.r, color.g, color.b, color.a,
                                     TEXT_ALIGNMENT_LEADING, x, y, width, height);
             }
-            else
+            else if (draw_command->kind == UI_WIDGET_DRAW_CUSTOM)
+            {
+                if (draw_command->flag == 1)
+                {
+                    country_draw_command = draw_command;
+                }
+            }
+            else 
             {
                 assert(!"[UI] Invalid draw command.");
             }
@@ -1902,8 +1907,13 @@ render_function(render)
     }
     graphics->end_draw();
 
-    if (country_is_valid_index(game->country_index))
+    if (country_is_valid_index(game->country_index) && country_draw_command)
     {
+        f32 x = country_draw_command->x;
+        f32 y = country_draw_command->y;
+        f32 width = country_draw_command->width;
+        f32 height = country_draw_command->height;
+        
         graphics->begin_pass(graphics->get_backbuffer_target(), &(graphics_pass_desc_t) { 0 });
         {
             shape_info_ui_t* shape_info_ui = &game->shape_info_ui;
@@ -1919,13 +1929,12 @@ render_function(render)
             graphics->set_program(shape_info_ui->program);
             graphics->set_pipeline(game->default_pipeline);
 
+            graphics->set_viewport(x, y, width, height);
+
             country_range_t country_range = game->country_data.query.ranges[game->country_index];
             
             u32 part_offset = country_range.part_offset;
             u32 part_count = country_range.part_count;
-
-            // graphics->set_viewport(1560.0f, 674.0f, 300.0f, 300.0f);
-            graphics->set_viewport(1636.0f, 748.0f, 200.0f, 200.0f);
 
             f32 lon_min = 1000.0f;
             f32 lon_max = -1000.0f;

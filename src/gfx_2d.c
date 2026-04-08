@@ -139,11 +139,11 @@ static graphics_2d_draw_text_function(gfx_2d_draw_text)
     // TODO: Does not look good.
     static WCHAR wide_text[256] = { 0 };
 
-    size_t required_wide_length = mbstowcs(0, text, text_length);
-    assert(required_wide_length < array_count(wide_text));
+    // size_t required_wide_length = mbstowcs(0, text, text_length);
+    // assert(required_wide_length < array_count(wide_text));
 
     size_t converted = mbstowcs(wide_text, text, text_length);
-    assert(converted == required_wide_length);
+    assert(converted < array_count(wide_text));
 
     wide_text[converted] = '\0';
     
@@ -229,15 +229,15 @@ static graphics_2d_measure_text_width_function(gfx_2d_measure_text_width)
 
     assert(text && text_length < (u32)-1 && "[GFX2D] Invalid text or text length.");
 
-    i32 wchar_size = MultiByteToWideChar(CP_UTF8, 0, text, -1, NULL, 0);
+    i32 wchar_size = MultiByteToWideChar(CP_UTF8, 0, text, (int)text_length, NULL, 0);
     wchar_t wchar_text[64];
 
     assert(wchar_size < array_count(wchar_text) && "[GFX2D] Failed to convert from UTF-8 to UTF-16.");
 
-    MultiByteToWideChar(CP_UTF8, 0, text, -1, wchar_text, wchar_size);
-    u32 wchar_length = (u32)(wchar_size - 1);
+    MultiByteToWideChar(CP_UTF8, 0, text, wchar_size, wchar_text, array_count(wchar_text));
+    wchar_text[wchar_size] = '\0';
 
-    HRESULT result = IDWriteFactory_CreateTextLayout(global_d2d1.dwrite->factory, wchar_text, wchar_length,
+    HRESULT result = IDWriteFactory_CreateTextLayout(global_d2d1.dwrite->factory, wchar_text, wchar_size,
                                                      gfx_2d_font->text_format,
                                                      max_width, max_height, &text_layout);
     assert(SUCCEEDED(result) && text_layout && "[GFX2D] Failed to create text layout.");
