@@ -26,3 +26,18 @@
 #define GIBIBYTES(x) ((MIBIBYTES(x)) * (1024ULL))
 #define TIBIBYTES(x) ((GIBIBYTES(x)) * (1024ULL))
 
+static inline i32 string_find_leading_char(const char* string, i32 offset, i32 length, char c)
+{
+    i32 index = -1;
+
+    for (i32 i = offset; i < offset + length; ++i)
+    {
+        if (string[i] == c)
+        {
+            index = i;
+            break;
+        }
+    }
+
+    return index;
+}

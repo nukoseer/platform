@@ -130,12 +130,13 @@ typedef struct ui_widget_list_t
     struct ui_widget_t* last;
 } ui_widget_list_t;
 
-typedef struct ui_widget_text_link_t
+typedef struct ui_widget_text_line_t
 {
-    char text[32];
-    u32 length;
-    struct ui_widget_text_link_t* next;
-} ui_widget_text_link_t;
+    i32 offset;
+    i32 length;
+    struct ui_widget_text_line_t* prev;
+    struct ui_widget_text_line_t* next;
+} ui_widget_text_line_t;
 
 typedef struct ui_widget_t
 {
@@ -149,7 +150,7 @@ typedef struct ui_widget_t
     ui_widget_border_t border;
     void* font;
     vec4 font_color;
-    ui_widget_text_link_t text_link;
+    ui_widget_text_line_t* text_line;
     
     char label[32];
     u32 label_length;
@@ -197,6 +198,7 @@ typedef struct ui_callback_t
 typedef struct ui_t
 {
     memory_arena_t* arena;
+    memory_arena_t* text_line_arena;
     ui_widget_t* root_widget;
     ui_widget_list_t widget_lists[64];
     ui_stack_t stack;
@@ -924,28 +926,118 @@ static void ui_widget_calculate_label_alignment(ui_widget_t* widget, ui_widget_a
             position = content_position;
         }
 
+        // if (axis == UI_WIDGET_AXIS_X && widget->fixed_size[axis] < widget->label_size[axis])
+        // {
+        //     ui_measure_text_width_t* measure_text_width = &global_ui->callback.measure_text_width;
+        //     f32 ellipsis_size = measure_text_width->function(widget->font, "...", 3, measure_text_width->parameter);
+        //     i32 label_length = widget->label_length - 1;
+
+        //     while (label_length > 0)
+        //     {
+        //         f32 label_size = measure_text_width->function(widget->font, widget->label, label_length, measure_text_width->parameter);
+
+        //         if (label_size + ellipsis_size < widget->fixed_size[UI_WIDGET_AXIS_X])
+        //         {
+        //             widget->label_size[UI_WIDGET_AXIS_X] = label_size + ellipsis_size;
+        //             widget->label_length = label_length + 3;
+        //             memcpy(widget->label + label_length, "...", 3);
+        //             break;
+        //         }
+                
+        //         --label_length;
+        //     }
+        // }
+
         if (axis == UI_WIDGET_AXIS_X && widget->fixed_size[axis] < widget->label_size[axis])
         {
             ui_measure_text_width_t* measure_text_width = &global_ui->callback.measure_text_width;
-            f32 ellipsis_size = measure_text_width->function(widget->font, "...", 3, measure_text_width->parameter);
-            i32 label_length = widget->label_length - 1;
-
-            while (label_length > 0)
+            i32 start_offset = 0;
+            i32 end_offset = widget->label_length;
+            ui_widget_text_line_t* tail_text_line = 0;
+            
+            while (start_offset < end_offset)
             {
-                f32 label_size = measure_text_width->function(widget->font, widget->label, label_length, measure_text_width->parameter);
+                i32 fits_end = start_offset;
+                i32 space = string_find_leading_char(widget->label, start_offset,
+                                                     end_offset - start_offset, ' ');
+                i32 word_end = space == -1 ? end_offset : space + 1;
 
-                if (label_size + ellipsis_size < widget->fixed_size[UI_WIDGET_AXIS_X])
+                fprintf(stderr, "start_offset: %d, word_end: %d, end_offset: %d\n", start_offset, word_end, end_offset);
+
+                while (word_end != -1 && word_end <= end_offset)
                 {
-                    widget->label_size[UI_WIDGET_AXIS_X] = label_size + ellipsis_size;
-                    widget->label_length = label_length + 3;
-                    memcpy(widget->label + label_length, "...", 3);
+                    f32 width = measure_text_width->function(widget->font, widget->label + start_offset, word_end - start_offset, measure_text_width->parameter);
+
+                    fprintf(stderr, "[UI] Word: %.*s, width: %f, length: %d\n", word_end - start_offset, widget->label + start_offset, width, word_end - start_offset);
+
+                    if (width > widget->fixed_size[UI_WIDGET_AXIS_X])
+                    {
+                        break;
+                    }
+
+                    fits_end = word_end;
+
+                    if (word_end == end_offset)
+                    {
+                        break;
+                    }
+
+                    space = string_find_leading_char(widget->label, word_end, end_offset - word_end, ' ');
+                    word_end = space == -1 ? end_offset : space + 1;
+                }
+
+                if (fits_end == start_offset)
+                {
+                    for (i32 i = start_offset + 1; i <= end_offset; ++i)
+                    {
+                        if (measure_text_width->function(widget->font, widget->label + start_offset, i - start_offset, measure_text_width->parameter) > widget->fixed_size[UI_WIDGET_AXIS_X])
+                        {
+                            fits_end = max(i - 1, start_offset + 1);
+                            break;
+                        }
+
+                        fits_end = i;
+                    }
                     break;
                 }
+
+                fprintf(stderr, "Line: %.*s\n", fits_end - start_offset, widget->label + start_offset);
+
+                //NOTE: Remove leading spaces from the line.
+                while (start_offset < fits_end && widget->label[start_offset] == ' ')
+                {
+                    ++start_offset;
+                }
                 
-                --label_length;
+                // NOTE: Remove trailing spaces from the line.
+                i32 fits_end_wo_trailing_spaces = fits_end;
+                while (fits_end_wo_trailing_spaces > start_offset && widget->label[fits_end_wo_trailing_spaces - 1] == ' ')
+                {
+                    --fits_end_wo_trailing_spaces;
+                }
+
+                ui_widget_text_line_t* text_line = ma_push_struct_zero(global_ui->text_line_arena, ui_widget_text_line_t);
+                *text_line = (ui_widget_text_line_t)
+                {
+                    .offset = start_offset,
+                    .length = fits_end_wo_trailing_spaces - start_offset,
+                };
+
+                if (!widget->text_line)
+                {
+                    widget->text_line = text_line;
+                }
+                else
+                {
+                    tail_text_line->next = text_line;
+                    text_line->prev = tail_text_line;
+                }
+                tail_text_line = text_line;
+
+                start_offset = fits_end;
             }
         }
-
+        
         if (axis == UI_WIDGET_AXIS_X)
         {
             widget->label_rect.x = position;
@@ -1017,6 +1109,15 @@ static void ui_widget_print_info(ui_widget_t* root_widget)
             "   - label height: %f\n",
             root_widget->label, root_widget->label_length,
             root_widget->label_size[UI_WIDGET_AXIS_X], root_widget->label_size[UI_WIDGET_AXIS_Y]);
+
+        fprintf(stderr, "   - text lines:\n");
+
+        while (root_widget->text_line)
+        {
+            fprintf(stderr, "      - %.*s\n",
+                    root_widget->text_line->length, root_widget->label + root_widget->text_line->offset);
+            root_widget->text_line = root_widget->text_line->next;
+        }
     }
 
     for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
@@ -1154,10 +1255,14 @@ static void ui_begin(memory_arena_t* memory_arena, f32 width, f32 height, ui_cal
     if (!global_ui)
     {
         memory_arena_t* ui_arena = ma_create_sub_arena(memory_arena, MIBIBYTES(4));
+        memory_arena_t* ui_widget_text_line_arena = ma_create_sub_arena(ui_arena, MIBIBYTES(2));
         global_ui = (ui_t*)ma_push_size_zero(ui_arena, sizeof(ui_t));
         global_ui->arena = ui_arena;
+        global_ui->text_line_arena = ui_widget_text_line_arena;
         global_ui->callback = callback;
     }
+
+    ma_reset(global_ui->text_line_arena);
 
     // NOTE: This is for making sure that ui_end() is called at the end of previous frame.
     assert(global_ui->stack.parent_count == 0 && "[UI] Invalid parent stack count.");

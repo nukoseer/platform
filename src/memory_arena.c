@@ -1,5 +1,8 @@
 #include "utils.h"
 
+#define ma_push_struct(memory_arena, type) (type*)ma_push_size(memory_arena, sizeof(type))
+#define ma_push_struct_zero(memory_arena, type) (type*)ma_push_size_zero(memory_arena, sizeof(type))
+
 typedef struct memory_arena_t
 {
     u8* base;
@@ -23,6 +26,12 @@ static memory_arena_t* ma_initialize(u8* memory, usize size)
     memory_arena->size = size - sizeof(memory_arena_t);
 
     return memory_arena;
+}
+
+static inline void ma_reset(memory_arena_t* memory_arena)
+{
+    assert(memory_arena && "[MEMORY ARENA] Invalid memory arena during reset.");
+    memory_arena->used = 0;
 }
 
 static inline usize ma_get_remaining_size(memory_arena_t* memory_arena)
