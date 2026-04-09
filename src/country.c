@@ -18,6 +18,7 @@ typedef struct country_query_data_t
     country_border_point_t* border_points;
     country_border_part_range_t* border_part_ranges;
     country_range_t* ranges;
+    vec2* centers;
 
     u32 border_point_count;
     u32 border_part_range_count;
@@ -332,12 +333,23 @@ static void init_country_query_data(io_t* io, country_query_data_t* query_data)
     country_border_file_header_t* country_border_header = (country_border_file_header_t*)country_border_file_result.data;
     assert(country_border_header->magic == COUNTRY_BORDER_FILE_MAGIC);
     
-    query_data->border_points = (country_border_point_t*)((u8*)country_border_file_result.data + sizeof(country_border_file_header_t));
-    query_data->border_part_ranges = (country_border_part_range_t*)((u8*)country_border_file_result.data + sizeof(country_border_file_header_t) +
-                                                                    sizeof(country_border_point_t) * country_border_header->point_count);
-    query_data->ranges = (country_range_t*)((u8*)country_border_file_result.data + sizeof(country_border_file_header_t) +
+    query_data->border_points = (country_border_point_t*)((u8*)country_border_file_result.data +
+                                                          sizeof(country_border_file_header_t));
+    query_data->border_part_ranges = (country_border_part_range_t*)((u8*)country_border_file_result.data +
+                                                                    sizeof(country_border_file_header_t) +
+                                                                    sizeof(country_border_point_t) *
+                                                                    country_border_header->point_count);
+    query_data->ranges = (country_range_t*)((u8*)country_border_file_result.data +
+                                            sizeof(country_border_file_header_t) +
                                             sizeof(country_border_point_t) * country_border_header->point_count +
-                                            sizeof(country_border_part_range_t) * country_border_header->part_range_count);
+                                            sizeof(country_border_part_range_t) *
+                                            country_border_header->part_range_count);
+
+    query_data->centers = (vec2*)((u8*)country_border_file_result.data +
+                                    sizeof(country_border_file_header_t) +
+                                    sizeof(country_border_point_t) * country_border_header->point_count +
+                                    sizeof(country_border_part_range_t) * country_border_header->part_range_count +
+                                    sizeof(country_range_t) * country_border_header->country_range_count);
     
     query_data->border_point_count = country_border_header->point_count;
     query_data->border_part_range_count = country_border_header->part_range_count;

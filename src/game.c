@@ -1962,7 +1962,7 @@ render_function(render)
             f32 lat_span = lat_max - lat_min;
             f32 max_span = fmaxf(lon_span, lat_span) * 0.5f;
             f32 zoom = 1.0f / (max_span * (f32)DEG2RAD);
-            vec2 center = global_shape_country_centers[game->country_index];
+            vec2 center = game->country_data.query.centers[game->country_index];
 
             // NOTE: Exclude antarctica.
             if (lon_span > 180.0f && game->country_index != 159)

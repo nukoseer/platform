@@ -16,6 +16,7 @@
 #define PRINT_INDICES             16
 #define PRINT_MESH_INDICES        32
 #define PRINT_MESH_INDEX_RANGES   64
+#define PRINT_COUNTRY_CENTERS    128
 
 #pragma pack(push, 1)
 typedef struct shape_file_header_t
@@ -75,7 +76,7 @@ size_t parse_shape_file(void* header, u8* memory, u8* shape_file_buffer, size_t 
     u32 part_index = 0;
     u32 part_offset = 0;
     u32 index_count = 0;
-    
+
     while (offset < shape_file_size - sizeof(shape_file_header_t))
     {
         shape_record_header_t* shape_record_header = (shape_record_header_t*)(initial_record_offset + offset);
@@ -86,6 +87,18 @@ size_t parse_shape_file(void* header, u8* memory, u8* shape_file_buffer, size_t 
         // NOTE: Polygon
         if (shape_content->shape_type == 5)
         {
+            if (print_format & PRINT_COUNTRY_CENTERS)
+            {
+                vec2 center =
+                {
+                    (f32)((shape_content->x_min + shape_content->x_max) * 0.5f),
+                    (f32)((shape_content->y_min + shape_content->y_max) * 0.5f)
+                };
+
+                memcpy(memory + memory_offset, &center, sizeof(vec2));
+                memory_offset += sizeof(vec2);
+             }
+            
             u8* part_ptr = shape_content_ptr + sizeof(shape_content_t);
             u32* parts = (u32*)part_ptr;
 
@@ -293,7 +306,7 @@ int main(int argc, char* argv[])
 
         if (!strcmp("--parts", arg))
         {
-            print_format |= PRINT_PARTS;
+            print_format |= PRINT_PARTS | PRINT_COUNTRY_CENTERS;
         }
         if (!strcmp("--indices", arg))
         {
@@ -382,6 +395,11 @@ int main(int argc, char* argv[])
     if (print_format & PRINT_PARTS)
     {
         offset += parse_shape_file(file_header, memory + offset, shape_file_buffer, shape_file_size, PRINT_PART_COUNTS);
+    }
+
+    if (print_format & PRINT_COUNTRY_CENTERS)
+    {
+        offset += parse_shape_file(file_header, memory + offset, shape_file_buffer, shape_file_size, PRINT_COUNTRY_CENTERS);
     }
 
     // NOTE: Border mesh GPU representation.
