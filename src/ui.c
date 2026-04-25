@@ -6,12 +6,11 @@ typedef struct ui_t
     memory_arena_t* transient_arena;
     memory_arena_t* text_line_arena;
     ui_widget_t* root_widget;
+    ui_widget_t* free_widgets;
+    ui_stacks_t stacks;
     ui_widget_list_t widget_lists[64];
-    ui_stack_t stack;
     ui_draw_command_t widget_draw_commands[64];
     u32 widget_draw_command_count;
-    ui_widget_t* free_widgets;
-
     ui_callback_t callback;
 } ui_t;
 
@@ -408,11 +407,20 @@ static ui_widget_t* ui_widget_build_from_key(ui_key_t key)
 
     widget->size[UI_AXIS_X] = ui_top_size_x();
     widget->size[UI_AXIS_Y] = ui_top_size_y();
-    widget->layout_axis = ui_top_layout_axis();
+    widget->layout_axis = ui_top_axis();
     widget->padding = ui_top_padding();
     widget->color = ui_top_color();
     widget->border = ui_top_border();
     widget->flags = ui_top_flags();
+
+    ui_stack_auto_pop(&global_ui->stacks.parent);
+    ui_stack_auto_pop(&global_ui->stacks.size_x);
+    ui_stack_auto_pop(&global_ui->stacks.size_y);
+    ui_stack_auto_pop(&global_ui->stacks.layout_axis);
+    ui_stack_auto_pop(&global_ui->stacks.padding);
+    ui_stack_auto_pop(&global_ui->stacks.color);
+    ui_stack_auto_pop(&global_ui->stacks.border);
+    ui_stack_auto_pop(&global_ui->stacks.flags);
 
     return widget;
 }
@@ -420,7 +428,7 @@ static ui_widget_t* ui_widget_build_from_key(ui_key_t key)
 // TODO: Find matching non null parent key.
 static ui_widget_t* ui_widget_build_from_string(const char* widget_name)
 {
-    ui_key_t parent_key = global_ui->stack.parent_count == 0 ? (ui_key_t){ 0 } : ui_top_parent()->key;
+    ui_key_t parent_key = global_ui->stacks.parent.count == 0 ? (ui_key_t){ 0 } : ui_top_parent()->key;
     ui_key_t widget_key = ui_get_key_from_string(parent_key, widget_name);
     ui_widget_t* widget = ui_widget_build_from_key(widget_key);
     widget->name = widget_name;
@@ -478,10 +486,14 @@ static void ui_set_label(ui_widget_t* widget, const char* label, u32 label_lengt
     ui_get_line_height_t* get_line_height = &callback->get_line_height;
         
     widget->label_size[UI_AXIS_X] = measure_text_width->function(widget->font, widget->label,
-                                                                        widget->label_length,
-                                                                        measure_text_width->parameter);
+                                                                 widget->label_length,
+                                                                 measure_text_width->parameter);
     widget->label_size[UI_AXIS_Y] = get_line_height->function(widget->font,
-                                                                     get_line_height->parameter);
+                                                              get_line_height->parameter);
+
+    ui_stack_auto_pop(&global_ui->stacks.font);
+    ui_stack_auto_pop(&global_ui->stacks.font_color);
+    ui_stack_auto_pop(&global_ui->stacks.label_alignment);
 }
 
 static ui_widget_t* ui_widget_labeled(const char* widget_name, const char* label)
@@ -634,9 +646,10 @@ static void ui_calculate_text_sizes(ui_widget_t* root_widget, ui_axis_t axis)
                 ui_text_line_t* text_line = ma_push_struct_zero(global_ui->text_line_arena, ui_text_line_t);
                 text_line->offset = start_offset;
                 text_line->length = fits_end_wo_trailing_spaces - start_offset;
-                text_line->size[axis] = measure_text_width->function(root_widget->font, root_widget->label + start_offset,
-                                                                                 fits_end_wo_trailing_spaces - start_offset,
-                                                                                 measure_text_width->parameter);
+                text_line->size[axis] = measure_text_width->function(root_widget->font,
+                                                                     root_widget->label + start_offset,
+                                                                     fits_end_wo_trailing_spaces - start_offset,
+                                                                     measure_text_width->parameter);
                 total_size += text_line->size[axis];
 
                 if (!root_widget->text_line)
@@ -785,7 +798,7 @@ static void ui_calculate_label_alignment(ui_widget_t* widget, ui_axis_t axis)
             for (ui_text_line_t* text_line = widget->text_line; text_line; text_line = text_line->next)
             {
                 text_line->position[UI_AXIS_Y] = (ui_calculate_content_alignment(widget, text_line, UI_AXIS_Y) +
-                                                         line_count * line_height);
+                                                  line_count * line_height);
                 ++line_count;
             }
         }
@@ -930,14 +943,31 @@ static void ui_calculate_draw_rect_commands(ui_widget_t* root_widget)
 
         for (ui_text_line_t* text_line = child_widget->text_line; text_line; text_line = text_line->next)
         {
-            f32 border_x = text_line->position[0] - child_widget->padding;
-            f32 border_y = text_line->position[1] - child_widget->padding;
-            f32 border_width = text_line->size[0] + child_widget->padding * 2.0f;
-            f32 border_height = text_line->size[1] + child_widget->padding * 2.0f;
+            f32 text_left = text_line->position[0];
+            f32 text_top = text_line->position[1];
+            f32 text_right = text_left + text_line->size[0];
+            f32 text_bottom = text_top + text_line->size[1];
+            
+            f32 widget_left = child_widget->rect.x;
+            f32 widget_top = child_widget->rect.y;
+            f32 widget_right = widget_left + child_widget->rect.width;
+            f32 widget_bottom = widget_top + child_widget->rect.height;
 
-            if (border_x < child_widget->rect.x || border_y < child_widget->rect.y ||
-                border_x + border_width > child_widget->rect.x + child_widget->rect.width ||
-                border_y + border_height > child_widget->rect.y + child_widget->rect.height)
+            f32 epsilon = 0.5f;
+
+            if (text_left < widget_left - epsilon)
+            {
+                continue;       
+            } 
+            if (text_top < widget_top - epsilon)
+            {
+                continue;
+            }
+            if (text_right > widget_right + epsilon)
+            {
+                continue;
+            }
+            if (text_bottom > widget_bottom + epsilon)
             {
                 continue;
             }
@@ -1006,20 +1036,34 @@ static void ui_begin(memory_arena_t* memory_arena, f32 width, f32 height, ui_cal
         global_ui->transient_arena = ui_transient_arena;
         global_ui->text_line_arena = ui_text_line_arena;
         global_ui->callback = callback;
+
+        // IMPORTANT: We need to be sure to use correct types here because there is no way to 
+        // catch it reliably and it can silently corrupt stacks without visible error.
+        ui_stack_init(global_ui->arena, &global_ui->stacks.parent, sizeof(ui_widget_t*), UI_STACK_SIZE);
+        ui_stack_init(global_ui->arena, &global_ui->stacks.size_x, sizeof(ui_size_t), UI_STACK_SIZE);
+        ui_stack_init(global_ui->arena, &global_ui->stacks.size_y, sizeof(ui_size_t), UI_STACK_SIZE);
+        ui_stack_init(global_ui->arena, &global_ui->stacks.layout_axis, sizeof(ui_axis_t), UI_STACK_SIZE);
+        ui_stack_init(global_ui->arena, &global_ui->stacks.padding, sizeof(f32), UI_STACK_SIZE);
+        ui_stack_init(global_ui->arena, &global_ui->stacks.color, sizeof(vec4), UI_STACK_SIZE);
+        ui_stack_init(global_ui->arena, &global_ui->stacks.border, sizeof(ui_border_t), UI_STACK_SIZE);
+        ui_stack_init(global_ui->arena, &global_ui->stacks.font, sizeof(void*), UI_STACK_SIZE);
+        ui_stack_init(global_ui->arena, &global_ui->stacks.font_color, sizeof(vec4), UI_STACK_SIZE);
+        ui_stack_init(global_ui->arena, &global_ui->stacks.label_alignment, sizeof(ui_alignment_t), UI_STACK_SIZE);
+        ui_stack_init(global_ui->arena, &global_ui->stacks.flags, sizeof(ui_flags_t), UI_STACK_SIZE);
     }
 
     ma_reset(global_ui->transient_arena);
     ma_reset(global_ui->text_line_arena);
 
     // NOTE: This is for making sure that ui_end() is called at the end of previous frame.
-    assert(global_ui->stack.parent_count == 0 && "[UI] Invalid parent stack count.");
+    assert(global_ui->stacks.parent.count == 0 && "[UI] Invalid parent stack count.");
 
     ui_push_size_x(ui_pixel(width, 1.0f));
     ui_push_size_y(ui_pixel(height, 1.0f));
-    ui_push_layout_axis(UI_AXIS_Y);
+    ui_push_axis(UI_AXIS_Y);
     ui_push_padding(0.0f);
     ui_push_color(v4(0.0f, 0.0f, 0.0f, 0.0f));
-    ui_push_border((ui_border_t){ false, 0.0f, v4(0.0f, 0.0f, 0.0f, 0.0f) });
+    ui_push_border(false, 0.0f, v4(0.0f, 0.0f, 0.0f, 0.0f));
     ui_push_font(0);
     ui_push_font_color(v4(0.0f, 0.0f, 0.0f, 0.0f));
     ui_push_label_alignment(ui_align_leading());
@@ -1032,8 +1076,6 @@ static void ui_begin(memory_arena_t* memory_arena, f32 width, f32 height, ui_cal
 
 static ui_draw_command_list_t ui_end(void)
 {
-    assert(global_ui->stack.parent_count == 1 && "[UI] Invalid parent stack count.");
-
     for (i32 axis = 0; axis < UI_AXIS_COUNT; ++axis)
     {
         ui_calculate_pixel_sizes(global_ui->root_widget, axis);
@@ -1058,17 +1100,29 @@ static ui_draw_command_list_t ui_end(void)
 
     ui_pop_size_x();
     ui_pop_size_y();
-    ui_pop_layout_axis();
+    ui_pop_axis();
     ui_pop_padding();
     ui_pop_color();
     ui_pop_border();
+    ui_pop_flags();
     ui_pop_font();
     ui_pop_font_color();
     ui_pop_label_alignment();
-    ui_pop_flags();
-
+    
     ui_widget_group_end();
     global_ui->root_widget = 0;
+
+    assert(global_ui->stacks.parent.count == 0 && "[UI] Invalid parent stack count.");
+    assert(global_ui->stacks.size_x.count == 0 && "[UI] Invalid size_x stack count.");
+    assert(global_ui->stacks.size_y.count == 0 && "[UI] Invalid size_y stack count.");
+    assert(global_ui->stacks.layout_axis.count == 0 && "[UI] Invalid layout axis stack count.");
+    assert(global_ui->stacks.padding.count == 0 && "[UI] Invalid padding stack count.");
+    assert(global_ui->stacks.color.count == 0 && "[UI] Invalid color stack count.");
+    assert(global_ui->stacks.border.count == 0 && "[UI] Invalid border stack count.");
+    assert(global_ui->stacks.flags.count == 0 && "[UI] Invalid flags stack count.");
+    assert(global_ui->stacks.font.count == 0 && "[UI] Invalid font stack count.");
+    assert(global_ui->stacks.font_color.count == 0 && "[UI] Invalid font_color stack count.");
+    assert(global_ui->stacks.label_alignment.count == 0 && "[UI] Invalid label_alignment stack count.");
 
     return widget_draw_command_list;
 }

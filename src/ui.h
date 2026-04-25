@@ -168,39 +168,29 @@ typedef struct ui_widget_t
 
 typedef struct ui_stack_t
 {
-    ui_widget_t* parent[UI_STACK_SIZE];
-    u32 parent_count;
-    
-    ui_size_t size_x[UI_STACK_SIZE];
-    u32 size_x_count;
-
-    ui_size_t size_y[UI_STACK_SIZE];
-    u32 size_y_count;
-
-    ui_axis_t layout_axis[UI_STACK_SIZE];
-    u32 layout_axis_count;
-
-    f32 padding[UI_STACK_SIZE];
-    u32 padding_count;
-
-    vec4 color[UI_STACK_SIZE];
-    u32 color_count;
-    
-    ui_border_t border[UI_STACK_SIZE];
-    u32 border_count;
-    
-    void* font[UI_STACK_SIZE];
-    u32 font_count;
-
-    vec4 font_color[UI_STACK_SIZE];
-    u32 font_color_count;
-
-    ui_alignment_t label_alignment[UI_STACK_SIZE];
-    u32 label_alignment_count;
-
-    ui_flags_t flags[UI_STACK_SIZE];
-    u32 flags_count;
+    u8* data;
+    u32 stride;
+    u32 count;
+    u32 size;
+    bool auto_pop;
 } ui_stack_t;
+
+typedef struct ui_stacks_t
+{
+    
+    ui_stack_t parent;
+    ui_stack_t size_x;
+    ui_stack_t size_y;
+    ui_stack_t layout_axis;
+    ui_stack_t padding;
+    ui_stack_t color;
+    ui_stack_t border;
+    ui_stack_t flags;
+    
+    ui_stack_t font;
+    ui_stack_t font_color;
+    ui_stack_t label_alignment;
+} ui_stacks_t;
 
 typedef struct ui_measure_text_width_t
 {

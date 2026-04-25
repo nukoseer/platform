@@ -853,8 +853,8 @@ static void init_theme(game_t* game)
         .bg_color = v4(0.9450f, 0.9215f, 0.8941f, 1.0f),
         .fg_color = v4(0.3098f, 0.2784f, 0.2235f, 1.0f),
         .sphere_grid_color = v4(0.55f, 0.55f, 0.55f, 1.0f),
-        .highlight_color = v4(0.4156f, 0.2823f, 0.2f, 1.0f),
-        // .highlight_color = v4(0.80f, 0.070f, 0.070f, 1.0f),
+        // .highlight_color = v4(0.4156f, 0.2823f, 0.2f, 1.0f),
+        .highlight_color = v4(0.3098f, 0.2784f, 0.2235f, 1.0f),
         .font_color = v4(0.2745f, 0.2431f, 0.2941f, 1.0f),
         .dark_mode = false,
     };
@@ -864,7 +864,8 @@ static void init_theme(game_t* game)
         .bg_color = v4(0.005f, 0.005f, 0.005f, 1.0f),
         .fg_color = v4(0.1058f, 0.9921f, 0.6117f, 1.0f),
         .sphere_grid_color = v4(0.008f, 0.008f, 0.008f, 1.0f),
-        .highlight_color = v4(1.0f, 1.0f, 1.0f, 1.0f),
+        // .highlight_color = v4(1.0f, 1.0f, 1.0f, 1.0f),
+        .highlight_color = v4(0.1058f, 0.9921f, 0.6117f, 1.0f),
         .font_color = v4(0.1058f, 0.9921f, 0.6117f, 1.0f),
         .dark_mode = true,
     };
@@ -1366,8 +1367,8 @@ init_function(init)
     });
 
 #if FONT_ENABLE
-    game->font_12 = graphics->create_font("Google Sans", 12);
-    game->font_16 = graphics->create_font("Google Sans", 16);
+    game->font_12 = graphics->create_font("Datatype", 12);
+    game->font_16 = graphics->create_font("Datatype", 16);
 #endif
 }
 
@@ -1475,9 +1476,9 @@ update_function(update)
     {
         game->vignette = game->vignette == 0.0f ? 1.0f : 0.0f;
     }
-
+    
     theme_t* theme = get_current_theme(game);
-
+    
 #if FONT_ENABLE
     ui_begin(game->memory_arena, (f32)platform->width, (f32)platform->height, (ui_callback_t)
     {
@@ -1487,49 +1488,50 @@ update_function(update)
 
     ui_push_color(theme->bg_color);
     ui_push_font_color(theme->font_color);
-
-    ui_size(ui_pixel(344.0f, 1.0f), ui_pixel(192.0f, 1.0f)) ui_axis(ui_axis_y())
-    ui_border(true, 1.0f, theme->fg_color) ui_padding(8.0f)
+    
+    ui_next_size(ui_pixel(344.0f, 1.0f), ui_pixel(192.0f, 1.0f));
+    ui_next_padding(8.0f); ui_next_axis(ui_axis_y());
+    ui_next_border(true, 1.0f, theme->fg_color);
     ui_widget_group("container", 10.0f, 60.0f)
     {
-        ui_size(ui_percent(1.0f, 1.0f), ui_percent(1.0f, 1.0f))
-        ui_border(true, 1.0f, theme->fg_color)  ui_padding(0.0f)
-        ui_widget_named_row("row")
+        ui_next_size(ui_percent(1.0f, 1.0f), ui_percent(1.0f, 1.0f));
+        ui_next_border(true, 1.0f, theme->fg_color);
+        ui_widget_row()
         {
-             ui_size(ui_percent(0.5f, 0.0f), ui_percent(1.0f, 1.0f))
-             ui_border(false, 1.0f, theme->fg_color) ui_padding(16.0f)
-             ui_widget_named_column("left-column-country-name")
-             {
-                 ui_padding(0.0f)
-                 ui_widget_center()
-                 {
-                     ui_size(ui_percent(1.0f, 1.0f), ui_children(1.0f))
-                     ui_widget_group("country-block", 0, 0)
-                     {
-                         country_name_t country_name = country_get_name(game->country_index);
-        
-                         ui_size(ui_percent(1.0f, 1.0f), ui_content(1.0f))
-                         ui_font(&game->font_12) ui_label_alignment(ui_align_leading())
-                         ui_widget_labeled("label", "Country / Region");
-
-                         ui_size(ui_percent(1.0f, 1.0f), ui_content(1.0f))
-                         ui_font(&game->font_16) ui_label_alignment(ui_align_leading())
-                         ui_widget_labeled("value", country_name.name ? country_name.name : "...");
+            ui_next_size(ui_percent(0.5f, 0.0f), ui_percent(1.0f, 1.0f));
+            ui_next_padding(16.0f);
+            ui_widget_named_column("left-column-country-name")
+            {
+                ui_widget_spacer(ui_percent(1.0f, 0.0f));
+                {
+                    ui_next_size(ui_percent(1.0f, 1.0f), ui_children(1.0f));
+                    ui_widget_group("country-block", 0, 0)
+                    {
+                        country_name_t country_name = country_get_name(game->country_index);
+                        
+                        ui_next_size(ui_percent(1.0f, 1.0f), ui_content(1.0f));
+                        ui_next_font(&game->font_12); ui_next_label_alignment(ui_align_leading());
+                        ui_widget_labeled("label", "Country / Region");
+                        
+                        ui_next_size(ui_percent(1.0f, 1.0f), ui_content(1.0f));
+                        ui_next_font(&game->font_16); ui_next_label_alignment(ui_align_leading());
+                        ui_widget_labeled("value", country_name.name ? country_name.name : "...");
                     }
-                 }
-             }
+                }
+                ui_widget_spacer(ui_percent(1.0f, 0.0f));
+            }
 
-             ui_size(ui_percent(0.5f, 0.0f), ui_percent(1.0f, 1.0f))
-             ui_border(false, 1.0f, theme->fg_color) ui_padding(16.0f)
-             ui_widget_named_column("right-column-country-shape")
-             {
-                 ui_size(ui_percent(1.0f, 1.0f), ui_percent(1.0f, 0.0f))
-                 ui_padding(0.0f) ui_flags(UI_FLAG_DRAW_CUSTOM)
-                 ui_widget("country-shape");
+            ui_next_size(ui_percent(0.5f, 0.0f), ui_percent(1.0f, 1.0f));
+            ui_next_padding(16.0f);
+            ui_widget_named_column("right-column-country-shape")
+            {
+                ui_next_size(ui_percent(1.0f, 1.0f), ui_percent(1.0f, 0.0f));
+                ui_next_flags(UI_FLAG_DRAW_CUSTOM);
+                ui_widget("country-shape");
             }
         }
     }
-    
+
     ui_pop_color();
     ui_pop_font_color();
     
