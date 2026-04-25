@@ -278,11 +278,11 @@ typedef struct game_t
     theme_type_t current_theme_type;
     
 #if FONT_ENABLE
+    graphics_2d_font_t font_12;
     graphics_2d_font_t font_16;
-    graphics_2d_font_t font_35;
     vec4 font_color;
 #endif
-    ui_widget_draw_command_list_t widget_draw_command_list;
+    ui_draw_command_list_t ui_draw_command_list;
 
     country_data_t country_data;
     u8 country_index;
@@ -1366,8 +1366,8 @@ init_function(init)
     });
 
 #if FONT_ENABLE
+    game->font_12 = graphics->create_font("Google Sans", 12);
     game->font_16 = graphics->create_font("Google Sans", 16);
-    game->font_35 = graphics->create_font("Google Sans", 35);
 #endif
 }
 
@@ -1484,108 +1484,57 @@ update_function(update)
         .measure_text_width = { measure_text_width, platform->graphics },
         .get_line_height = { get_line_height, platform->graphics },
     });
+
+    ui_push_color(theme->bg_color);
+    ui_push_font_color(theme->font_color);
+
+    ui_size(ui_pixel(344.0f, 1.0f), ui_pixel(192.0f, 1.0f)) ui_axis(ui_axis_y())
+    ui_border(true, 1.0f, theme->fg_color) ui_padding(8.0f)
+    ui_widget_group("container", 10.0f, 60.0f)
     {
-        ui_widget_group("ui-widget-group-1", 10.0f, 10.0f, (ui_widget_desc_t)
+        ui_size(ui_percent(1.0f, 1.0f), ui_percent(1.0f, 1.0f))
+        ui_border(true, 1.0f, theme->fg_color)  ui_padding(0.0f)
+        ui_widget_named_row("row")
         {
-            .size = { ui_widget_pixel_size(500.0f), ui_widget_children_size() },
-            .child_axis = ui_widget_axis_y(),
-            .padding = 8.0f,
-            .color = ui_widget_color_v4(theme->bg_color),
-            .border = ui_widget_border(true, 1.0f, ui_widget_color_v4(theme->fg_color)),
-        })
-        {
-            ui_widget_group("ui-widget-group-2", 0, 0, (ui_widget_desc_t)
-            {
-                .size = { ui_widget_parent_size(1.0f), ui_widget_children_size() },
-                .child_axis = ui_widget_axis_y(),
-                .padding = 16.0f,
-                .color = ui_widget_color_v4(theme->bg_color),
-                .border = ui_widget_border(true, 1.0f, ui_widget_color_v4(theme->fg_color)),
-            })
-            {
-                ui_widget_group("ui-widget-group-3", 0, 0, (ui_widget_desc_t)
-                {
-                    .size = { ui_widget_parent_size(1.0f), ui_widget_children_size() },
-                    .child_axis = ui_widget_axis_x(),
-                    .color = ui_widget_color_v4(theme->bg_color),
-                })
-                {
-                    ui_widget_group("ui-widget-group-44", 0, 0, (ui_widget_desc_t)
-                    {
-                        .size = { ui_widget_parent_size(0.5f), ui_widget_parent_size(1.0f) },
-                        .child_axis = ui_widget_axis_y(),
-                        .color = ui_widget_color_v4(theme->bg_color),
-                    })
-                    {
-                        ui_widget("ui-widget-temp", (ui_widget_desc_t)
-                        {
-                            .size = { ui_widget_parent_size(1.0f), ui_widget_parent_size(0.5f) },
-                            .color = ui_widget_color_v4(theme->bg_color),
-                        });
-                        
-                        ui_widget_group("ui-widget-group-4", 0, 0, (ui_widget_desc_t)
-                        {
-                            .size = { ui_widget_parent_size(1.0f), ui_widget_children_size() },
-                            .child_axis = ui_widget_axis_y(),
-                            .color = ui_widget_color_v4(theme->bg_color),
-                        })
-                        {
-                            country_name_t country_name = country_get_name(game->country_index);
+             ui_size(ui_percent(0.5f, 0.0f), ui_percent(1.0f, 1.0f))
+             ui_border(false, 1.0f, theme->fg_color) ui_padding(16.0f)
+             ui_widget_named_column("left-column-country-name")
+             {
+                 ui_padding(0.0f)
+                 ui_widget_center()
+                 {
+                     ui_size(ui_percent(1.0f, 1.0f), ui_children(1.0f))
+                     ui_widget_group("country-block", 0, 0)
+                     {
+                         country_name_t country_name = country_get_name(game->country_index);
+        
+                         ui_size(ui_percent(1.0f, 1.0f), ui_content(1.0f))
+                         ui_font(&game->font_12) ui_label_alignment(ui_align_leading())
+                         ui_widget_labeled("label", "Country / Region");
 
-                            ui_widget("ui-widget-1", (ui_widget_desc_t)
-                            {
-                                .size = { ui_widget_parent_size(1.0f), ui_widget_content_size() },
-                                .color = ui_widget_color_v4(theme->bg_color),
-                                .label = ui_widget_label(&game->font_16, "Country / Region", 16,
-                                ui_widget_color_v4(theme->font_color), ui_widget_align_leading()),
-                            });
-
-                            ui_widget("ui-widget-2", (ui_widget_desc_t)
-                            {
-                                .size = { ui_widget_parent_size(1.0f), ui_widget_content_size() },
-                                .color = ui_widget_color_v4(theme->bg_color),
-                                .label = ui_widget_label(&game->font_35,
-                                country_name.name ? country_name.name : "...",
-                                country_name.length ? country_name.length : 3,
-                                ui_widget_color_v4(theme->font_color), ui_widget_align_leading()),
-                            });
-                        }
-
-                        ui_widget("ui-widget-tempp", (ui_widget_desc_t)
-                        {
-                            .size = { ui_widget_parent_size(1.0f), ui_widget_parent_size(0.5f) },
-                            .color = ui_widget_color_v4(theme->bg_color),
-                        });
+                         ui_size(ui_percent(1.0f, 1.0f), ui_content(1.0f))
+                         ui_font(&game->font_16) ui_label_alignment(ui_align_leading())
+                         ui_widget_labeled("value", country_name.name ? country_name.name : "...");
                     }
+                 }
+             }
 
-                    ui_widget_group("ui-widget-group-5", 0, 0, (ui_widget_desc_t)
-                    {
-                        .size = { ui_widget_parent_size(0.5f), ui_widget_pixel_size(200.0f) },
-                        .child_axis = ui_widget_axis_y(),
-                        // .padding = 16.0f,
-                        .color = ui_widget_color_v4(theme->bg_color),
-                        // .border = ui_widget_border(true, 1.0f, ui_widget_color_v4(theme->fg_color)),
-                        .flag = 1,
-                    })
-                    {
-                        
-                    }
-                }
+             ui_size(ui_percent(0.5f, 0.0f), ui_percent(1.0f, 1.0f))
+             ui_border(false, 1.0f, theme->fg_color) ui_padding(16.0f)
+             ui_widget_named_column("right-column-country-shape")
+             {
+                 ui_size(ui_percent(1.0f, 1.0f), ui_percent(1.0f, 0.0f))
+                 ui_padding(0.0f) ui_flags(UI_FLAG_DRAW_CUSTOM)
+                 ui_widget("country-shape");
             }
-            // ui_widget("ui-widget-3", (ui_widget_desc_t)
-            // {
-            //     .size = { ui_widget_parent_size(1.0f), ui_widget_pixel_size(8.0f) },
-            //     .color = ui_widget_color_v4(theme->bg_color),
-            // });
-            // ui_widget("ui-widget-4", (ui_widget_desc_t)
-            // {
-            //     .size = { ui_widget_parent_size(1.0f), ui_widget_pixel_size(4.0f) },
-            //     .color = ui_widget_color_v4(theme->fg_color),
-            // });
         }
     }
-    ui_widget_draw_command_list_t widget_draw_command_list = ui_end();
-    game->widget_draw_command_list = widget_draw_command_list;
+    
+    ui_pop_color();
+    ui_pop_font_color();
+    
+    ui_draw_command_list_t ui_draw_command_list = ui_end();
+    game->ui_draw_command_list = ui_draw_command_list;
 #endif
 }
 
@@ -1830,7 +1779,7 @@ render_function(render)
     
 
 #if FONT_ENABLE
-    ui_widget_draw_command_t* country_draw_command = 0;
+    ui_draw_command_t* country_draw_command = 0;
         
     graphics->begin_draw();
     {
@@ -1852,12 +1801,12 @@ render_function(render)
                                 TEXT_ALIGNMENT_LEADING, 8.0f, 8.0f, (f32)platform->width, (f32)platform->height);
         }
 
-        ui_widget_draw_command_list_t* widget_draw_command_list = &game->widget_draw_command_list;
-        for (u32 i = 0; i < widget_draw_command_list->command_count; ++i)
+        ui_draw_command_list_t* ui_draw_command_list = &game->ui_draw_command_list;
+        for (u32 i = 0; i < ui_draw_command_list->command_count; ++i)
         {
-            ui_widget_draw_command_t* draw_command = widget_draw_command_list->commands + i;
+            ui_draw_command_t* draw_command = ui_draw_command_list->commands + i;
 
-            if (draw_command->kind == UI_WIDGET_DRAW_RECT)
+            if (draw_command->kind == UI_DRAW_RECT)
             {
                 f32 x = draw_command->x;
                 f32 y = draw_command->y;
@@ -1867,7 +1816,7 @@ render_function(render)
 
                 graphics->draw_rect(x, y, width, height, true, 0.0f, color.r, color.g, color.b, color.a);
             }
-            else if (draw_command->kind == UI_WIDGET_DRAW_BORDER)
+            else if (draw_command->kind == UI_DRAW_BORDER)
             {
                 f32 x = draw_command->x;
                 f32 y = draw_command->y;
@@ -1878,7 +1827,7 @@ render_function(render)
 
                 graphics->draw_rect(x, y, width, height, false, thickness, color.r, color.g, color.b, color.a);
             }
-            else if (draw_command->kind == UI_WIDGET_DRAW_TEXT)
+            else if (draw_command->kind == UI_DRAW_TEXT)
             {
                 graphics_2d_font_t font = *(graphics_2d_font_t*)draw_command->font;
                 f32 x = draw_command->x;
@@ -1892,12 +1841,9 @@ render_function(render)
                 graphics->draw_text(font, text, length, color.r, color.g, color.b, color.a,
                                     TEXT_ALIGNMENT_LEADING, x, y, width, height);
             }
-            else if (draw_command->kind == UI_WIDGET_DRAW_CUSTOM)
+            else if (draw_command->kind == UI_DRAW_CUSTOM)
             {
-                if (draw_command->flag == 1)
-                {
-                    country_draw_command = draw_command;
-                }
+                country_draw_command = draw_command;
             }
             else 
             {
