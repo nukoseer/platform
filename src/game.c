@@ -282,7 +282,6 @@ typedef struct game_t
     graphics_2d_font_t font_16;
     vec4 font_color;
 #endif
-    ui_draw_command_list_t ui_draw_command_list;
 
     country_data_t country_data;
     u8 country_index;
@@ -1188,6 +1187,26 @@ static void earth_rotation(const input_t* input, f32 delta_time)
     }    
 }
 
+static ui_measure_text_width_function(measure_text_width)
+{
+    graphics_2d_font_t graphics_font = *(graphics_2d_font_t*)font;
+    graphics_t* graphics = (graphics_t*)parameter;
+
+    f32 text_width = graphics->measure_text_width(graphics_font, text, text_length);
+
+    return text_width;
+}
+
+static ui_get_line_height_function(get_line_height)
+{
+    graphics_2d_font_t graphics_font = *(graphics_2d_font_t*)font;
+    graphics_t* graphics = (graphics_t*)parameter;
+
+    f32 line_height = graphics->get_line_height(graphics_font);
+
+    return line_height;
+}
+
 init_function(init)
 {
     memory_t* memory = platform->memory;
@@ -1206,6 +1225,12 @@ init_function(init)
     init_shape_ui(graphics, &game->shape_info_ui, &game->country_data);
     init_skybox(memory_arena, graphics, io, thread_pool, &game->skybox_info);
     init_theme(game);
+    ui_init(memory_arena, (ui_callbacks_t)
+    {
+        .measure_text_width = measure_text_width,
+        .get_line_height = get_line_height,
+        .parameter = platform->graphics,
+    });
 
     game->shape_value = 1.0f;
     game->shape_direction = 1.0f;
@@ -1372,26 +1397,6 @@ init_function(init)
 #endif
 }
 
-static ui_measure_text_width_function(measure_text_width)
-{
-    graphics_2d_font_t graphics_font = *(graphics_2d_font_t*)font;
-    graphics_t* graphics = (graphics_t*)parameter;
-
-    f32 text_width = graphics->measure_text_width(graphics_font, text, text_length);
-
-    return text_width;
-}
-
-static ui_get_line_height_function(get_line_height)
-{
-    graphics_2d_font_t graphics_font = *(graphics_2d_font_t*)font;
-    graphics_t* graphics = (graphics_t*)parameter;
-
-    f32 line_height = graphics->get_line_height(graphics_font);
-
-    return line_height;
-}
-
 static theme_t* get_current_theme(game_t* game)
 {
     return &game->themes[game->current_theme_type];
@@ -1480,22 +1485,23 @@ update_function(update)
     theme_t* theme = get_current_theme(game);
     
 #if FONT_ENABLE
-    ui_begin(game->memory_arena, (f32)platform->width, (f32)platform->height, (ui_callback_t)
-    {
-        .measure_text_width = { measure_text_width, platform->graphics },
-        .get_line_height = { get_line_height, platform->graphics },
-    });
-
+    ui_begin((f32)platform->width, (f32)platform->height);
     ui_push_color(theme->bg_color);
     ui_push_font_color(theme->font_color);
     
     ui_next_size(ui_pixel(344.0f, 1.0f), ui_pixel(192.0f, 1.0f));
     ui_next_padding(8.0f); ui_next_axis(ui_axis_y());
-    ui_next_border(true, 1.0f, theme->fg_color);
+    ui_next_border(1.0f, theme->fg_color); ui_next_flags(UI_FLAG_DRAW_BACKGROUND);
     ui_widget_group("container", 10.0f, 60.0f)
     {
+        // ui_next_size(ui_content(1.0f), ui_content(1.0f));
+        // ui_next_padding(8.0f); ui_next_border(1.0f, theme->fg_color);
+        // ui_next_flags(UI_FLAG_FLOATING);
+        // ui_next_font(&game->font_16); ui_next_label_alignment(ui_align_leading());
+        // ui_widget_labeled("title", "Country Information");
+    
         ui_next_size(ui_percent(1.0f, 1.0f), ui_percent(1.0f, 1.0f));
-        ui_next_border(true, 1.0f, theme->fg_color);
+        ui_next_border(1.0f, theme->fg_color); ui_next_flags(UI_FLAG_DRAW_BACKGROUND);
         ui_widget_row()
         {
             ui_next_size(ui_percent(0.5f, 0.0f), ui_percent(1.0f, 1.0f));
@@ -1505,6 +1511,7 @@ update_function(update)
                 ui_widget_spacer(ui_percent(1.0f, 0.0f));
                 {
                     ui_next_size(ui_percent(1.0f, 1.0f), ui_children(1.0f));
+                    ui_push_flags(UI_FLAG_DRAW_BACKGROUND);
                     ui_widget_group("country-block", 0, 0)
                     {
                         country_name_t country_name = country_get_name(game->country_index);
@@ -1517,6 +1524,7 @@ update_function(update)
                         ui_next_font(&game->font_16); ui_next_label_alignment(ui_align_leading());
                         ui_widget_labeled("value", country_name.name ? country_name.name : "...");
                     }
+                    ui_pop_flags();
                 }
                 ui_widget_spacer(ui_percent(1.0f, 0.0f));
             }
@@ -1534,9 +1542,7 @@ update_function(update)
 
     ui_pop_color();
     ui_pop_font_color();
-    
-    ui_draw_command_list_t ui_draw_command_list = ui_end();
-    game->ui_draw_command_list = ui_draw_command_list;
+    ui_end();
 #endif
 }
 
@@ -1803,53 +1809,51 @@ render_function(render)
                                 TEXT_ALIGNMENT_LEADING, 8.0f, 8.0f, (f32)platform->width, (f32)platform->height);
         }
 
-        ui_draw_command_list_t* ui_draw_command_list = &game->ui_draw_command_list;
-        for (u32 i = 0; i < ui_draw_command_list->command_count; ++i)
+        ui_draw_command_iter_t iter = ui_draw_command_begin();
+        
+        for (ui_draw_command_t* command = ui_draw_command_next(&iter);
+             command;
+             command = ui_draw_command_next(&iter))
         {
-            ui_draw_command_t* draw_command = ui_draw_command_list->commands + i;
-
-            if (draw_command->kind == UI_DRAW_RECT)
+            f32 x = command->x;
+            f32 y = command->y;
+            f32 width = command->width;
+            f32 height = command->height;
+            vec4 color = command->color;
+            
+            switch (command->kind)
             {
-                f32 x = draw_command->x;
-                f32 y = draw_command->y;
-                f32 width = draw_command->width;
-                f32 height = draw_command->height;
-                vec4 color = draw_command->color;
-
-                graphics->draw_rect(x, y, width, height, true, 0.0f, color.r, color.g, color.b, color.a);
-            }
-            else if (draw_command->kind == UI_DRAW_BORDER)
-            {
-                f32 x = draw_command->x;
-                f32 y = draw_command->y;
-                f32 width = draw_command->width;
-                f32 height = draw_command->height;
-                vec4 color = draw_command->color;
-                f32 thickness = draw_command->thickness;
-
-                graphics->draw_rect(x, y, width, height, false, thickness, color.r, color.g, color.b, color.a);
-            }
-            else if (draw_command->kind == UI_DRAW_TEXT)
-            {
-                graphics_2d_font_t font = *(graphics_2d_font_t*)draw_command->font;
-                f32 x = draw_command->x;
-                f32 y = draw_command->y;
-                f32 width = draw_command->width;
-                f32 height = draw_command->height;
-                vec4 color = draw_command->color;
-                const char* text = draw_command->text;
-                u32 length = draw_command->length;
+                case UI_DRAW_RECT:
+                {
+                    graphics->draw_rect(x, y, width, height, true, 0.0f, color.r, color.g, color.b, color.a);
+                } break;
                 
-                graphics->draw_text(font, text, length, color.r, color.g, color.b, color.a,
-                                    TEXT_ALIGNMENT_LEADING, x, y, width, height);
-            }
-            else if (draw_command->kind == UI_DRAW_CUSTOM)
-            {
-                country_draw_command = draw_command;
-            }
-            else 
-            {
-                assert(!"[UI] Invalid draw command.");
+                case UI_DRAW_BORDER:
+                {
+                    f32 thickness = command->thickness;
+
+                    graphics->draw_rect(x, y, width, height, false, thickness, color.r, color.g, color.b, color.a);
+                } break;
+                
+                case UI_DRAW_TEXT:
+                {
+                    graphics_2d_font_t font = *(graphics_2d_font_t*)command->font;
+                    const char* text = command->text;
+                    u32 length = command->length;
+                
+                    graphics->draw_text(font, text, length, color.r, color.g, color.b, color.a,
+                                        TEXT_ALIGNMENT_LEADING, x, y, width, height);
+                } break;
+                
+                case UI_DRAW_CUSTOM:
+                {
+                    country_draw_command = command;
+                } break;
+
+                default: 
+                {
+                    assert(!"[UI] Invalid draw command.");
+                } break;
             }
         }
     }

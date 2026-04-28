@@ -52,6 +52,39 @@ static void ui_stack_auto_pop(ui_stack_t* stack)
     }
 }
 
+static void ui_stack_push_flags(ui_flags_t flags)
+{
+    ui_stack_t* stack = &global_ui->stacks.flags;
+    
+    assert(stack->count < stack->size && "[UI] Invalid stack count.");
+    
+    ui_flags_t top_flags = *(ui_flags_t*)ui_stack_top(&global_ui->stacks.flags);
+    ui_flags_t new_flags = top_flags | flags;
+    
+    memcpy(stack->data + stack->stride * stack->count, &new_flags, stack->stride);
+    stack->count++;
+}
+
+static void ui_stack_set_flags(ui_flags_t flags)
+{
+    ui_stack_t* stack = &global_ui->stacks.flags;
+
+    ui_flags_t top_flags = *(ui_flags_t*)ui_stack_top(&global_ui->stacks.flags);
+    ui_flags_t new_flags = top_flags | flags;
+    
+    if (stack->auto_pop)
+    {
+        memcpy(stack->data + stack->stride * (stack->count - 1), &new_flags, stack->stride);
+    }
+    else
+    {
+        assert(stack->count < stack->size && "[UI] Invalid stack count.");
+        memcpy(stack->data + stack->stride * stack->count, &new_flags, stack->stride);
+        stack->count++;
+        stack->auto_pop = true;
+    }
+}
+
 #define ui_push(stack, type, value) do { type _t = (value); ui_stack_push((stack), &_t); } while (0)
 #define ui_next(stack, type, value) do { type _t = (value); ui_stack_set((stack), &_t); } while (0)
 #define ui_top(stack, type) (*(type*)ui_stack_top(stack))
@@ -91,10 +124,20 @@ static void ui_stack_auto_pop(ui_stack_t* stack)
 #define ui_top_color() ui_top(&global_ui->stacks.color, vec4)
 #define ui_pop_color() ui_pop(&global_ui->stacks.color)
 
-#define ui_push_border(...) ui_push(&global_ui->stacks.border, ui_border_t, (ui_border_t){ __VA_ARGS__ })
-#define ui_next_border(...) ui_next(&global_ui->stacks.border, ui_border_t, (ui_border_t){ __VA_ARGS__ })
-#define ui_top_border() ui_top(&global_ui->stacks.border, ui_border_t)
-#define ui_pop_border() ui_pop(&global_ui->stacks.border)
+#define ui_push_border_props(...) ui_push(&global_ui->stacks.border, ui_border_t, (ui_border_t){ __VA_ARGS__ })
+#define ui_next_border_props(...) ui_next(&global_ui->stacks.border, ui_border_t, (ui_border_t){ __VA_ARGS__ })
+#define ui_top_border_props() ui_top(&global_ui->stacks.border, ui_border_t)
+#define ui_pop_border_props() ui_pop(&global_ui->stacks.border)
+
+#define ui_next_border(thickness, color) \
+    ui_next_flags(ui_top_flags() | UI_FLAG_DRAW_BORDER); \
+    ui_next_border_props((thickness), (color))
+
+#define ui_next_show_border(thickness, color) \
+    ui_next_flags(ui_top_flags() | UI_FLAG_DRAW_BORDER)
+
+#define ui_next_hide_border(thickness, color) \
+    ui_next_flags(ui_top_flags() & ~UI_FLAG_DRAW_BORDER)
 
 #define ui_push_font(value) ui_push(&global_ui->stacks.font, void*, value)
 #define ui_next_font(value) ui_next(&global_ui->stacks.font, void*, value)
@@ -111,8 +154,8 @@ static void ui_stack_auto_pop(ui_stack_t* stack)
 #define ui_top_label_alignment() ui_top(&global_ui->stacks.label_alignment, ui_alignment_t)
 #define ui_pop_label_alignment() ui_pop(&global_ui->stacks.label_alignment)
 
-#define ui_push_flags(value) ui_push(&global_ui->stacks.flags, ui_flags_t, value)
-#define ui_next_flags(value) ui_next(&global_ui->stacks.flags, ui_flags_t, value)
+#define ui_push_flags(value) ui_stack_push_flags(value)
+#define ui_next_flags(value) ui_stack_set_flags(value)
 #define ui_top_flags() ui_top(&global_ui->stacks.flags, ui_flags_t)
 #define ui_pop_flags() ui_pop(&global_ui->stacks.flags)
 
@@ -273,6 +316,7 @@ static void ui_widget_named_column_end(void)
 
 static ui_widget_t* ui_widget_column_begin(void)
 {
+    // TODO: Using an empty string will make a problem if there are multiple unnamed columns. We can either disallow unnamed columns or generate unique keys for unnamed columns.
     ui_widget_t* widget = ui_widget_named_column_begin("");
 
     return widget;
