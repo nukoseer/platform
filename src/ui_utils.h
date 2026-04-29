@@ -139,6 +139,23 @@ static void ui_stack_set_flags(ui_flags_t flags)
 #define ui_next_hide_border(thickness, color) \
     ui_next_flags(ui_top_flags() & ~UI_FLAG_DRAW_BORDER)
 
+#define ui_push_flags(value) ui_stack_push_flags(value)
+#define ui_next_flags(value) ui_stack_set_flags(value)
+#define ui_top_flags() ui_top(&global_ui->stacks.flags, ui_flags_t)
+#define ui_pop_flags() ui_pop(&global_ui->stacks.flags)
+
+#define ui_push_anchor(value) ui_push(&global_ui->stacks.anchor, ui_anchor_t, value);
+#define ui_next_anchor(value) ui_next(&global_ui->stacks.anchor, ui_anchor_t, value);
+#define ui_top_anchor() ui_top(&global_ui->stacks.anchor, ui_anchor_t)
+#define ui_pop_anchor() ui_pop(&global_ui->stacks.anchor);
+
+#define ui_push_anchor_offset(...) ui_push(&global_ui->stacks.anchor_offset, ui_anchor_offset_t, (ui_anchor_offset_t){ __VA_ARGS__ });
+#define ui_next_anchor_offset(...) ui_next(&global_ui->stacks.anchor_offset, ui_anchor_offset_t, (ui_anchor_offset_t){ __VA_ARGS__ });
+#define ui_top_anchor_offset() ui_top(&global_ui->stacks.anchor_offset, ui_anchor_offset_t)
+#define ui_pop_anchor_offset() ui_pop(&global_ui->stacks.anchor_offset);
+
+#define ui_next_floating(anchor, x, y) ui_next_flags(UI_FLAG_FLOATING); ui_next_anchor(anchor); ui_next_anchor_offset(x, y)
+
 #define ui_push_font(value) ui_push(&global_ui->stacks.font, void*, value)
 #define ui_next_font(value) ui_next(&global_ui->stacks.font, void*, value)
 #define ui_top_font() ui_top(&global_ui->stacks.font, void*)
@@ -153,11 +170,6 @@ static void ui_stack_set_flags(ui_flags_t flags)
 #define ui_next_label_alignment(value) ui_next(&global_ui->stacks.label_alignment, ui_alignment_t, value)
 #define ui_top_label_alignment() ui_top(&global_ui->stacks.label_alignment, ui_alignment_t)
 #define ui_pop_label_alignment() ui_pop(&global_ui->stacks.label_alignment)
-
-#define ui_push_flags(value) ui_stack_push_flags(value)
-#define ui_next_flags(value) ui_stack_set_flags(value)
-#define ui_top_flags() ui_top(&global_ui->stacks.flags, ui_flags_t)
-#define ui_pop_flags() ui_pop(&global_ui->stacks.flags)
 
 static void ui_push_size_axis(ui_axis_t axis, ui_size_t size)
 {

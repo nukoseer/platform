@@ -1494,11 +1494,12 @@ update_function(update)
     ui_next_border(1.0f, theme->fg_color); ui_next_flags(UI_FLAG_DRAW_BACKGROUND);
     ui_widget_group("container", 10.0f, 60.0f)
     {
-        // ui_next_size(ui_content(1.0f), ui_content(1.0f));
-        // ui_next_padding(8.0f); ui_next_border(1.0f, theme->fg_color);
-        // ui_next_flags(UI_FLAG_FLOATING);
-        // ui_next_font(&game->font_16); ui_next_label_alignment(ui_align_leading());
-        // ui_widget_labeled("title", "Country Information");
+        ui_next_size(ui_content(1.0f), ui_content(1.0f));
+        ui_next_padding(8.0f); // ui_next_border(1.0f, theme->fg_color);
+        ui_next_floating(UI_ANCHOR_TOP_LEFT, 16.0f, -20.0f);
+        ui_next_flags(UI_FLAG_DRAW_BACKGROUND);
+        ui_next_font(&game->font_16); ui_next_label_alignment(ui_align_leading());
+        ui_widget_labeled("title", "Country Information");
     
         ui_next_size(ui_percent(1.0f, 1.0f), ui_percent(1.0f, 1.0f));
         ui_next_border(1.0f, theme->fg_color); ui_next_flags(UI_FLAG_DRAW_BACKGROUND);

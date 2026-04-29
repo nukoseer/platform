@@ -123,6 +123,24 @@ typedef struct ui_text_line_t
     struct ui_text_line_t* next;
 } ui_text_line_t;
 
+typedef enum ui_anchor_t
+{
+    UI_ANCHOR_TOP_LEFT,
+    UI_ANCHOR_TOP_CENTER,
+    UI_ANCHOR_TOP_RIGHT,
+    UI_ANCHOR_CENTER_LEFT,
+    UI_ANCHOR_CENTER,
+    UI_ANCHOR_CENTER_RIGHT,
+    UI_ANCHOR_BOTTOM_LEFT,
+    UI_ANCHOR_BOTTOM_CENTER,
+    UI_ANCHOR_BOTTOM_RIGHT,
+} ui_anchor_t;
+
+typedef struct ui_anchor_offset_t
+{
+    f32 x, y;
+} ui_anchor_offset_t;
+
 typedef enum ui_flags_t
 {
     UI_FLAG_DRAW_BACKGROUND  = (1 << 0),
@@ -149,6 +167,9 @@ typedef struct ui_widget_t
     f32 padding;
     vec4 color;
     ui_border_t border;
+    ui_flags_t flags;
+    ui_anchor_t anchor;
+    f32 anchor_offset[UI_AXIS_COUNT];
     void* font;
     vec4 font_color;
     ui_text_line_t* text_line;
@@ -168,7 +189,6 @@ typedef struct ui_widget_t
 
     f32 fixed_size[UI_AXIS_COUNT];
     ui_rect_t rect;
-    ui_flags_t flags;
 } ui_widget_t;
 
 typedef struct ui_callbacks_t

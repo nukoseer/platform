@@ -22,6 +22,8 @@ typedef struct ui_stacks_t
     ui_stack_t color;
     ui_stack_t border;
     ui_stack_t flags;
+    ui_stack_t anchor;
+    ui_stack_t anchor_offset;
     
     ui_stack_t font;
     ui_stack_t font_color;
@@ -437,6 +439,9 @@ static ui_widget_t* ui_widget_build_from_key(ui_key_t key)
     widget->color = ui_top_color();
     widget->border = ui_top_border_props();
     widget->flags |= ui_top_flags();
+    widget->anchor = ui_top_anchor();
+    widget->anchor_offset[UI_AXIS_X] = ui_top_anchor_offset().x;
+    widget->anchor_offset[UI_AXIS_Y] = ui_top_anchor_offset().y;
 
     ui_stack_auto_pop(&global_ui->stacks.parent);
     ui_stack_auto_pop(&global_ui->stacks.size_x);
@@ -446,6 +451,8 @@ static ui_widget_t* ui_widget_build_from_key(ui_key_t key)
     ui_stack_auto_pop(&global_ui->stacks.color);
     ui_stack_auto_pop(&global_ui->stacks.border);
     ui_stack_auto_pop(&global_ui->stacks.flags);
+    ui_stack_auto_pop(&global_ui->stacks.anchor);
+    ui_stack_auto_pop(&global_ui->stacks.anchor_offset);
 
     return widget;
 }
@@ -580,6 +587,11 @@ static void ui_calculate_children_dependent_sizes(ui_widget_t* root_widget, ui_a
         
         for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
         {
+            if (ui_is_flag_set(child_widget, UI_FLAG_FLOATING))
+            {
+                continue;
+            }
+            
             if (child_widget->layout_axis == axis)
             {
                 children_size += child_widget->fixed_size[axis];
@@ -849,15 +861,49 @@ static void ui_calculate_label_alignment(ui_widget_t* widget, ui_axis_t axis)
     }
 }
 
+static inline f32 ui_calculate_anchor_position(ui_rect_t rect, ui_anchor_t anchor, ui_axis_t axis)
+{
+    static const f32 fractions[9][2] =
+    {
+        [UI_ANCHOR_TOP_LEFT]      = { 0.0f, 0.0f },
+        [UI_ANCHOR_TOP_CENTER]    = { 0.5f, 0.0f },
+        [UI_ANCHOR_TOP_RIGHT]     = { 1.0f, 0.0f },
+        [UI_ANCHOR_CENTER_LEFT]   = { 0.0f, 0.5f },
+        [UI_ANCHOR_CENTER]        = { 0.5f, 0.5f },
+        [UI_ANCHOR_CENTER_RIGHT]  = { 1.0f, 0.5f },
+        [UI_ANCHOR_BOTTOM_LEFT]   = { 0.0f, 1.0f },
+        [UI_ANCHOR_BOTTOM_CENTER] = { 0.5f, 1.0f },
+        [UI_ANCHOR_BOTTOM_RIGHT]  = { 1.0f, 1.0f },
+    };
+    f32 result = 0.0f;
+
+    if (axis == UI_AXIS_X)
+    {
+        result = rect.x + rect.width * fractions[anchor][axis];
+    }
+    else if (axis == UI_AXIS_Y)
+    {
+        result = rect.y + rect.height * fractions[anchor][axis];
+    }
+
+    return result;
+}
+
 static void ui_calculate_layout(ui_widget_t* root_widget, ui_axis_t axis)
 {
     f32 layout_at = root_widget->padding;
-    
+
+    // NOTE: Normal pass.
     for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
     {
+        if (ui_is_flag_set(child_widget, UI_FLAG_FLOATING))
+        {
+            continue;
+        }
+        
         child_widget->position.xy[axis] += layout_at;
         
-        if (root_widget->layout_axis == axis && !ui_is_flag_set(child_widget, UI_FLAG_FLOATING))
+        if (root_widget->layout_axis == axis)
         {
             layout_at += child_widget->fixed_size[axis];
         }
@@ -879,6 +925,34 @@ static void ui_calculate_layout(ui_widget_t* root_widget, ui_axis_t axis)
         else
         {
             assert(!"[UI] Invalid axis.");
+        }
+    }
+
+    // NOTE: Floating pass.
+    for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
+    {
+        if (!ui_is_flag_set(child_widget, UI_FLAG_FLOATING))
+        {
+            continue;
+        }
+        
+        ui_rect_t child_rect = { 0.0f, 0.0f, child_widget->fixed_size[0], child_widget->fixed_size[1] };
+        f32 root_anchor = ui_calculate_anchor_position(root_widget->rect, child_widget->anchor, axis);
+        f32 child_anchor = ui_calculate_anchor_position(child_rect, child_widget->anchor, axis);
+        
+        if (axis == UI_AXIS_X)
+        {
+            child_widget->rect.x = root_anchor - child_anchor + child_widget->anchor_offset[axis];
+            child_widget->rect.width = child_widget->fixed_size[axis];
+
+            ui_calculate_label_alignment(child_widget, axis);
+        }
+        else if (axis == UI_AXIS_Y)
+        {
+            child_widget->rect.y = root_anchor - child_anchor + child_widget->anchor_offset[axis];
+            child_widget->rect.height = child_widget->fixed_size[axis];
+
+            ui_calculate_label_alignment(child_widget, axis);
         }
     }
 
@@ -1110,10 +1184,13 @@ static void ui_init(memory_arena_t* memory_arena, ui_callbacks_t callbacks)
     ui_stack_init(global_ui->arena, &global_ui->stacks.padding, sizeof(f32), UI_STACK_SIZE);
     ui_stack_init(global_ui->arena, &global_ui->stacks.color, sizeof(vec4), UI_STACK_SIZE);
     ui_stack_init(global_ui->arena, &global_ui->stacks.border, sizeof(ui_border_t), UI_STACK_SIZE);
+    ui_stack_init(global_ui->arena, &global_ui->stacks.flags, sizeof(ui_flags_t), UI_STACK_SIZE);
+    ui_stack_init(global_ui->arena, &global_ui->stacks.anchor, sizeof(ui_anchor_t), UI_STACK_SIZE);
+    ui_stack_init(global_ui->arena, &global_ui->stacks.anchor_offset, sizeof(ui_anchor_offset_t), UI_STACK_SIZE);
     ui_stack_init(global_ui->arena, &global_ui->stacks.font, sizeof(void*), UI_STACK_SIZE);
     ui_stack_init(global_ui->arena, &global_ui->stacks.font_color, sizeof(vec4), UI_STACK_SIZE);
     ui_stack_init(global_ui->arena, &global_ui->stacks.label_alignment, sizeof(ui_alignment_t), UI_STACK_SIZE);
-    ui_stack_init(global_ui->arena, &global_ui->stacks.flags, sizeof(ui_flags_t), UI_STACK_SIZE);
+
 }
 
 static void ui_begin(f32 width, f32 height)
@@ -1136,6 +1213,8 @@ static void ui_begin(f32 width, f32 height)
     ui_stack_push(&global_ui->stacks.color, &(vec4){ 0 });
     ui_stack_push(&global_ui->stacks.border, &(ui_border_t){ 0 });
     ui_stack_push(&global_ui->stacks.flags, &(void*){ 0 });
+    ui_stack_push(&global_ui->stacks.anchor, &(ui_anchor_t){ 0 });
+    ui_stack_push(&global_ui->stacks.anchor_offset, &(ui_anchor_offset_t){ 0 });
     ui_stack_push(&global_ui->stacks.font, &(void*){ 0 });
     ui_stack_push(&global_ui->stacks.font_color, &(vec4){ 0 });
     ui_stack_push(&global_ui->stacks.label_alignment, &(ui_alignment_t){ 0 });
@@ -1173,6 +1252,8 @@ static void ui_end(void)
     ui_pop_color();
     ui_pop_border_props();
     ui_pop_flags();
+    ui_pop_anchor();
+    ui_pop_anchor_offset();
     ui_pop_font();
     ui_pop_font_color();
     ui_pop_label_alignment();
@@ -1187,6 +1268,8 @@ static void ui_end(void)
     assert(global_ui->stacks.color.count == 0 && "[UI] Invalid color stack count.");
     assert(global_ui->stacks.border.count == 0 && "[UI] Invalid border stack count.");
     assert(global_ui->stacks.flags.count == 0 && "[UI] Invalid flags stack count.");
+    assert(global_ui->stacks.anchor.count == 0 && "[UI] Invalid anchor stack count.");
+    assert(global_ui->stacks.anchor_offset.count == 0 && "[UI] Invalid anchor offset stack count.");
     assert(global_ui->stacks.font.count == 0 && "[UI] Invalid font stack count.");
     assert(global_ui->stacks.font_color.count == 0 && "[UI] Invalid font_color stack count.");
     assert(global_ui->stacks.label_alignment.count == 0 && "[UI] Invalid label_alignment stack count.");
