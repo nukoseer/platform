@@ -129,32 +129,20 @@ static void ui_stack_set_flags(ui_flags_t flags)
 #define ui_top_border_props() ui_top(&global_ui->stacks.border, ui_border_t)
 #define ui_pop_border_props() ui_pop(&global_ui->stacks.border)
 
-#define ui_next_border(thickness, color) \
-    ui_next_flags(ui_top_flags() | UI_FLAG_DRAW_BORDER); \
-    ui_next_border_props((thickness), (color))
-
-#define ui_next_show_border(thickness, color) \
-    ui_next_flags(ui_top_flags() | UI_FLAG_DRAW_BORDER)
-
-#define ui_next_hide_border(thickness, color) \
-    ui_next_flags(ui_top_flags() & ~UI_FLAG_DRAW_BORDER)
-
 #define ui_push_flags(value) ui_stack_push_flags(value)
 #define ui_next_flags(value) ui_stack_set_flags(value)
 #define ui_top_flags() ui_top(&global_ui->stacks.flags, ui_flags_t)
 #define ui_pop_flags() ui_pop(&global_ui->stacks.flags)
 
-#define ui_push_anchor(value) ui_push(&global_ui->stacks.anchor, ui_anchor_t, value);
-#define ui_next_anchor(value) ui_next(&global_ui->stacks.anchor, ui_anchor_t, value);
+#define ui_push_anchor(...) ui_push(&global_ui->stacks.anchor, ui_anchor_t, (ui_anchor_t){ __VA_ARGS__ })
+#define ui_next_anchor(...) ui_next(&global_ui->stacks.anchor, ui_anchor_t, (ui_anchor_t){ __VA_ARGS__ })
 #define ui_top_anchor() ui_top(&global_ui->stacks.anchor, ui_anchor_t)
 #define ui_pop_anchor() ui_pop(&global_ui->stacks.anchor);
 
-#define ui_push_anchor_offset(...) ui_push(&global_ui->stacks.anchor_offset, ui_anchor_offset_t, (ui_anchor_offset_t){ __VA_ARGS__ });
-#define ui_next_anchor_offset(...) ui_next(&global_ui->stacks.anchor_offset, ui_anchor_offset_t, (ui_anchor_offset_t){ __VA_ARGS__ });
+#define ui_push_anchor_offset(...) ui_push(&global_ui->stacks.anchor_offset, ui_anchor_offset_t, (ui_anchor_offset_t){ __VA_ARGS__ })
+#define ui_next_anchor_offset(...) ui_next(&global_ui->stacks.anchor_offset, ui_anchor_offset_t, (ui_anchor_offset_t){ __VA_ARGS__ })
 #define ui_top_anchor_offset() ui_top(&global_ui->stacks.anchor_offset, ui_anchor_offset_t)
 #define ui_pop_anchor_offset() ui_pop(&global_ui->stacks.anchor_offset);
-
-#define ui_next_floating(anchor, x, y) ui_next_flags(UI_FLAG_FLOATING); ui_next_anchor(anchor); ui_next_anchor_offset(x, y)
 
 #define ui_push_font(value) ui_push(&global_ui->stacks.font, void*, value)
 #define ui_next_font(value) ui_next(&global_ui->stacks.font, void*, value)
@@ -265,6 +253,11 @@ static ui_size_t ui_top_size_axis(ui_axis_t axis)
 #define ui_widget_named_row(name) defer_loop(ui_widget_named_row_begin(name), ui_widget_named_row_end())
 #define ui_widget_named_column(name) defer_loop(ui_widget_named_column_begin(name), ui_widget_named_column_end())
 #define ui_widget_center() defer_loop(ui_widget_spacer(ui_percent(1.0f, 0.0f)), ui_widget_spacer(ui_percent(1.0f, 0.0f)))
+
+#define ui_next_border(thickness, color) ui_next_flags(ui_top_flags() | UI_FLAG_DRAW_BORDER); ui_next_border_props((thickness), (color))
+#define ui_next_show_border(thickness, color) ui_next_flags(ui_top_flags() | UI_FLAG_DRAW_BORDER)
+#define ui_next_hide_border(thickness, color) ui_next_flags(ui_top_flags() & ~UI_FLAG_DRAW_BORDER)
+#define ui_next_anchored(parent_anchor, self_anchor, x, y) ui_next_flags(UI_FLAG_FLOATING); ui_next_anchor(parent_anchor, self_anchor); ui_next_anchor_offset(x, y)
 
 static ui_widget_t* ui_widget_spacer(ui_size_t size)
 {

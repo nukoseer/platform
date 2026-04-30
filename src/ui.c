@@ -190,40 +190,14 @@ static inline ui_alignment_t ui_align_trailing(void)
 
 static inline f32 ui_label_content_position(ui_widget_t* widget, ui_axis_t axis)
 {
-    f32 content_position = 0.0f;
-
-    if (axis == UI_AXIS_X)
-    {
-        content_position = widget->rect.x + widget->padding;
-    }
-    else if (axis == UI_AXIS_Y)
-    {
-        content_position = widget->rect.y + widget->padding;
-    }
-    else
-    {
-        assert(!"[UI] Invalid axis.");
-    }
+    f32 content_position = widget->rect.xy[axis] + widget->padding;
 
     return content_position;
 }
 
 static inline f32 ui_label_content_size(ui_widget_t* widget, ui_axis_t axis)
 {
-    f32 content_size = 0.0f;
-
-    if (axis == UI_AXIS_X)
-    {
-        content_size = widget->rect.width - widget->padding * 2.0f;
-    }
-    else if (axis == UI_AXIS_Y)
-    {
-        content_size = widget->rect.height - widget->padding * 2.0f;
-    }
-    else
-    {
-        assert(!"[UI] Invalid axis.");
-    }
+    f32 content_size = widget->rect.size[axis] - widget->padding * 2.0f;
 
     return content_size > 0.0f ? content_size : 0.0f;
 }
@@ -843,25 +817,25 @@ static void ui_calculate_label_alignment(ui_widget_t* widget, ui_axis_t axis)
         {
             for (ui_text_line_t* text_line = widget->text_line; text_line; text_line = text_line->next)
             {
-                text_line->position[UI_AXIS_X] = ui_calculate_content_alignment(widget, text_line, UI_AXIS_X);
+                text_line->position[axis] = ui_calculate_content_alignment(widget, text_line, axis);
             }
         }
         else if (axis == UI_AXIS_Y)
         {
-            f32 line_height = widget->label_size[UI_AXIS_Y];
+            f32 line_height = widget->label_size[axis];
             i32 line_count = 0;
                 
             for (ui_text_line_t* text_line = widget->text_line; text_line; text_line = text_line->next)
             {
-                text_line->position[UI_AXIS_Y] = (ui_calculate_content_alignment(widget, text_line, UI_AXIS_Y) +
-                                                  line_count * line_height);
+                text_line->position[axis] = (ui_calculate_content_alignment(widget, text_line, UI_AXIS_Y) +
+                                             line_count * line_height);
                 ++line_count;
             }
         }
     }
 }
 
-static inline f32 ui_calculate_anchor_position(ui_rect_t rect, ui_anchor_t anchor, ui_axis_t axis)
+static inline f32 ui_calculate_anchor_position(ui_rect_t rect, ui_anchor_kind_t anchor_kind, ui_axis_t axis)
 {
     static const f32 fractions[9][2] =
     {
@@ -875,18 +849,9 @@ static inline f32 ui_calculate_anchor_position(ui_rect_t rect, ui_anchor_t ancho
         [UI_ANCHOR_BOTTOM_CENTER] = { 0.5f, 1.0f },
         [UI_ANCHOR_BOTTOM_RIGHT]  = { 1.0f, 1.0f },
     };
-    f32 result = 0.0f;
+    f32 anchor_position = rect.xy[axis] + rect.size[axis] * fractions[anchor_kind][axis];
 
-    if (axis == UI_AXIS_X)
-    {
-        result = rect.x + rect.width * fractions[anchor][axis];
-    }
-    else if (axis == UI_AXIS_Y)
-    {
-        result = rect.y + rect.height * fractions[anchor][axis];
-    }
-
-    return result;
+    return anchor_position;
 }
 
 static void ui_calculate_layout(ui_widget_t* root_widget, ui_axis_t axis)
@@ -908,24 +873,10 @@ static void ui_calculate_layout(ui_widget_t* root_widget, ui_axis_t axis)
             layout_at += child_widget->fixed_size[axis];
         }
 
-        if (axis == UI_AXIS_X)
-        {
-            child_widget->rect.x = root_widget->rect.x + child_widget->position.xy[axis];
-            child_widget->rect.width = child_widget->fixed_size[axis];
-
-            ui_calculate_label_alignment(child_widget, axis);
-        }
-        else if (axis == UI_AXIS_Y)
-        {
-            child_widget->rect.y = root_widget->rect.y + child_widget->position.xy[axis];
-            child_widget->rect.height = child_widget->fixed_size[axis];
-
-            ui_calculate_label_alignment(child_widget, axis);
-        }
-        else
-        {
-            assert(!"[UI] Invalid axis.");
-        }
+        child_widget->rect.xy[axis] = root_widget->rect.xy[axis] + child_widget->position.xy[axis];
+        child_widget->rect.size[axis] = child_widget->fixed_size[axis];
+        
+        ui_calculate_label_alignment(child_widget, axis);
     }
 
     // NOTE: Floating pass.
@@ -937,23 +888,13 @@ static void ui_calculate_layout(ui_widget_t* root_widget, ui_axis_t axis)
         }
         
         ui_rect_t child_rect = { 0.0f, 0.0f, child_widget->fixed_size[0], child_widget->fixed_size[1] };
-        f32 root_anchor = ui_calculate_anchor_position(root_widget->rect, child_widget->anchor, axis);
-        f32 child_anchor = ui_calculate_anchor_position(child_rect, child_widget->anchor, axis);
+        f32 root_anchor = ui_calculate_anchor_position(root_widget->rect, child_widget->anchor.parent, axis);
+        f32 child_anchor = ui_calculate_anchor_position(child_rect, child_widget->anchor.self, axis);
+
+        child_widget->rect.xy[axis] = root_anchor - child_anchor + child_widget->anchor_offset[axis];
+        child_widget->rect.size[axis] = child_widget->fixed_size[axis];
         
-        if (axis == UI_AXIS_X)
-        {
-            child_widget->rect.x = root_anchor - child_anchor + child_widget->anchor_offset[axis];
-            child_widget->rect.width = child_widget->fixed_size[axis];
-
-            ui_calculate_label_alignment(child_widget, axis);
-        }
-        else if (axis == UI_AXIS_Y)
-        {
-            child_widget->rect.y = root_anchor - child_anchor + child_widget->anchor_offset[axis];
-            child_widget->rect.height = child_widget->fixed_size[axis];
-
-            ui_calculate_label_alignment(child_widget, axis);
-        }
+        ui_calculate_label_alignment(child_widget, axis);
     }
 
     for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
@@ -1006,9 +947,9 @@ static void ui_print_info(ui_widget_t* root_widget)
     if (root_widget == global_ui->root_widget)
     {
         fprintf(stderr, "[UI] State:\n"
-            "   - arena remaining size: %zu\n"
+            "   - arena remaining size: %.2f MB\n"
             "   - draw command count: %u\n",
-                ma_get_remaining_size(global_ui->arena),
+                ((f32)ma_get_remaining_size(global_ui->arena) / MIBIBYTES(1)),
                 global_ui->draw_command_count);
     }
 }
@@ -1275,7 +1216,7 @@ static void ui_end(void)
     assert(global_ui->stacks.label_alignment.count == 0 && "[UI] Invalid label_alignment stack count.");
 }
 
-static ui_draw_command_iter_t ui_draw_command_begin(void)
+static ui_draw_command_iter_t ui_draw_command_iter(void)
 {
     ui_draw_command_iter_t iter = (ui_draw_command_iter_t)
     {

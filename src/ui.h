@@ -70,8 +70,25 @@ typedef struct ui_alignment_t
 
 typedef struct ui_rect_t
 {
-    f32 x, y;
-    f32 width, height;
+    union
+    {
+        struct
+        {
+            f32 x, y;
+        };
+
+        f32 xy[UI_AXIS_COUNT];
+    };
+
+    union
+    {
+        struct
+        {
+            f32 width, height;
+        };
+
+        f32 size[UI_AXIS_COUNT];
+    };
 } ui_rect_t;
 
 typedef enum ui_draw_kind_t
@@ -123,7 +140,7 @@ typedef struct ui_text_line_t
     struct ui_text_line_t* next;
 } ui_text_line_t;
 
-typedef enum ui_anchor_t
+typedef enum ui_anchor_kind_t
 {
     UI_ANCHOR_TOP_LEFT,
     UI_ANCHOR_TOP_CENTER,
@@ -134,6 +151,12 @@ typedef enum ui_anchor_t
     UI_ANCHOR_BOTTOM_LEFT,
     UI_ANCHOR_BOTTOM_CENTER,
     UI_ANCHOR_BOTTOM_RIGHT,
+} ui_anchor_kind_t;
+
+typedef struct ui_anchor_t
+{
+    ui_anchor_kind_t parent;
+    ui_anchor_kind_t self;
 } ui_anchor_t;
 
 typedef struct ui_anchor_offset_t
@@ -221,7 +244,7 @@ static void ui_init(memory_arena_t* memory_arena, ui_callbacks_t callbacks);
 static void ui_begin(f32 width, f32 height);
 static void ui_end(void);
 
-static ui_draw_command_iter_t ui_draw_command_begin(void);
+static ui_draw_command_iter_t ui_draw_command_iter(void);
 static ui_draw_command_t* ui_draw_command_next(ui_draw_command_iter_t* iter);
 
 #define H_UI_H

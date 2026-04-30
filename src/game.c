@@ -1488,24 +1488,24 @@ update_function(update)
     ui_begin((f32)platform->width, (f32)platform->height);
     ui_push_color(theme->bg_color);
     ui_push_font_color(theme->font_color);
-    
+
     ui_next_size(ui_pixel(344.0f, 1.0f), ui_pixel(192.0f, 1.0f));
     ui_next_padding(8.0f); ui_next_axis(ui_axis_y());
     ui_next_border(1.0f, theme->fg_color); ui_next_flags(UI_FLAG_DRAW_BACKGROUND);
     ui_widget_group("container", 10.0f, 60.0f)
     {
-        ui_next_size(ui_content(1.0f), ui_content(1.0f));
-        ui_next_padding(8.0f); // ui_next_border(1.0f, theme->fg_color);
-        ui_next_floating(UI_ANCHOR_TOP_LEFT, 16.0f, -20.0f);
+        ui_next_size(ui_content(1.0f), ui_content(1.0f)); ui_next_padding(8.0f);
+        ui_next_anchored(UI_ANCHOR_TOP_LEFT, UI_ANCHOR_CENTER_LEFT, 16.0f, 0.0f);
         ui_next_flags(UI_FLAG_DRAW_BACKGROUND);
-        ui_next_font(&game->font_16); ui_next_label_alignment(ui_align_leading());
+        ui_next_font(&game->font_12); ui_next_label_alignment(ui_align_center());
         ui_widget_labeled("title", "Country Information");
     
         ui_next_size(ui_percent(1.0f, 1.0f), ui_percent(1.0f, 1.0f));
-        ui_next_border(1.0f, theme->fg_color); ui_next_flags(UI_FLAG_DRAW_BACKGROUND);
+        ui_next_border(1.0f, theme->fg_color);
+        ui_next_flags(UI_FLAG_DRAW_BACKGROUND);
         ui_widget_row()
         {
-            ui_next_size(ui_percent(0.5f, 0.0f), ui_percent(1.0f, 1.0f));
+            ui_next_size(ui_percent(0.5f, 1.0f), ui_percent(1.0f, 1.0f));
             ui_next_padding(16.0f);
             ui_widget_named_column("left-column-country-name")
             {
@@ -1523,14 +1523,14 @@ update_function(update)
                         
                         ui_next_size(ui_percent(1.0f, 1.0f), ui_content(1.0f));
                         ui_next_font(&game->font_16); ui_next_label_alignment(ui_align_leading());
-                        ui_widget_labeled("value", country_name.name ? country_name.name : "...");
+                        ui_widget_labeled("value", country_name.name ? country_name.name : "Not Selected");
                     }
                     ui_pop_flags();
                 }
                 ui_widget_spacer(ui_percent(1.0f, 0.0f));
             }
 
-            ui_next_size(ui_percent(0.5f, 0.0f), ui_percent(1.0f, 1.0f));
+            ui_next_size(ui_percent(0.5f, 1.0f), ui_percent(1.0f, 1.0f));
             ui_next_padding(16.0f);
             ui_widget_named_column("right-column-country-shape")
             {
@@ -1810,7 +1810,7 @@ render_function(render)
                                 TEXT_ALIGNMENT_LEADING, 8.0f, 8.0f, (f32)platform->width, (f32)platform->height);
         }
 
-        ui_draw_command_iter_t iter = ui_draw_command_begin();
+        ui_draw_command_iter_t iter = ui_draw_command_iter();
         
         for (ui_draw_command_t* command = ui_draw_command_next(&iter);
              command;
