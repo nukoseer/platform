@@ -154,8 +154,8 @@ static void ui_stack_set_flags(ui_flags_t flags)
 #define ui_top_font_color() ui_top(&global_ui->stacks.font_color, vec4)
 #define ui_pop_font_color() ui_pop(&global_ui->stacks.font_color)
 
-#define ui_push_label_alignment(value) ui_push(&global_ui->stacks.label_alignment, ui_alignment_t, value)
-#define ui_next_label_alignment(value) ui_next(&global_ui->stacks.label_alignment, ui_alignment_t, value)
+#define ui_push_label_alignment(...) ui_push(&global_ui->stacks.label_alignment, ui_alignment_t, __VA_ARGS__)
+#define ui_next_label_alignment(...) ui_next(&global_ui->stacks.label_alignment, ui_alignment_t, __VA_ARGS__)
 #define ui_top_label_alignment() ui_top(&global_ui->stacks.label_alignment, ui_alignment_t)
 #define ui_pop_label_alignment() ui_pop(&global_ui->stacks.label_alignment)
 
@@ -258,6 +258,8 @@ static ui_size_t ui_top_size_axis(ui_axis_t axis)
 #define ui_next_show_border(thickness, color) ui_next_flags(ui_top_flags() | UI_FLAG_DRAW_BORDER)
 #define ui_next_hide_border(thickness, color) ui_next_flags(ui_top_flags() & ~UI_FLAG_DRAW_BORDER)
 #define ui_next_anchored(parent_anchor, self_anchor, x, y) ui_next_flags(UI_FLAG_FLOATING); ui_next_anchor(parent_anchor, self_anchor); ui_next_anchor_offset(x, y)
+#define ui_push_anchored(parent_anchor, self_anchor, x, y) ui_push_flags(UI_FLAG_FLOATING); ui_push_anchor(parent_anchor, self_anchor); ui_push_anchor_offset(x, y)
+#define ui_pop_anchored() ui_pop_flags(); ui_pop_anchor(); ui_pop_anchor_offset()
 
 static ui_widget_t* ui_widget_spacer(ui_size_t size)
 {
