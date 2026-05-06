@@ -408,6 +408,8 @@ static ui_widget_t* ui_widget_build_from_key(ui_key_t key)
         ui_widget_list_child_insert_back(&parent_widget->child_list, widget);
     }
 
+    widget->position.x = 0.0f;
+    widget->position.y = 0.0f;
     widget->size[UI_AXIS_X] = ui_top_size_x();
     widget->size[UI_AXIS_Y] = ui_top_size_y();
     widget->layout_axis = ui_top_axis();
@@ -843,8 +845,11 @@ static void ui_resolve_sizes(ui_widget_t* root_widget, ui_axis_t axis)
         }
     }
 
-    // NOTE: Resolve size contraints for parent's children (they all have sizes now).
-    ui_resolve_size_constraints(root_widget, axis);
+    if (root_widget->size[axis].kind != UI_SIZE_CHILDREN)
+    {
+        // NOTE: Resolve size contraints for parent's children (they all have sizes now).
+        ui_resolve_size_constraints(root_widget, axis);
+    }
 
     // NOTE: Recurse into non children sized widgets, their size is now final.
     for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
@@ -858,6 +863,7 @@ static void ui_resolve_sizes(ui_widget_t* root_widget, ui_axis_t axis)
 
 static void ui_resolve_layout(ui_widget_t* root_widget, ui_axis_t axis)
 {
+    bool is_root = root_widget == global_ui->root_widget;
     f32 layout_at = root_widget->padding;
 
     // NOTE: Normal pass.
@@ -867,18 +873,16 @@ static void ui_resolve_layout(ui_widget_t* root_widget, ui_axis_t axis)
         {
             continue;
         }
-        
-        child_widget->position.xy[axis] += layout_at;
-        
-        if (root_widget->layout_axis == axis)
-        {
-            layout_at += child_widget->fixed_size[axis];
-        }
 
-        child_widget->rect.xy[axis] = root_widget->rect.xy[axis] + child_widget->position.xy[axis];
+        child_widget->rect.xy[axis] = root_widget->rect.xy[axis] + child_widget->position.xy[axis] + layout_at;
         child_widget->rect.size[axis] = child_widget->fixed_size[axis];
         
         ui_resolve_label_alignment(child_widget, axis);
+
+        if (!is_root && root_widget->layout_axis == axis)
+        {
+            layout_at += child_widget->fixed_size[axis];
+        }
     }
 
     // NOTE: Floating pass.

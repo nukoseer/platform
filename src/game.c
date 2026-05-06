@@ -1520,11 +1520,11 @@ update_function(update)
         {
             ui_widget_spacer(ui_pixel(8.0f, 1.0f));
             
-            ui_next_size(ui_percent(1.0f, 1.0f), ui_percent(1.0f, 0.0f));
-            ui_widget_named_row("row-01")
+            ui_next_size(ui_percent(1.0f, 1.0f), ui_children(1.0f));
+            ui_widget_named_row("query-row")
             {
                 ui_next_size(ui_percent(1.0f, 1.0f), ui_children(1.0f));
-                ui_widget_named_column("query-section")
+                ui_widget_named_column("query-column")
                 {
                     ui_next_size(ui_percent(1.0f, 1.0f), ui_content(1.0f));
                     ui_next_label_alignment(ui_align_leading());
@@ -1536,10 +1536,10 @@ update_function(update)
                 }
             }
 
-            ui_widget_spacer(ui_pixel(16.0f, 1.0f));
+            ui_widget_spacer(ui_pixel(8.0f, 1.0f));
         
-            ui_next_size(ui_percent(1.0f, 1.0f), ui_percent(0.50f, 1.0f));
-            ui_widget_named_row("row-02")
+            ui_next_size(ui_percent(1.0f, 1.0f), ui_percent(0.55f, 1.0f));
+            ui_widget_named_row("country-shape-row")
             {
                 ui_next_size(ui_percent(1.0f, 0.0f), ui_percent(1.0f, 1.0f));
                 ui_widget_named_column("country-shape-column")
@@ -1593,28 +1593,37 @@ update_function(update)
                 }
             }
 
-            ui_next_size(ui_percent(1.0f, 1.0f), ui_percent(1.0f, 0.0f));
-            ui_widget_named_column("c-03")
+            ui_widget_spacer(ui_pixel(8.0f, 1.0f));
+            
+            ui_next_size(ui_percent(1.0f, 1.0f), ui_percent(0.2f, 0.0f));
+            ui_widget_named_column("status-column")
             {
-                ui_widget_spacer(ui_pixel(16.0f, 1.0f));
-                
                 ui_next_size(ui_percent(1.0f, 1.0f), ui_percent(1.0f, 0.0f));
-                ui_widget_named_row("r-03")
+                ui_widget_named_row("status-row")
                 {
                     ui_next_size(ui_content(1.0f), ui_percent(1.0f, 1.0f));
                     ui_next_label_alignment(ui_align_center());
                     ui_widget_labeled("status", "STATUS:");
 
                     ui_widget_spacer(ui_pixel(4.0f, 1.0f));
-                    
-                    ui_next_size(ui_percent(1.0f, 0.0f), ui_percent(1.0f, 1.0f));
-                    ui_next_border(1.0f, theme->fg_color);
-                    ui_widget_group("status-bar", 0, 0)
+
+                    ui_next_size(ui_percent(1.0f, 0.0f), ui_percent(1.0f, 0.0f));
+                    ui_widget_named_column("status-bar-column")
                     {
-                        ui_next_size(ui_percent(0.8f, 1.0f), ui_percent(1.0f, 1.0f));
-                        ui_next_flags(UI_FLAG_DRAW_BACKGROUND);
-                        ui_next_color(theme->fg_color);
-                        ui_widget("status-fill");
+                        ui_widget_spacer(ui_pixel(8.0f, 0.0f));
+                        
+                        ui_next_size(ui_percent(1.0f, 1.0f), ui_percent(1.0f, 0.0f));
+                        ui_next_border(1.0f, theme->fg_color);
+                        ui_widget_group("status-bar", 0, 0)
+                        {
+                            ui_next_size(ui_percent(0.8f, 1.0f), ui_percent(1.0f, 0.0f));
+                            ui_next_color(v4(theme->fg_color.r, theme->fg_color.g, theme->fg_color.b, 0.25f));
+                            ui_next_flags(UI_FLAG_DRAW_BACKGROUND);
+                            ui_next_color(theme->fg_color);
+                            ui_widget("status-fill");
+                        }
+
+                        ui_widget_spacer(ui_pixel(8.0f, 0.0f));
                     }
 
                     ui_widget_spacer(ui_pixel(4.0f, 1.0f));
@@ -1625,15 +1634,57 @@ update_function(update)
 
                     ui_widget_spacer(ui_pixel(4.0f, 1.0f));
                 }
-
-                ui_widget_spacer(ui_pixel(8.0f, 1.0f));
             }
+
+            ui_widget_spacer(ui_pixel(8.0f, 1.0f));
         }
 
         ui_next_size(ui_content(1.0f), ui_content(1.0f)); ui_next_padding(4.0f);
         ui_next_anchored(UI_ANCHOR_BOTTOM_RIGHT, UI_ANCHOR_CENTER_RIGHT, -16.0f, -2.0f);
         ui_next_flags(UI_FLAG_DRAW_BACKGROUND); ui_next_label_alignment(ui_align_center());
-        ui_widget_labeled("number", "0x7F.A1.42");
+        ui_widget_labeled("number-code", "0x7F.A1.42");
+    }
+
+    f32 search_container_width = platform->width * 0.25f;
+    f32 search_container_height = get_line_height(&game->font_12, platform->graphics) * 2.0f;
+    ui_next_size(ui_pixel(search_container_width, 1.0f), ui_pixel(search_container_height, 1.0f));
+    ui_next_axis(ui_axis_x());
+    ui_next_border(1.0f, theme->fg_color);
+    ui_next_flags(UI_FLAG_DRAW_BACKGROUND);
+    ui_widget_group("search-bar-container", (platform->width - search_container_width) * 0.5f, platform->height * 0.05f)
+    {
+        ui_next_size(ui_percent(1.0f, 0.0f), ui_percent(1.0f, 1.0f));
+        ui_next_padding(8.0f);
+        ui_next_border(1.0f, theme->fg_color);
+        ui_widget_named_column("search-bar-column")
+        {
+            ui_widget_spacer(ui_percent(1.0f, 0.0f));
+
+            ui_next_size(ui_percent(1.0f, 1.0f), ui_percent(1.0f, 1.0f));
+            ui_widget_named_row("search-bar-row")
+            {
+                ui_push_label_alignment((ui_alignment_t){UI_ALIGNMENT_LEADING, UI_ALIGNMENT_CENTER});
+
+                ui_next_size(ui_content(1.0f), ui_percent(1.0f, 1.0f));
+                ui_next_border(1.0f, theme->fg_color);
+                ui_widget_labeled("icon-field", "Icon");
+
+                ui_widget_spacer(ui_pixel(8.0f, 1.0f));
+
+                ui_next_size(ui_percent(1.0f, 0.0f), ui_percent(1.0f, 1.0f));
+                ui_next_border(1.0f, theme->fg_color);
+                ui_widget_labeled("search-bar", "Search country...");
+
+                ui_widget_spacer(ui_pixel(8.0f, 1.0f));
+
+                ui_next_size(ui_content(1.0f), ui_percent(1.0f, 1.0f));
+                ui_next_border(1.0f, theme->fg_color);
+                ui_widget_labeled("cancel-field", "X");
+
+                ui_pop_label_alignment();
+            }
+            ui_widget_spacer(ui_percent(1.0f, 0.0f));
+        }
     }
 
     ui_pop_font_color();
