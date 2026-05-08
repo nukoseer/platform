@@ -191,8 +191,10 @@ typedef struct ui_widget_t
     vec4 color;
     ui_border_t border;
     ui_flags_t flags;
+    
     ui_anchor_t anchor;
     f32 anchor_offset[UI_AXIS_COUNT];
+    
     void* font;
     vec4 font_color;
     ui_text_line_t* text_line;
@@ -212,7 +214,27 @@ typedef struct ui_widget_t
 
     f32 fixed_size[UI_AXIS_COUNT];
     ui_rect_t rect;
+
+    bool hot;
+    bool active;
+    bool clicked;
+    bool released;
 } ui_widget_t;
+
+typedef struct ui_signal_t
+{
+    ui_widget_t* widget;
+    bool hovering;
+    bool pressed;
+    bool clicked;
+    bool released;
+} ui_signal_t;
+
+typedef struct ui_input_t
+{
+    vec2 mouse_position;
+    bool mouse_buttons[3];
+} ui_input_t;
 
 typedef struct ui_callbacks_t
 {
@@ -238,10 +260,10 @@ static ui_widget_t* ui_widget_build_from_string(const char* widget_name);
 static ui_widget_t* ui_widget_group_begin(const char* widget_name, f32 x, f32 y);
 static inline void ui_widget_group_end(void);
 static ui_widget_t* ui_widget(const char* widget_name);
-static ui_widget_t* ui_widget_labeled(const char* widget_name, const char* label);
+static ui_signal_t ui_widget_labeled(const char* widget_name, const char* label);
 
 static void ui_init(memory_arena_t* memory_arena, ui_callbacks_t callbacks);
-static void ui_begin(f32 width, f32 height);
+static void ui_begin(ui_input_t input, f32 width, f32 height);
 static void ui_end(void);
 
 static ui_draw_command_iter_t ui_draw_command_iter(void);

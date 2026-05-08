@@ -42,6 +42,15 @@ typedef struct ui_t
     ui_draw_command_chunk_t* draw_commands_last;
     u32 draw_command_count;
     ui_callbacks_t callbacks;
+
+    ui_key_t hot_key;
+    ui_key_t active_key;
+    ui_key_t clicked_key;
+    ui_key_t released_key;
+    
+    vec2 mouse_position;
+    bool mouse_down[3];
+    bool mouse_down_prev[3];
 } ui_t;
 
 static ui_t* global_ui;
@@ -200,6 +209,34 @@ static inline f32 ui_label_content_size(ui_widget_t* widget, ui_axis_t axis)
     f32 content_size = widget->rect.size[axis] - widget->padding * 2.0f;
 
     return content_size > 0.0f ? content_size : 0.0f;
+}
+
+static bool ui_keys_equal(ui_key_t key_a, ui_key_t key_b)
+{
+    bool result = key_a.value == key_b.value;
+
+    return result;
+}
+
+static bool ui_rect_contains_point(ui_rect_t rect, vec2 point)
+{
+    bool result = (point.x >= rect.x &&
+                   point.y >= rect.y &&
+                   point.x <= rect.x + rect.width &&
+                   point.y <= rect.y + rect.height);
+
+    return result;
+}
+
+static bool ui_rect_contains(ui_rect_t outer_rect, ui_rect_t inner_rect)
+{
+    const f32 epsilon = 0.5f;
+    bool result = (inner_rect.x >= outer_rect.x - epsilon &&
+                   inner_rect.y >= outer_rect.y - epsilon &&
+                   inner_rect.x + inner_rect.width <= outer_rect.x + outer_rect.width + epsilon &&
+                   inner_rect.y + inner_rect.height <= outer_rect.y + outer_rect.height + epsilon);
+    
+    return result;
 }
 
 static ui_key_t ui_get_key(ui_key_t key, const char* data, u64 size)
@@ -391,14 +428,14 @@ static ui_widget_t* ui_widget_build_from_key(ui_key_t key)
     assert(widget && "[UI] Invalid widget.");
 
     widget->parent = widget->child_list.first = widget->child_list.last = widget->child_next = widget->child_prev = 0;
-    widget->fixed_size[UI_AXIS_X] = 0.0f;
-    widget->fixed_size[UI_AXIS_Y] = 0.0f;
-    widget->rect = (ui_rect_t){ 0 };
     widget->key = key;
     widget->position = (ui_position_t){ 0 };
     widget->label_length = 0;
     widget->text_line = 0;
-
+    widget->fixed_size[UI_AXIS_X] = 0.0f;
+    widget->fixed_size[UI_AXIS_Y] = 0.0f;
+    widget->rect = (ui_rect_t){ 0 };
+    
     // NOTE: The root widget does not have parent.
     ui_widget_t* parent_widget = ui_top_parent();
     widget->parent = parent_widget;
@@ -445,6 +482,20 @@ static ui_widget_t* ui_widget_build_from_string(const char* widget_name)
     widget->name = widget_name;
 
     return widget;
+}
+
+static ui_signal_t ui_signal_for(ui_widget_t* widget)
+{
+    ui_signal_t signal =
+    {
+        .widget = widget,
+        .hovering = widget->hot,
+        .pressed = widget->active,
+        .clicked = widget->clicked,
+        .released = widget->released,
+    };
+
+    return signal;
 }
 
 static ui_widget_t* ui_widget_group_begin(const char* widget_name, f32 x, f32 y)
@@ -504,14 +555,16 @@ static void ui_set_label(ui_widget_t* widget, const char* label, u32 label_lengt
     ui_stack_auto_pop(&global_ui->stacks.label_alignment);
 }
 
-static ui_widget_t* ui_widget_labeled(const char* widget_name, const char* label)
+static ui_signal_t ui_widget_labeled(const char* widget_name, const char* label)
 {
     ui_next_flags(UI_FLAG_DRAW_TEXT);
     ui_widget_t* widget = ui_widget_build_from_string(widget_name);
     assert(label && "[UI] Invalid label.");
     ui_set_label(widget, label, (u32)strlen(label));
 
-    return widget;
+    ui_signal_t signal = ui_signal_for(widget);
+
+    return signal;
 }
 
 static void ui_resolve_text_lines(ui_widget_t* root_widget, ui_axis_t axis)
@@ -953,22 +1006,28 @@ static void ui_print_info(ui_widget_t* root_widget)
     if (root_widget == global_ui->root_widget)
     {
         fprintf(stderr, "[UI] State:\n"
-            "   - arena remaining size: %.2f MB\n"
-            "   - draw command count: %u\n",
+                "   - arena remaining size: %.2f MB\n"
+                "   - draw command count: %u\n",
                 ((f32)ma_get_remaining_size(global_ui->arena) / MIBIBYTES(1)),
                 global_ui->draw_command_count);
-    }
-}
 
-static bool ui_rect_contains(ui_rect_t outer_rect, ui_rect_t inner_rect)
-{
-    const f32 epsilon = 0.5f;
-    bool result = (inner_rect.x >= outer_rect.x - epsilon &&
-                   inner_rect.y >= outer_rect.y - epsilon &&
-                   inner_rect.x + inner_rect.width <= outer_rect.x + outer_rect.width + epsilon &&
-                   inner_rect.y + inner_rect.height <= outer_rect.y + outer_rect.height + epsilon);
-    
-    return result;
+        ui_widget_t* hot_widget = ui_widget_from_key(global_ui->hot_key);
+        ui_widget_t* active_widget = ui_widget_from_key(global_ui->active_key);
+
+        if (hot_widget)
+        {
+            fprintf(stderr, 
+                    "   - hot: (%llu, %s)\n",
+                    global_ui->hot_key.value, hot_widget->name);
+        }
+
+        if (active_widget)
+        {
+            fprintf(stderr, 
+                    "   - active: (%llu, %s)\n",
+                    global_ui->active_key.value, active_widget->name);
+        }
+    }
 }
 
 static inline ui_draw_command_t* ui_push_draw_command(void)
@@ -1140,9 +1199,151 @@ static void ui_init(memory_arena_t* memory_arena, ui_callbacks_t callbacks)
 
 }
 
-static void ui_begin(f32 width, f32 height)
+static ui_widget_t* ui_hit_test(ui_widget_t* root_widget, vec2 mouse_position)
+{
+    for (ui_widget_t* child_widget = root_widget->child_list.last; child_widget; child_widget = child_widget->child_prev)
+    {
+        if (!ui_is_flag_set(child_widget, UI_FLAG_FLOATING))
+        {
+            continue;
+        }
+
+        ui_widget_t* hit_widget = ui_hit_test(child_widget, mouse_position);
+
+        if (hit_widget)
+        {
+            return hit_widget;
+        }
+    }
+
+    for (ui_widget_t* child_widget = root_widget->child_list.last; child_widget; child_widget = child_widget->child_prev)
+    {
+        if (ui_is_flag_set(child_widget, UI_FLAG_FLOATING))
+        {
+            continue;
+        }
+
+        ui_widget_t* hit_widget = ui_hit_test(child_widget, mouse_position);
+
+        if (hit_widget)
+        {
+            return hit_widget;
+        }
+    }
+
+    if (ui_is_flag_set(root_widget, UI_FLAG_CLICKABLE) && ui_rect_contains_point(root_widget->rect, mouse_position))
+    {
+        return root_widget;
+    }
+
+    return 0;
+}
+
+static void ui_resolve_hot(void)
+{
+    global_ui->hot_key = (ui_key_t){ 0 };
+    ui_widget_t* widget = ui_hit_test(global_ui->root_widget, global_ui->mouse_position);
+
+    if (widget)
+    {
+        global_ui->hot_key = widget->key;
+        widget->hot = true;
+    }
+}
+
+static inline bool ui_mouse_pressed(i32 index)
+{
+    bool result = global_ui->mouse_down[index] && !global_ui->mouse_down_prev[index];
+
+    return result;
+}
+
+static inline bool ui_mouse_released(i32 index)
+{
+    bool result = !global_ui->mouse_down[index] && global_ui->mouse_down_prev[index];
+
+    return result;
+}
+
+static void ui_resolve_active(void)
+{
+    bool pressed = ui_mouse_pressed(0);
+    bool released = ui_mouse_released(0);
+
+    if (pressed)
+    {
+        global_ui->active_key = global_ui->hot_key;
+    }
+
+    if (released)
+    {
+        ui_widget_t* widget = ui_widget_from_key(global_ui->active_key);
+ 
+        if (widget)
+        {
+            global_ui->released_key = global_ui->active_key;
+            widget->released = true;
+            
+            if (ui_keys_equal(global_ui->active_key, global_ui->hot_key))
+            {
+                global_ui->clicked_key = global_ui->active_key;
+                widget->clicked = true;
+            }
+        }
+            
+        global_ui->active_key = (ui_key_t){ 0 };
+    }
+
+    ui_widget_t* widget = ui_widget_from_key(global_ui->active_key);
+
+    if (widget)
+    {
+        widget->active = true;
+    }
+}
+
+static void ui_resolve_interaction(void)
+{
+    ui_widget_t* widget = 0;
+
+    if ((widget = ui_widget_from_key(global_ui->hot_key)))
+    {
+        widget->hot = false;
+    }
+
+    if ((widget = ui_widget_from_key(global_ui->active_key)))
+    {
+        widget->active = false;
+    }
+
+    if ((widget = ui_widget_from_key(global_ui->clicked_key)))
+    {
+        widget->clicked = false;
+    }
+
+    if ((widget = ui_widget_from_key(global_ui->released_key)))
+    {
+        widget->released = false;
+    }
+
+    global_ui->clicked_key = (ui_key_t){ 0 };
+    global_ui->released_key = (ui_key_t){ 0 };
+    
+    ui_resolve_hot();
+    ui_resolve_active();
+}
+
+static void ui_begin(ui_input_t input, f32 width, f32 height)
 {
     assert(global_ui && "[UI] Not initialized.");
+
+    global_ui->mouse_position = input.mouse_position;
+    
+    for (i32 i = 0; i < 3; ++i)
+    {
+        global_ui->mouse_down_prev[i] = global_ui->mouse_down[i];
+        global_ui->mouse_down[i] = input.mouse_buttons[i];
+    }
 
     ma_reset(global_ui->frame_arena);
     global_ui->draw_commands_first = 0;
@@ -1185,6 +1386,7 @@ static void ui_end(void)
         ui_resolve_layout(global_ui->root_widget, axis);
     }
 
+    ui_resolve_interaction();
     ui_emit_all_draw_commands(global_ui->root_widget);
     ui_print_info(global_ui->root_widget);
     

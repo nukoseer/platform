@@ -1485,7 +1485,18 @@ update_function(update)
     theme_t* theme = get_current_theme(game);
     
 #if FONT_ENABLE
-    ui_begin((f32)platform->width, (f32)platform->height);
+    ui_input_t ui_input =
+    {
+        .mouse_position = input->mouse_position.xy,
+        .mouse_buttons =
+        {
+            [0] = input_is_key_pressed(input, KEY_MOUSE_LEFT),
+            [1] = input_is_key_pressed(input, KEY_MOUSE_MIDDLE),
+            [2] = input_is_key_pressed(input, KEY_MOUSE_RIGHT),
+        },
+    };
+    
+    ui_begin(ui_input, (f32)platform->width, (f32)platform->height);
     ui_push_color(theme->bg_color);
     ui_push_font(&game->font_12);
     ui_push_font_color(theme->font_color);
@@ -1667,13 +1678,23 @@ update_function(update)
 
                 ui_next_size(ui_content(1.0f), ui_percent(1.0f, 1.0f));
                 ui_next_border(1.0f, theme->fg_color);
+                ui_next_flags(UI_FLAG_CLICKABLE);
                 ui_widget_labeled("icon-field", "Icon");
 
                 ui_widget_spacer(ui_pixel(8.0f, 1.0f));
 
                 ui_next_size(ui_percent(1.0f, 0.0f), ui_percent(1.0f, 1.0f));
                 ui_next_border(1.0f, theme->fg_color);
-                ui_widget_labeled("search-bar", "Search country...");
+                ui_next_flags(UI_FLAG_CLICKABLE);
+                ui_signal_t search_bar_signal = ui_widget_labeled("search-bar", "Search country...");
+
+                if (search_bar_signal.hovering)
+                {
+                    ui_widget_spacer(ui_pixel(8.0f, 1.0f));
+                    ui_next_size(ui_content(1.0f), ui_percent(1.0f, 1.0f));
+                    ui_next_border(1.0f, theme->fg_color);
+                    ui_widget_labeled("signal-field", "signal");
+                 }
 
                 ui_widget_spacer(ui_pixel(8.0f, 1.0f));
 
