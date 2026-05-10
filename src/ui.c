@@ -929,8 +929,20 @@ static void ui_resolve_layout(ui_widget_t* root_widget, ui_axis_t axis)
 
         child_widget->rect.xy[axis] = root_widget->rect.xy[axis] + child_widget->position.xy[axis] + layout_at;
         child_widget->rect.size[axis] = child_widget->fixed_size[axis];
-        
-        ui_resolve_label_alignment(child_widget, axis);
+
+        f32 epsilon = 0.5f;
+        bool contains = ((child_widget->rect.xy[axis] >= root_widget->rect.xy[axis] - epsilon) &&
+                         (child_widget->rect.xy[axis] + child_widget->rect.size[axis] <=
+                          (root_widget->rect.xy[axis] + root_widget->rect.size[axis]) + epsilon));
+        if (!contains)
+        {
+            child_widget->rect.xy[axis] = 0.0f;
+            child_widget->rect.size[axis] = 0.0f;
+        }
+        else
+        {
+            ui_resolve_label_alignment(child_widget, axis);
+        }
 
         if (!is_root && root_widget->layout_axis == axis)
         {
@@ -1059,6 +1071,11 @@ static inline ui_draw_command_t* ui_push_draw_command(void)
 
 static void ui_emit_draw_commands(ui_widget_t* widget)
 {
+    if (widget->rect.width <= 0.0f || widget->rect.height <= 0.0f)
+    {
+        return;
+    }
+    
     if (ui_is_flag_set(widget, UI_FLAG_DRAW_BACKGROUND))
     {
         ui_draw_command_t* draw_command = ui_push_draw_command();
@@ -1370,6 +1387,7 @@ static void ui_begin(ui_input_t input, f32 width, f32 height)
     global_ui->root_widget = ui_widget_group_begin("root_widget", 0.0f, 0.0f);
     global_ui->root_widget->fixed_size[UI_AXIS_X] = width;
     global_ui->root_widget->fixed_size[UI_AXIS_Y] = height;
+    global_ui->root_widget->rect = (ui_rect_t){ 0.0f, 0.0f, width, height };
 }
 
 static void ui_end(void)
