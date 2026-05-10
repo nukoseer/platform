@@ -1126,7 +1126,7 @@ static void earth_rotation(const input_t* input, f32 delta_time)
         global_orbiting_mode = !global_orbiting_mode;
     }
     
-    if (input_is_key_pressed(input, KEY_MOUSE_LEFT))
+    if (input_is_key_down(input, KEY_MOUSE_LEFT))
     {
         global_earth_yaw += 3.0f * input->mouse_delta.x * delta_time;
         global_earth_pitch += 3.0f * -input->mouse_delta.y * delta_time;

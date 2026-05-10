@@ -108,6 +108,7 @@ static LRESULT CALLBACK window_proc(HWND hwnd, UINT message, WPARAM wparam, LPAR
         case WM_KEYUP:
         case WM_LBUTTONDOWN:
         case WM_LBUTTONUP:
+        case WM_CHAR:
         case WM_MOUSEWHEEL:
         case WM_DESTROY:
         case WM_CLOSE:
@@ -398,12 +399,23 @@ static bool resize_back_buffer(window_t* window)
     return resized;
 }
 
+static inline void input_event_push(input_t* input, input_event_kind_t kind, u32 value)
+{
+    input_event_t* event = input->events + input->event_count++;
+    event->kind = kind;
+    event->consumed = false;
+    event->value = value;
+}
+
 static bool process_thread_messages(window_t* window, input_t* input)
 {
+    static key_t key_map[256];
     bool quit = false;
     MSG message = { 0 };
     f32 mouse_z = 0.0f;
 
+    input->event_count = 0;
+    
     // NOTE: These messages come from PostThreadMessage in window_proc.
     while (PeekMessage(&message, NULL, 0, 0, PM_REMOVE))
     {
@@ -423,12 +435,16 @@ static bool process_thread_messages(window_t* window, input_t* input)
             case WM_LBUTTONDOWN:
             {
                 SetCapture(window->hwnd);
-                input->keys[KEY_MOUSE_LEFT].action = (message.wParam & MK_LBUTTON) ? KEY_ACTION_PRESS : KEY_ACTION_NULL;
+
+                input->key_down[KEY_MOUSE_LEFT] = true;
+                input_event_push(input, INPUT_EVENT_MOUSE_PRESS, KEY_MOUSE_LEFT);
             } break;
 
             case WM_LBUTTONUP:
             {
-                input->keys[KEY_MOUSE_LEFT].action = (message.wParam & MK_LBUTTON) ? KEY_ACTION_RELEASE : KEY_ACTION_NULL;
+                input->key_down[KEY_MOUSE_LEFT] = false;
+                input_event_push(input, INPUT_EVENT_MOUSE_RELEASE, KEY_MOUSE_LEFT);
+
                 ReleaseCapture();
             } break;
             
@@ -438,11 +454,8 @@ static bool process_thread_messages(window_t* window, input_t* input)
             } break;
             
             case WM_SYSKEYDOWN:
-            case WM_SYSKEYUP:
             case WM_KEYDOWN:
-            case WM_KEYUP:
             {
-                static key_t key_map[256];
                 i32 key_code = (i32)message.wParam;
                 // int was_down = (message->lParam & (1 << 30));
                 bool is_down = !(message.lParam & (1 << 31));
@@ -483,7 +496,8 @@ static bool process_thread_messages(window_t* window, input_t* input)
                     key = key_map[key_code];
                 }
 
-                input->keys[key].action = is_down ? KEY_ACTION_PRESS : KEY_ACTION_RELEASE;
+                input->key_down[key] = true;
+                input_event_push(input, INPUT_EVENT_KEY_PRESS, key);
             
                 if (key_code == VK_RETURN && is_down && alt_is_down)
                 {
@@ -494,12 +508,32 @@ static bool process_thread_messages(window_t* window, input_t* input)
                     PostQuitMessage(0);
                 }
             } break;
+
+            case WM_SYSKEYUP:
+            case WM_KEYUP:
+            {
+                i32 key_code = (i32)message.wParam;
+                key_t key = KEY_NULL;
+                
+                if (key_code < array_count(key_map))
+                {
+                    key = key_map[key_code];
+                }
+
+                input->key_down[key] = false;
+                input_event_push(input, INPUT_EVENT_KEY_RELEASE, key);
+            } break;
+
+            case WM_CHAR:
+            {
+                input_event_push(input, INPUT_EVENT_TEXT, (u32)message.wParam);
+            } break;
         }
     }
 
-    bool alt_is_down = (input->keys[KEY_ALT].action == KEY_ACTION_PRESS);
-    bool shift_is_down = (input->keys[KEY_SHIFT].action == KEY_ACTION_PRESS);
-    bool ctrl_is_down = (input->keys[KEY_CTRL].action == KEY_ACTION_PRESS);
+    bool alt_is_down = (GetKeyState(VK_MENU) & 0x8000) != 0;
+    bool shift_is_down = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
+    bool ctrl_is_down = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
     
     input->modifiers = ((alt_is_down * KEY_MODIFIER_ALT) |
                         (shift_is_down * KEY_MODIFIER_SHIFT) |
@@ -518,7 +552,7 @@ static bool process_thread_messages(window_t* window, input_t* input)
     {
         input->mouse_position.x = clamp(0.0f, input->mouse_position.x, (f32)window->width);
         input->mouse_position.y = clamp(0.0f, input->mouse_position.y, (f32)window->height);
-        input->keys[KEY_MOUSE_LEFT] = (key_input_t){ 0 };
+        input->key_down[KEY_MOUSE_LEFT] = false;
         input->mouse_delta = (vec2){ 0 };
     }
 
@@ -566,9 +600,7 @@ static DWORD WINAPI main_thread(void* param)
     memory_t memory = { 0 };
     memory_init(&memory);
 
-    input_t inputs[2] = { 0 };
-    input_t* new_input = inputs + 0;
-    input_t* old_input = inputs + 1;
+    input_t input = { 0 };
 
     graphics_t graphics =
     {
@@ -633,7 +665,7 @@ static DWORD WINAPI main_thread(void* param)
     platform_t platform =
     {
         .memory = &memory,
-        .input = new_input,
+        .input = &input,
         .graphics = &graphics,
         .io = &io,
         .thread_pool = &thread_pool,
@@ -681,14 +713,7 @@ static DWORD WINAPI main_thread(void* param)
 
     while (!quit)
     {
-        for (u32 key = KEY_NULL; key < KEY_COUNT; ++key)
-        {
-            new_input->keys[key] = (old_input->keys[key].action == KEY_ACTION_PRESS) ? old_input->keys[key] : (key_input_t){ 0 };
-        }
-        
-        quit = process_thread_messages(window, new_input);
-
-        platform.input = new_input;
+        quit = process_thread_messages(window, &input);
 
         platform.resized = resize_back_buffer(window);
 
@@ -713,10 +738,6 @@ static DWORD WINAPI main_thread(void* param)
         {
             assert(!"[DXGI] Failed to present swap chain.");
         }
-
-        input_t* temp_input = new_input;
-        new_input = old_input;
-        old_input = temp_input;
 
         u64 time_end = get_ticks();
         f32 elapsed_secs = get_secs_elapsed(time_last, time_end);

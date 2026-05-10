@@ -11,17 +11,6 @@ typedef enum key_modifier_t
     KEY_MODIFIER_ALT = (1 << 2),
 } key_modifier_t;
 
-typedef enum key_action_t
-{
-    KEY_ACTION_NULL,
-
-    KEY_ACTION_PRESS,
-    KEY_ACTION_RELEASE,
-    KEY_ACTION_MOUSE_SCROLL,
-
-    KEY_ACTION_COUNT,
-} key_action_t;
-
 typedef enum key_t
 {
     KEY_NULL,
@@ -105,29 +94,130 @@ typedef enum key_t
     KEY_COUNT
 } key_t;
 
-typedef struct key_input_t
+typedef enum input_event_kind_t
 {
-    key_action_t action;
-} key_input_t;
+    INPUT_EVENT_NULL,
+    
+    INPUT_EVENT_KEY_PRESS,
+    INPUT_EVENT_KEY_RELEASE,
+    INPUT_EVENT_TEXT,
+    INPUT_EVENT_MOUSE_PRESS,
+    INPUT_EVENT_MOUSE_RELEASE,
+    
+    INPUT_EVENT_COUNT,
+} input_event_kind_t;
+
+typedef struct input_event_t
+{
+    input_event_kind_t kind;
+    bool consumed;
+    u32 value;
+    
+} input_event_t;
 
 typedef struct input_t
 {
-    key_input_t keys[KEY_COUNT];
-    key_modifier_t modifiers;
+    input_event_t events[256];
+    u32 event_count;
+
+    key_modifier_t modifiers;    
     vec3 mouse_position;
     vec2 mouse_delta;
+    bool mouse_down[3];
+    bool key_down[KEY_COUNT];
 } input_t;
 
-inline bool input_is_key_pressed(const input_t* input, key_t key)
+
+static inline bool input_is_key_down(const input_t* input, key_t key)
 {
-    bool result = input->keys[key].action == KEY_ACTION_PRESS;
+    bool result = input->key_down[key];
 
     return result;
 }
 
-inline bool input_is_key_released(const input_t* input, key_t key)
+static inline bool input_is_key_pressed(const input_t* input, key_t key)
 {
-    bool result = input->keys[key].action == KEY_ACTION_RELEASE;
+    bool result = false;
+    
+    for (u32 i = 0; i < input->event_count; ++i)
+    {
+        const input_event_t* event = input->events + i;
+
+        if (event->consumed)
+        {
+            continue;
+        }
+
+        if ((event->kind == INPUT_EVENT_KEY_PRESS || event->kind == INPUT_EVENT_MOUSE_PRESS) &&
+            event->value == key)
+        {
+            result = true;
+            break;
+        }
+    }
+
+    return result;
+}
+
+static inline bool input_is_key_released(const input_t* input, key_t key)
+{
+    bool result = false;
+    
+    for (u32 i = 0; i < input->event_count; ++i)
+    {
+        const input_event_t* event = input->events + i;
+
+        if (event->consumed)
+        {
+            continue;
+        }
+
+        if ((event->kind == INPUT_EVENT_KEY_RELEASE || event->kind == INPUT_EVENT_MOUSE_RELEASE) &&
+            event->value == key)
+        {
+            result = true;
+            break;
+        }
+    }
+
+    return result;
+}
+
+static inline bool input_consume_event(input_t* input, input_event_kind_t kind, u32 value)
+{
+    bool result = false;
+    
+    for (u32 i = 0; i < input->event_count; ++i)
+    {
+        input_event_t* event = input->events + i;
+
+        if (event->consumed)
+        {
+            continue;
+        }
+
+        if (event->kind == kind && event->value == value)
+        {
+            result = true;
+            event->consumed = true;
+            break;
+        }
+    }
+
+    return result;
+}
+
+static inline bool input_consume_key_press(input_t* input, key_t key)
+{
+    bool result = input_consume_event(input, INPUT_EVENT_KEY_PRESS, key);
+
+    return result;
+}
+
+
+static inline bool input_consume_key_release(input_t* input, key_t key)
+{
+    bool result = input_consume_event(input, INPUT_EVENT_KEY_RELEASE, key);
 
     return result;
 }
