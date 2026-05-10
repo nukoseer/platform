@@ -1490,9 +1490,9 @@ update_function(update)
         .mouse_position = input->mouse_position.xy,
         .mouse_buttons =
         {
-            [0] = input_is_key_pressed(input, KEY_MOUSE_LEFT),
-            [1] = input_is_key_pressed(input, KEY_MOUSE_MIDDLE),
-            [2] = input_is_key_pressed(input, KEY_MOUSE_RIGHT),
+            [0] = input_is_key_down(input, KEY_MOUSE_LEFT),
+            [1] = input_is_key_down(input, KEY_MOUSE_MIDDLE),
+            [2] = input_is_key_down(input, KEY_MOUSE_RIGHT),
         },
     };
     
@@ -1501,7 +1501,7 @@ update_function(update)
     ui_push_font(&game->font_12);
     ui_push_font_color(theme->font_color);
 
-    ui_next_size(ui_pixel(430.0f, 1.0f), ui_pixel(248.0f, 1.0f));
+    ui_next_size(ui_percent(0.30f, 1.0f), ui_percent(0.35f, 1.0f));
     ui_next_padding(4.0f); ui_next_axis(ui_axis_y());
     ui_next_border(1.0f, theme->fg_color);
     ui_next_flags(UI_FLAG_DRAW_BACKGROUND);
@@ -1628,7 +1628,6 @@ update_function(update)
                         ui_widget_group("status-bar", 0, 0)
                         {
                             ui_next_size(ui_percent(0.8f, 1.0f), ui_percent(1.0f, 0.0f));
-                            ui_next_color(v4(theme->fg_color.r, theme->fg_color.g, theme->fg_color.b, 0.25f));
                             ui_next_flags(UI_FLAG_DRAW_BACKGROUND);
                             ui_next_color(theme->fg_color);
                             ui_widget("status-fill");
@@ -1664,7 +1663,7 @@ update_function(update)
     ui_next_flags(UI_FLAG_DRAW_BACKGROUND);
     ui_widget_group("search-bar-container", (platform->width - search_container_width) * 0.5f, platform->height * 0.05f)
     {
-        ui_next_size(ui_percent(1.0f, 0.0f), ui_percent(1.0f, 1.0f));
+        ui_next_size(ui_percent(1.0f, 1.0f), ui_percent(1.0f, 1.0f));
         ui_next_padding(8.0f);
         ui_next_border(1.0f, theme->fg_color);
         ui_widget_named_column("search-bar-column")

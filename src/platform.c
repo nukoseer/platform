@@ -108,6 +108,10 @@ static LRESULT CALLBACK window_proc(HWND hwnd, UINT message, WPARAM wparam, LPAR
         case WM_KEYUP:
         case WM_LBUTTONDOWN:
         case WM_LBUTTONUP:
+        case WM_RBUTTONDOWN:
+        case WM_RBUTTONUP:
+        case WM_MBUTTONDOWN:
+        case WM_MBUTTONUP:
         case WM_CHAR:
         case WM_MOUSEWHEEL:
         case WM_DESTROY:
@@ -405,6 +409,15 @@ static inline void input_event_push(input_t* input, input_event_kind_t kind, u32
     event->kind = kind;
     event->consumed = false;
     event->value = value;
+
+    if (kind == INPUT_EVENT_KEY_PRESS)
+    {
+        input->key_down[value] = true;
+    }
+    else if (kind == INPUT_EVENT_KEY_RELEASE)
+    {
+        input->key_down[value] = false;
+    }
 }
 
 static bool process_thread_messages(window_t* window, input_t* input)
@@ -435,16 +448,35 @@ static bool process_thread_messages(window_t* window, input_t* input)
             case WM_LBUTTONDOWN:
             {
                 SetCapture(window->hwnd);
-
-                input->key_down[KEY_MOUSE_LEFT] = true;
-                input_event_push(input, INPUT_EVENT_MOUSE_PRESS, KEY_MOUSE_LEFT);
+                input_event_push(input, INPUT_EVENT_KEY_PRESS, KEY_MOUSE_LEFT);
             } break;
 
             case WM_LBUTTONUP:
             {
-                input->key_down[KEY_MOUSE_LEFT] = false;
-                input_event_push(input, INPUT_EVENT_MOUSE_RELEASE, KEY_MOUSE_LEFT);
+                input_event_push(input, INPUT_EVENT_KEY_RELEASE, KEY_MOUSE_LEFT);
+                ReleaseCapture();
+            } break;
 
+            case WM_RBUTTONDOWN:
+            {
+                SetCapture(window->hwnd);
+                input_event_push(input, INPUT_EVENT_KEY_PRESS, KEY_MOUSE_RIGHT);
+            } break;
+            
+            case WM_RBUTTONUP:
+            {
+                input_event_push(input, INPUT_EVENT_KEY_RELEASE, KEY_MOUSE_RIGHT);
+            } break;
+
+            case WM_MBUTTONDOWN:
+            {
+                SetCapture(window->hwnd);
+                input_event_push(input, INPUT_EVENT_KEY_PRESS, KEY_MOUSE_MIDDLE);
+            } break;
+            
+            case WM_MBUTTONUP:
+            {
+                input_event_push(input, INPUT_EVENT_KEY_RELEASE, KEY_MOUSE_MIDDLE);
                 ReleaseCapture();
             } break;
             
@@ -496,7 +528,6 @@ static bool process_thread_messages(window_t* window, input_t* input)
                     key = key_map[key_code];
                 }
 
-                input->key_down[key] = true;
                 input_event_push(input, INPUT_EVENT_KEY_PRESS, key);
             
                 if (key_code == VK_RETURN && is_down && alt_is_down)
@@ -520,7 +551,6 @@ static bool process_thread_messages(window_t* window, input_t* input)
                     key = key_map[key_code];
                 }
 
-                input->key_down[key] = false;
                 input_event_push(input, INPUT_EVENT_KEY_RELEASE, key);
             } break;
 

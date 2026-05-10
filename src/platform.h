@@ -98,11 +98,9 @@ typedef enum input_event_kind_t
 {
     INPUT_EVENT_NULL,
     
+    INPUT_EVENT_TEXT,
     INPUT_EVENT_KEY_PRESS,
     INPUT_EVENT_KEY_RELEASE,
-    INPUT_EVENT_TEXT,
-    INPUT_EVENT_MOUSE_PRESS,
-    INPUT_EVENT_MOUSE_RELEASE,
     
     INPUT_EVENT_COUNT,
 } input_event_kind_t;
@@ -148,8 +146,7 @@ static inline bool input_is_key_pressed(const input_t* input, key_t key)
             continue;
         }
 
-        if ((event->kind == INPUT_EVENT_KEY_PRESS || event->kind == INPUT_EVENT_MOUSE_PRESS) &&
-            event->value == key)
+        if (event->kind == INPUT_EVENT_KEY_PRESS && event->value == key)
         {
             result = true;
             break;
@@ -172,8 +169,7 @@ static inline bool input_is_key_released(const input_t* input, key_t key)
             continue;
         }
 
-        if ((event->kind == INPUT_EVENT_KEY_RELEASE || event->kind == INPUT_EVENT_MOUSE_RELEASE) &&
-            event->value == key)
+        if (event->kind == INPUT_EVENT_KEY_RELEASE && event->value == key)
         {
             result = true;
             break;
