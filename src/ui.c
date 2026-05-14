@@ -953,11 +953,11 @@ static void ui_resolve_layout(ui_widget_t* root_widget, ui_axis_t axis)
     // NOTE: Floating pass.
     for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
     {
-        if (!ui_is_flag_set(child_widget, UI_FLAG_FLOATING))
+        if (!ui_is_flag_set(child_widget, UI_FLAG_FLOATING) || root_widget->rect.size[axis] <= 0.0f)
         {
             continue;
         }
-        
+
         ui_rect_t child_rect = { 0.0f, 0.0f, child_widget->fixed_size[0], child_widget->fixed_size[1] };
         f32 root_anchor = ui_resolve_anchor_position(root_widget->rect, child_widget->anchor.parent, axis);
         f32 child_anchor = ui_resolve_anchor_position(child_rect, child_widget->anchor.self, axis);

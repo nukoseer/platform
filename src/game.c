@@ -1501,7 +1501,7 @@ update_function(update)
     ui_push_font(&game->font_12);
     ui_push_font_color(theme->font_color);
 
-    ui_next_size(ui_percent(0.30f, 1.0f), ui_percent(0.35f, 1.0f));
+    ui_next_size(ui_pixel(430.0f, 1.0f), ui_pixel(248.0f, 1.0f));
     ui_next_padding(4.0f); ui_next_axis(ui_axis_y());
     ui_next_border(1.0f, theme->fg_color);
     ui_next_flags(UI_FLAG_DRAW_BACKGROUND);
