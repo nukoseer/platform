@@ -137,18 +137,15 @@ static graphics_2d_end_draw_function(gfx_2d_end_draw)
 static graphics_2d_draw_text_function(gfx_2d_draw_text)
 {
     // TODO: Does not look good.
-    static WCHAR wide_text[256] = { 0 };
+    static WCHAR wchar_text[256] = { 0 };
 
-    // size_t required_wide_length = mbstowcs(0, text, text_length);
-    // assert(required_wide_length < array_count(wide_text));
+    i32 wchar_size = MultiByteToWideChar(CP_UTF8, 0, text, (i32)text_length, NULL, 0);
+    assert(wchar_size + 1 < array_count(wchar_text) && "[GFX2D] Failed to convert from UTF-8 to UTF-16.");
 
-    size_t converted = mbstowcs(wide_text, text, text_length);
-    assert(converted < array_count(wide_text));
-
-    wide_text[converted] = '\0';
+    MultiByteToWideChar(CP_UTF8, 0, text, (i32)text_length, wchar_text, wchar_size);
+    wchar_text[wchar_size] = L'\0';
     
     u32 font_index = (u32)font.platform;
-
     assert(font_index < array_count(global_fonts));
 
     gfx_2d_font_t* gfx_2d_font = global_fonts + font_index;
@@ -168,7 +165,7 @@ static graphics_2d_draw_text_function(gfx_2d_draw_text)
     D2D1_COLOR_F color = { r, g, b, a };
     ID2D1SolidColorBrush_SetColor(global_d2d1.solid_color_brush, &color);
 
-    ID2D1RenderTarget_DrawText(global_d2d1.render_target, wide_text, (UINT32)converted, gfx_2d_font->text_format,
+    ID2D1RenderTarget_DrawText(global_d2d1.render_target, wchar_text, (UINT32)wchar_size, gfx_2d_font->text_format,
                                &layout, (ID2D1Brush*)global_d2d1.solid_color_brush,
                                D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT,
                                DWRITE_MEASURING_MODE_NATURAL);
@@ -229,12 +226,11 @@ static graphics_2d_measure_text_width_function(gfx_2d_measure_text_width)
 
     assert(text && text_length < (u32)-1 && "[GFX2D] Invalid text or text length.");
 
-    i32 wchar_size = MultiByteToWideChar(CP_UTF8, 0, text, (int)text_length, NULL, 0);
     wchar_t wchar_text[64];
+    i32 wchar_size = MultiByteToWideChar(CP_UTF8, 0, text, (int)text_length, NULL, 0);
+    assert(wchar_size + 1 < array_count(wchar_text) && "[GFX2D] Failed to convert from UTF-8 to UTF-16.");
 
-    assert(wchar_size < array_count(wchar_text) && "[GFX2D] Failed to convert from UTF-8 to UTF-16.");
-
-    MultiByteToWideChar(CP_UTF8, 0, text, wchar_size, wchar_text, array_count(wchar_text));
+    MultiByteToWideChar(CP_UTF8, 0, text, (i32)text_length, wchar_text, wchar_size);
     wchar_text[wchar_size] = '\0';
 
     HRESULT result = IDWriteFactory_CreateTextLayout(global_d2d1.dwrite->factory, wchar_text, wchar_size,
