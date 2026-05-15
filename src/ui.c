@@ -930,19 +930,7 @@ static void ui_resolve_layout(ui_widget_t* root_widget, ui_axis_t axis)
         child_widget->rect.xy[axis] = root_widget->rect.xy[axis] + child_widget->position.xy[axis] + layout_at;
         child_widget->rect.size[axis] = child_widget->fixed_size[axis];
 
-        f32 epsilon = 0.5f;
-        bool contains = ((child_widget->rect.xy[axis] >= root_widget->rect.xy[axis] - epsilon) &&
-                         (child_widget->rect.xy[axis] + child_widget->rect.size[axis] <=
-                          (root_widget->rect.xy[axis] + root_widget->rect.size[axis]) + epsilon));
-        if (!contains)
-        {
-            child_widget->rect.xy[axis] = 0.0f;
-            child_widget->rect.size[axis] = 0.0f;
-        }
-        else
-        {
-            ui_resolve_label_alignment(child_widget, axis);
-        }
+        ui_resolve_label_alignment(child_widget, axis);
 
         if (!is_root && root_widget->layout_axis == axis)
         {
@@ -1071,7 +1059,9 @@ static inline ui_draw_command_t* ui_push_draw_command(void)
 
 static void ui_emit_draw_commands(ui_widget_t* widget)
 {
-    if (widget->rect.width <= 0.0f || widget->rect.height <= 0.0f)
+    // TODO: We just cull the widget if it not inside of parent.
+    // Probably we need some kind of clipping here.
+    if (widget->parent && (!ui_is_flag_set(widget, UI_FLAG_FLOATING) && !ui_rect_contains(widget->parent->rect, widget->rect)))
     {
         return;
     }

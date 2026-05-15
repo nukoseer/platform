@@ -1501,7 +1501,7 @@ update_function(update)
     ui_push_font(&game->font_12);
     ui_push_font_color(theme->font_color);
 
-    ui_next_size(ui_pixel(430.0f, 1.0f), ui_pixel(248.0f, 1.0f));
+    ui_next_size(ui_pixel(430.0f, 1.0f), ui_children(1.0f));
     ui_next_padding(4.0f); ui_next_axis(ui_axis_y());
     ui_next_border(1.0f, theme->fg_color);
     ui_next_flags(UI_FLAG_DRAW_BACKGROUND);
@@ -1524,7 +1524,7 @@ update_function(update)
         ui_pop_padding();
         ui_pop_size();
 
-        ui_next_size(ui_percent(1.0f, 1.0f), ui_percent(1.0f, 1.0f));
+        ui_next_size(ui_percent(1.0f, 1.0f), ui_children(1.0f));
         ui_next_padding(8.0f); ui_next_flags(UI_FLAG_DRAW_BACKGROUND);
         ui_next_border(1.0f, theme->fg_color);
         ui_widget_group("inner-container", 0.0f, 0.0f)
@@ -1549,7 +1549,7 @@ update_function(update)
 
             ui_widget_spacer(ui_pixel(8.0f, 1.0f));
         
-            ui_next_size(ui_percent(1.0f, 1.0f), ui_percent(0.55f, 1.0f));
+            ui_next_size(ui_percent(1.0f, 1.0f), ui_pixel(120.0f, 1.0f));
             ui_widget_named_row("country-shape-row")
             {
                 ui_next_size(ui_percent(1.0f, 0.0f), ui_percent(1.0f, 1.0f));
@@ -1567,10 +1567,10 @@ update_function(update)
 
                 ui_widget_spacer(ui_pixel(8.0f, 1.0f));
                         
-                ui_next_size(ui_percent(1.0f, 0.0f), ui_percent(1.0f, 1.0f));
+                ui_next_size(ui_percent(1.0f, 0.0f), ui_children(1.0f));
                 ui_widget_named_column("country-block-column")
                 {
-                    ui_next_size(ui_percent(1.0f, 0.0f), ui_percent(1.0f, 1.0f));
+                    ui_next_size(ui_percent(1.0f, 0.0f), ui_children(1.0f));
                     ui_widget_named_row("country-block-row")
                     {
                         ui_next_size(ui_percent(1.0f, 0.0f), ui_children(1.0f));
@@ -1606,23 +1606,21 @@ update_function(update)
 
             ui_widget_spacer(ui_pixel(8.0f, 1.0f));
             
-            ui_next_size(ui_percent(1.0f, 1.0f), ui_percent(0.2f, 0.0f));
+            ui_next_size(ui_percent(1.0f, 1.0f), ui_children(1.0f));
             ui_widget_named_column("status-column")
             {
-                ui_next_size(ui_percent(1.0f, 1.0f), ui_percent(1.0f, 0.0f));
+                ui_next_size(ui_percent(1.0f, 1.0f), ui_children(1.0f));
                 ui_widget_named_row("status-row")
                 {
-                    ui_next_size(ui_content(1.0f), ui_percent(1.0f, 1.0f));
+                    ui_next_size(ui_content(1.0f), ui_content(1.0f));
                     ui_next_label_alignment(ui_align_center());
                     ui_widget_labeled("status", "STATUS:");
 
                     ui_widget_spacer(ui_pixel(4.0f, 1.0f));
 
-                    ui_next_size(ui_percent(1.0f, 0.0f), ui_percent(1.0f, 0.0f));
+                    ui_next_size(ui_percent(1.0f, 0.0f), ui_pixel(20.0f, 1.0f));
                     ui_widget_named_column("status-bar-column")
                     {
-                        ui_widget_spacer(ui_pixel(8.0f, 0.0f));
-                        
                         ui_next_size(ui_percent(1.0f, 1.0f), ui_percent(1.0f, 0.0f));
                         ui_next_border(1.0f, theme->fg_color);
                         ui_widget_group("status-bar", 0, 0)
@@ -1632,17 +1630,13 @@ update_function(update)
                             ui_next_color(theme->fg_color);
                             ui_widget("status-fill");
                         }
-
-                        ui_widget_spacer(ui_pixel(8.0f, 0.0f));
                     }
 
                     ui_widget_spacer(ui_pixel(4.0f, 1.0f));
-                    
-                    ui_next_size(ui_content(1.0f), ui_percent(1.0f, 1.0f));
+
+                    ui_next_size(ui_content(1.0f), ui_content(1.0f));
                     ui_next_label_alignment(ui_align_center());
                     ui_widget_labeled("percent", "80%");
-
-                    ui_widget_spacer(ui_pixel(4.0f, 1.0f));
                 }
             }
 
@@ -1656,54 +1650,58 @@ update_function(update)
     }
 
     f32 search_container_width = platform->width * 0.25f;
-    f32 search_container_height = get_line_height(&game->font_12, platform->graphics) * 2.0f;
+    f32 search_container_height = get_line_height(&game->font_12, platform->graphics) * 3.0f;
+    bool show_icon = search_container_width >= 200.0f;
     ui_next_size(ui_pixel(search_container_width, 1.0f), ui_pixel(search_container_height, 1.0f));
     ui_next_axis(ui_axis_x());
     ui_next_border(1.0f, theme->fg_color);
     ui_next_flags(UI_FLAG_DRAW_BACKGROUND);
+    ui_next_padding(4.0f);
     ui_widget_group("search-bar-container", (platform->width - search_container_width) * 0.5f, platform->height * 0.05f)
     {
-        ui_next_size(ui_percent(1.0f, 1.0f), ui_percent(1.0f, 1.0f));
-        ui_next_padding(8.0f);
+
+        ui_next_size(ui_content(1.0f), ui_content(1.0f));
+        ui_next_padding(4.0f);
+        ui_next_flags(UI_FLAG_DRAW_BACKGROUND);
+        ui_next_anchored(UI_ANCHOR_TOP_LEFT, UI_ANCHOR_CENTER_LEFT, 16.0f, 2.0f);
+        ui_widget_labeled("search-header", "SEARCH");
+    
+        ui_next_size(ui_percent(1.0f, 0.0f), ui_percent(1.0f, 1.0f));
         ui_next_border(1.0f, theme->fg_color);
-        ui_widget_named_column("search-bar-column")
+        ui_widget_named_row("search-bar-row")
         {
-            ui_widget_spacer(ui_percent(1.0f, 0.0f));
+            ui_widget_spacer(ui_pixel(8.0f, 1.0f));
+                
+            ui_push_label_alignment((ui_alignment_t){UI_ALIGNMENT_LEADING, UI_ALIGNMENT_CENTER});
 
-            ui_next_size(ui_percent(1.0f, 1.0f), ui_percent(1.0f, 1.0f));
-            ui_widget_named_row("search-bar-row")
+            if (show_icon)
             {
-                ui_push_label_alignment((ui_alignment_t){UI_ALIGNMENT_LEADING, UI_ALIGNMENT_CENTER});
-
                 ui_next_size(ui_content(1.0f), ui_percent(1.0f, 1.0f));
-                ui_next_border(1.0f, theme->fg_color);
                 ui_next_flags(UI_FLAG_CLICKABLE);
-                ui_widget_labeled("icon-field", "Icon");
+                ui_widget_labeled("icon-field", ">");
 
                 ui_widget_spacer(ui_pixel(8.0f, 1.0f));
-
-                ui_next_size(ui_percent(1.0f, 0.0f), ui_percent(1.0f, 1.0f));
-                ui_next_border(1.0f, theme->fg_color);
-                ui_next_flags(UI_FLAG_CLICKABLE);
-                ui_signal_t search_bar_signal = ui_widget_labeled("search-bar", "Search country...");
-
-                if (search_bar_signal.hovering)
-                {
-                    ui_widget_spacer(ui_pixel(8.0f, 1.0f));
-                    ui_next_size(ui_content(1.0f), ui_percent(1.0f, 1.0f));
-                    ui_next_border(1.0f, theme->fg_color);
-                    ui_widget_labeled("signal-field", "signal");
-                 }
-
-                ui_widget_spacer(ui_pixel(8.0f, 1.0f));
-
-                ui_next_size(ui_content(1.0f), ui_percent(1.0f, 1.0f));
-                ui_next_border(1.0f, theme->fg_color);
-                ui_widget_labeled("cancel-field", "X");
-
-                ui_pop_label_alignment();
             }
-            ui_widget_spacer(ui_percent(1.0f, 0.0f));
+
+            ui_next_size(ui_percent(1.0f, 0.0f), ui_percent(1.0f, 1.0f));
+            ui_next_flags(UI_FLAG_CLICKABLE);
+            ui_signal_t search_bar_signal = ui_widget_labeled("search-bar", "...");
+
+            if (search_bar_signal.hovering)
+            {
+                ui_widget_spacer(ui_pixel(8.0f, 1.0f));
+                ui_next_size(ui_content(1.0f), ui_percent(1.0f, 1.0f));
+                ui_widget_labeled("signal-field", "signal");
+            }
+
+            ui_widget_spacer(ui_pixel(8.0f, 1.0f));
+
+            ui_next_size(ui_content(1.0f), ui_percent(1.0f, 1.0f));
+            ui_widget_labeled("cancel-field", "-");
+
+            ui_pop_label_alignment();
+                
+            ui_widget_spacer(ui_pixel(8.0f, 1.0f));
         }
     }
 
