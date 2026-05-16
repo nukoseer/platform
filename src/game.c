@@ -1430,6 +1430,7 @@ static void update_theme(game_t* game, theme_type_t theme_type)
 update_function(update)
 {
     memory_t* memory = platform->memory;
+    graphics_t* graphics = platform->graphics;
     input_t* input = platform->input;
     game_t* game = (game_t*)memory->permanent;
     camera_t* camera = &game->camera;
@@ -1498,7 +1499,7 @@ update_function(update)
     
     ui_begin(ui_input, (f32)platform->width, (f32)platform->height);
     ui_push_color(theme->bg_color);
-    ui_push_font(&game->font_12);
+    ui_push_font(&game->font_12, graphics->get_font_pixel_size(game->font_12));
     ui_push_font_color(theme->font_color);
 
     ui_next_size(ui_pixel(430.0f, 1.0f), ui_children(1.0f));
@@ -1549,7 +1550,7 @@ update_function(update)
 
             ui_widget_spacer(ui_pixel(8.0f, 1.0f));
         
-            ui_next_size(ui_percent(1.0f, 1.0f), ui_pixel(120.0f, 1.0f));
+            ui_next_size(ui_percent(1.0f, 1.0f), ui_em(8.0f, 1.0f));
             ui_widget_named_row("country-shape-row")
             {
                 ui_next_size(ui_percent(1.0f, 0.0f), ui_percent(1.0f, 1.0f));
@@ -1586,7 +1587,7 @@ update_function(update)
                             ui_next_color(theme->font_color); ui_next_flags(UI_FLAG_DRAW_BACKGROUND);
                             ui_widget("separator");
 
-                            ui_widget_spacer(ui_pixel(4.0f, 1.0f));
+                            ui_widget_spacer(ui_pixel(8.0f, 1.0f));
 
                             ui_next_size(ui_percent(1.0f, 1.0f), ui_content(1.0f));
                             ui_next_label_alignment(ui_align_leading());
@@ -1606,19 +1607,19 @@ update_function(update)
 
             ui_widget_spacer(ui_pixel(8.0f, 1.0f));
             
-            ui_next_size(ui_percent(1.0f, 1.0f), ui_children(1.0f));
+            ui_next_size(ui_percent(1.0f, 1.0f), ui_em(1.25f, 1.0f));
             ui_widget_named_column("status-column")
             {
-                ui_next_size(ui_percent(1.0f, 1.0f), ui_children(1.0f));
+                ui_next_size(ui_percent(1.0f, 1.0f), ui_percent(1.0f, 1.0f));
                 ui_widget_named_row("status-row")
                 {
-                    ui_next_size(ui_content(1.0f), ui_content(1.0f));
+                    ui_next_size(ui_content(1.0f), ui_percent(1.0f, 1.0f));
                     ui_next_label_alignment(ui_align_center());
                     ui_widget_labeled("status", "STATUS:");
 
-                    ui_widget_spacer(ui_pixel(4.0f, 1.0f));
+                    ui_widget_spacer(ui_pixel(8.0f, 1.0f));
 
-                    ui_next_size(ui_percent(1.0f, 0.0f), ui_pixel(20.0f, 1.0f));
+                    ui_next_size(ui_percent(1.0f, 0.0f), ui_percent(1.0f, 0.0f));
                     ui_widget_named_column("status-bar-column")
                     {
                         ui_next_size(ui_percent(1.0f, 1.0f), ui_percent(1.0f, 0.0f));
@@ -1632,9 +1633,9 @@ update_function(update)
                         }
                     }
 
-                    ui_widget_spacer(ui_pixel(4.0f, 1.0f));
+                    ui_widget_spacer(ui_pixel(8.0f, 1.0f));
 
-                    ui_next_size(ui_content(1.0f), ui_content(1.0f));
+                    ui_next_size(ui_content(1.0f), ui_percent(1.0f, 1.0f));
                     ui_next_label_alignment(ui_align_center());
                     ui_widget_labeled("percent", "80%");
                 }
@@ -1650,16 +1651,14 @@ update_function(update)
     }
 
     f32 search_container_width = platform->width * 0.25f;
-    f32 search_container_height = get_line_height(&game->font_12, platform->graphics) * 3.0f;
     bool show_icon = search_container_width >= 200.0f;
-    ui_next_size(ui_pixel(search_container_width, 1.0f), ui_pixel(search_container_height, 1.0f));
+    ui_next_size(ui_pixel(search_container_width, 1.0f), ui_em(3.0f, 1.0f));
     ui_next_axis(ui_axis_x());
     ui_next_border(1.0f, theme->fg_color);
     ui_next_flags(UI_FLAG_DRAW_BACKGROUND);
     ui_next_padding(4.0f);
     ui_widget_group("search-bar-container", (platform->width - search_container_width) * 0.5f, 40.0f)
     {
-
         ui_next_size(ui_content(1.0f), ui_content(1.0f));
         ui_next_padding(4.0f);
         ui_next_flags(UI_FLAG_DRAW_BACKGROUND);

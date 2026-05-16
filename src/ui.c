@@ -90,6 +90,20 @@ static inline ui_size_t ui_pixel(f32 pixel, f32 strictness)
     return size;
 }
 
+static inline ui_size_t ui_em(f32 coefficient, f32 strictness)
+{
+    ui_font_t font = ui_top_font();
+    
+    ui_size_t size =
+    {
+        .kind = UI_SIZE_PIXEL,
+        .value = font.pixel_size * coefficient,
+        .strictness = strictness
+    };
+
+    return size;
+}
+
 static inline ui_size_t ui_percent(f32 parent_percent, f32 strictness)
 {
     assert(parent_percent >= 0.0f && parent_percent <= 1.0f && "[UI] Invalid parent size percentage.");
@@ -558,7 +572,7 @@ static void ui_set_label(ui_widget_t* widget, const char* label, u32 label_lengt
     widget->label[label_length] = '\0';
     widget->label_length = label_length;
 
-    widget->font = ui_top_font();
+    widget->font = ui_top_font().font;
     widget->font_color = ui_top_font_color();
     widget->label_alignment = ui_top_label_alignment();
     
@@ -1239,7 +1253,7 @@ static void ui_init(memory_arena_t* memory_arena, ui_callbacks_t callbacks)
     ui_stack_init(global_ui->arena, &global_ui->stacks.flags, sizeof(ui_flags_t), UI_STACK_SIZE);
     ui_stack_init(global_ui->arena, &global_ui->stacks.anchor, sizeof(ui_anchor_t), UI_STACK_SIZE);
     ui_stack_init(global_ui->arena, &global_ui->stacks.anchor_offset, sizeof(ui_anchor_offset_t), UI_STACK_SIZE);
-    ui_stack_init(global_ui->arena, &global_ui->stacks.font, sizeof(void*), UI_STACK_SIZE);
+    ui_stack_init(global_ui->arena, &global_ui->stacks.font, sizeof(ui_font_t), UI_STACK_SIZE);
     ui_stack_init(global_ui->arena, &global_ui->stacks.font_color, sizeof(vec4), UI_STACK_SIZE);
     ui_stack_init(global_ui->arena, &global_ui->stacks.label_alignment, sizeof(ui_alignment_t), UI_STACK_SIZE);
 
@@ -1409,7 +1423,7 @@ static void ui_begin(ui_input_t input, f32 width, f32 height)
     ui_stack_push(&global_ui->stacks.flags, &(void*){ 0 });
     ui_stack_push(&global_ui->stacks.anchor, &(ui_anchor_t){ 0 });
     ui_stack_push(&global_ui->stacks.anchor_offset, &(ui_anchor_offset_t){ 0 });
-    ui_stack_push(&global_ui->stacks.font, &(void*){ 0 });
+    ui_stack_push(&global_ui->stacks.font, &(ui_font_t){ 0 });
     ui_stack_push(&global_ui->stacks.font_color, &(vec4){ 0 });
     ui_stack_push(&global_ui->stacks.label_alignment, &(ui_alignment_t){ 0 });
 

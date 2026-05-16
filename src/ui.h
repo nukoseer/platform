@@ -68,6 +68,12 @@ typedef struct ui_alignment_t
     u32 value[UI_AXIS_COUNT];
 } ui_alignment_t;
 
+typedef struct ui_font_t
+{
+    void* font;
+    f32 pixel_size;
+} ui_font_t;
+
 typedef struct ui_rect_t
 {
     union

@@ -144,9 +144,9 @@ static void ui_stack_set_flags(ui_flags_t flags)
 #define ui_top_anchor_offset() ui_top(&global_ui->stacks.anchor_offset, ui_anchor_offset_t)
 #define ui_pop_anchor_offset() ui_pop(&global_ui->stacks.anchor_offset);
 
-#define ui_push_font(value) ui_push(&global_ui->stacks.font, void*, value)
-#define ui_next_font(value) ui_next(&global_ui->stacks.font, void*, value)
-#define ui_top_font() ui_top(&global_ui->stacks.font, void*)
+#define ui_push_font(...) ui_push(&global_ui->stacks.font, ui_font_t, (ui_font_t){ __VA_ARGS__ })
+#define ui_next_font(...) ui_next(&global_ui->stacks.font, ui_font_t, (ui_font_t){ __VA_ARGS__ })
+#define ui_top_font() ui_top(&global_ui->stacks.font, ui_font_t)
 #define ui_pop_font() ui_pop(&global_ui->stacks.font)
 
 #define ui_push_font_color(value) ui_push(&global_ui->stacks.font_color, vec4, value)

@@ -4,7 +4,8 @@ typedef struct gfx_2d_font_t
     u32 generation;
     IDWriteTextFormat* text_format;
     char font_name[32];
-    f32 font_size;
+    f32 point_size;
+    f32 pixel_size;
     f32 line_height;
     u32 next_free_index;
 } gfx_2d_font_t;
@@ -61,12 +62,12 @@ static graphics_2d_create_font_function(gfx_2d_create_font)
     font_name_wchar[wchar_size] = L'\0';
 
     IDWriteTextFormat* text_format = 0;
-    f32 font_size = point_size * 96.0f / 72.0f;
+    f32 pixel_size = point_size * 96.0f / 72.0f;
     result = IDWriteFactory_CreateTextFormat(global_d2d1.dwrite->factory, font_name_wchar, 0,
                                              DWRITE_FONT_WEIGHT_REGULAR,
                                              DWRITE_FONT_STYLE_NORMAL,
                                              DWRITE_FONT_STRETCH_NORMAL,
-                                             font_size, L"en-us", &text_format);
+                                             pixel_size, L"en-us", &text_format);
     assert(SUCCEEDED(result) && "[GFX2D] Failed to create text format.");
 
     result = IDWriteTextFormat_SetWordWrapping(text_format, DWRITE_WORD_WRAPPING_NO_WRAP);
@@ -94,7 +95,8 @@ static graphics_2d_create_font_function(gfx_2d_create_font)
     {
         .generation = font_generation,
         .text_format = text_format,
-        .font_size = font_size,
+        .point_size = point_size,
+        .pixel_size = pixel_size,
         .line_height = line_height,
     };
     
@@ -199,6 +201,40 @@ static graphics_2d_draw_rect_function(gfx_2d_draw_rect)
         // };
         // ID2D1RenderTarget_DrawRoundedRectangle(global_d2d1.render_target, &rounded_rect, (ID2D1Brush*)global_d2d1.solid_color_brush, thickness, 0);
     }
+}
+
+static graphics_2d_get_font_point_size_function(gfx_2d_get_font_point_size)
+{
+    u32 font_generation = get_generation(font.platform);
+    u32 font_index = get_index(font.platform);
+    gfx_2d_font_t* gfx_2d_font = global_fonts + font_index;
+
+    if (font_generation != gfx_2d_font->generation)
+    {
+        assert(!"[GFX2D] Font generation does not match.");
+        return 0.0f;
+    }
+
+    f32 point_size = gfx_2d_font->point_size;
+
+    return point_size;
+}
+
+static graphics_2d_get_font_pixel_size_function(gfx_2d_get_font_pixel_size)
+{
+    u32 font_generation = get_generation(font.platform);
+    u32 font_index = get_index(font.platform);
+    gfx_2d_font_t* gfx_2d_font = global_fonts + font_index;
+
+    if (font_generation != gfx_2d_font->generation)
+    {
+        assert(!"[GFX2D] Font generation does not match.");
+        return 0.0f;
+    }
+
+    f32 pixel_size = gfx_2d_font->pixel_size;
+
+    return pixel_size;
 }
 
 static graphics_2d_measure_text_width_function(gfx_2d_measure_text_width)

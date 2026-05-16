@@ -554,6 +554,18 @@ typedef graphics_2d_create_font_function(graphics_2d_create_font_f);
 #define graphics_2d_delete_font_function(name) void name(graphics_2d_font_t font)
 typedef graphics_2d_delete_font_function(graphics_2d_delete_font_f);
 
+#define graphics_2d_get_font_point_size_function(name) f32 name(graphics_2d_font_t font)
+typedef graphics_2d_get_font_point_size_function(graphics_2d_get_font_point_size_f);
+
+#define graphics_2d_get_font_pixel_size_function(name) f32 name(graphics_2d_font_t font)
+typedef graphics_2d_get_font_pixel_size_function(graphics_2d_get_font_pixel_size_f);
+
+#define graphics_2d_measure_text_width_function(name) f32 name(graphics_2d_font_t font, const char* text, size_t text_length)
+typedef graphics_2d_measure_text_width_function(graphics_2d_measure_text_width_f);
+
+#define graphics_2d_get_line_height_function(name) f32 name(graphics_2d_font_t font)
+typedef graphics_2d_get_line_height_function(graphics_2d_get_line_height_f);
+
 #define graphics_2d_begin_draw_function(name) void name(void)
 typedef graphics_2d_begin_draw_function(graphics_2d_begin_draw_f);
 
@@ -565,12 +577,6 @@ typedef graphics_2d_draw_text_function(graphics_2d_draw_text_f);
 
 #define graphics_2d_draw_rect_function(name) void name(f32 x, f32 y, f32 width, f32 height, bool fill, f32 thickness, f32 r, f32 g, f32 b, f32 a)
 typedef graphics_2d_draw_rect_function(graphics_2d_draw_rect_f);
-
-#define graphics_2d_measure_text_width_function(name) f32 name(graphics_2d_font_t font, const char* text, size_t text_length)
-typedef graphics_2d_measure_text_width_function(graphics_2d_measure_text_width_f);
-
-#define graphics_2d_get_line_height_function(name) f32 name(graphics_2d_font_t font)
-typedef graphics_2d_get_line_height_function(graphics_2d_get_line_height_f);
 
 typedef struct graphics_t
 {
@@ -623,12 +629,14 @@ typedef struct graphics_t
         {
             graphics_2d_create_font_f* create_font;
             graphics_2d_delete_font_f* delete_font;
+            graphics_2d_get_font_point_size_f* get_font_point_size;
+            graphics_2d_get_font_pixel_size_f* get_font_pixel_size;
+            graphics_2d_measure_text_width_f* measure_text_width;
+            graphics_2d_get_line_height_f* get_line_height;
             graphics_2d_begin_draw_f* begin_draw;
             graphics_2d_end_draw_f* end_draw;
             graphics_2d_draw_text_f* draw_text;
             graphics_2d_draw_rect_f* draw_rect;
-            graphics_2d_measure_text_width_f* measure_text_width;
-            graphics_2d_get_line_height_f* get_line_height;
         };
 
         void* functions_2d[sizeof(struct graphics_2d_functions) / sizeof(void*)];

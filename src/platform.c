@@ -671,12 +671,14 @@ static DWORD WINAPI main_thread(void* param)
 
         .create_font = gfx_2d_create_font,
         .delete_font = gfx_2d_delete_font,
+        .get_font_point_size = gfx_2d_get_font_point_size,
+        .get_font_pixel_size = gfx_2d_get_font_pixel_size,
+        .measure_text_width = gfx_2d_measure_text_width,
+        .get_line_height = gfx_2d_get_line_height,
         .begin_draw = gfx_2d_begin_draw,
         .end_draw = gfx_2d_end_draw,
         .draw_text = gfx_2d_draw_text,
         .draw_rect = gfx_2d_draw_rect,
-        .measure_text_width = gfx_2d_measure_text_width,
-        .get_line_height = gfx_2d_get_line_height,
     };
 
     io_t io =
