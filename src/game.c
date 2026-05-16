@@ -1505,7 +1505,7 @@ update_function(update)
     ui_next_padding(4.0f); ui_next_axis(ui_axis_y());
     ui_next_border(1.0f, theme->fg_color);
     ui_next_flags(UI_FLAG_DRAW_BACKGROUND);
-    ui_widget_group("container", 10.0f, 60.0f)
+    ui_widget_group("container", 10.0f, 40.0f)
     {
         ui_push_size(ui_content(1.0f), ui_content(1.0f));
         ui_push_padding(4.0f);
@@ -1657,7 +1657,7 @@ update_function(update)
     ui_next_border(1.0f, theme->fg_color);
     ui_next_flags(UI_FLAG_DRAW_BACKGROUND);
     ui_next_padding(4.0f);
-    ui_widget_group("search-bar-container", (platform->width - search_container_width) * 0.5f, platform->height * 0.05f)
+    ui_widget_group("search-bar-container", (platform->width - search_container_width) * 0.5f, 40.0f)
     {
 
         ui_next_size(ui_content(1.0f), ui_content(1.0f));

@@ -239,6 +239,25 @@ static bool ui_rect_contains(ui_rect_t outer_rect, ui_rect_t inner_rect)
     return result;
 }
 
+static ui_rect_t ui_rect_intersect(ui_rect_t outer_rect, ui_rect_t inner_rect)
+{
+    ui_rect_t result = { 0 };
+
+    f32 left = outer_rect.x > inner_rect.x ? outer_rect.x : inner_rect.x;
+    f32 top = outer_rect.y > inner_rect.y ? outer_rect.y : inner_rect.y;
+    f32 right = (outer_rect.x + outer_rect.width < inner_rect.x + inner_rect.width ?
+                 outer_rect.x + outer_rect.width : inner_rect.x + inner_rect.width);
+    f32 bottom = (outer_rect.y + outer_rect.height < inner_rect.y + inner_rect.height ?
+                  outer_rect.y + outer_rect.height : inner_rect.y + inner_rect.height);
+
+    result.x = left;
+    result.y = top;
+    result.width = right - left;
+    result.height = bottom - top;
+
+    return result;
+}
+
 static ui_key_t ui_get_key(ui_key_t key, const char* data, u64 size)
 {
     ui_key_t new_key = { 0 };
@@ -1057,11 +1076,12 @@ static inline ui_draw_command_t* ui_push_draw_command(void)
     return draw_command;
 }
 
-static void ui_emit_draw_commands(ui_widget_t* widget)
+static void ui_emit_draw_commands(ui_widget_t* widget, ui_rect_t clip_rect)
 {
-    // TODO: We just cull the widget if it not inside of parent.
-    // Probably we need some kind of clipping here.
-    if (widget->parent && (!ui_is_flag_set(widget, UI_FLAG_FLOATING) && !ui_rect_contains(widget->parent->rect, widget->rect)))
+    ui_rect_t draw_rect = ui_is_flag_set(widget, UI_FLAG_FLOATING) ?
+        widget->rect : ui_rect_intersect(clip_rect, widget->rect);
+
+    if (draw_rect.width <= 0.0f || draw_rect.height <= 0.0f)
     {
         return;
     }
@@ -1070,58 +1090,72 @@ static void ui_emit_draw_commands(ui_widget_t* widget)
     {
         ui_draw_command_t* draw_command = ui_push_draw_command();
         draw_command->kind = UI_DRAW_RECT;
-        draw_command->x = widget->rect.x;
-        draw_command->y = widget->rect.y;
-        draw_command->width = widget->rect.width;
-        draw_command->height = widget->rect.height;
+        draw_command->x = draw_rect.x;
+        draw_command->y = draw_rect.y;
+        draw_command->width = draw_rect.width;
+        draw_command->height = draw_rect.height;
         draw_command->color = widget->color;
     }
 
     if (ui_is_flag_set(widget, UI_FLAG_DRAW_BORDER))
     {
-        ui_draw_command_t* draw_command = ui_push_draw_command();
-        draw_command->kind = UI_DRAW_BORDER;
-        draw_command->x = widget->rect.x - widget->border.thickness * 0.5f;
-        draw_command->y = widget->rect.y - widget->border.thickness * 0.5f;
-        draw_command->width = widget->rect.width + widget->border.thickness * 0.5f;
-        draw_command->height = widget->rect.height + widget->border.thickness * 0.5f;
-        draw_command->color = widget->border.color;
-        draw_command->thickness = widget->border.thickness;
+        ui_rect_t border_rect =
+        {
+            widget->rect.x - widget->border.thickness * 0.5f,
+            widget->rect.y - widget->border.thickness * 0.5f,
+            widget->rect.width + widget->border.thickness,
+            widget->rect.height + widget->border.thickness,
+        };
+
+        ui_rect_t draw_border_rect = ui_is_flag_set(widget, UI_FLAG_FLOATING) ?
+            border_rect : ui_rect_intersect(clip_rect, border_rect);
+
+        if (draw_border_rect.width > 0.0f && draw_border_rect.height > 0.0f)
+        {
+            ui_draw_command_t* draw_command = ui_push_draw_command();
+            draw_command->kind = UI_DRAW_BORDER;
+            draw_command->x = draw_border_rect.x;
+            draw_command->y = draw_border_rect.y;
+            draw_command->width = draw_border_rect.width;
+            draw_command->height = draw_border_rect.height;
+            draw_command->color = widget->border.color;
+            draw_command->thickness = widget->border.thickness;
+        }
     }
 
     if (ui_is_flag_set(widget, UI_FLAG_DRAW_CUSTOM))
     {
         ui_draw_command_t* draw_command = ui_push_draw_command();
         draw_command->kind = UI_DRAW_CUSTOM;
-        draw_command->x = widget->rect.x;
-        draw_command->y = widget->rect.y;
-        draw_command->width = widget->rect.width;
-        draw_command->height = widget->rect.height;
+        draw_command->x = draw_rect.x;
+        draw_command->y = draw_rect.y;
+        draw_command->width = draw_rect.width;
+        draw_command->height = draw_rect.height;
     }
 
     if (ui_is_flag_set(widget, UI_FLAG_DRAW_TEXT) && widget->label_length)
     {
         for (ui_text_line_t* text_line = widget->text_line; text_line; text_line = text_line->next)
         {
-            ui_rect_t inner_rect = (ui_rect_t)
+            ui_rect_t line_rect = (ui_rect_t)
             {
-                text_line->position[0],
-                text_line->position[1],
-                text_line->size[0],
-                text_line->size[1]
+                text_line->position[0], text_line->position[1],
+                text_line->size[0], text_line->size[1]
             };
+            ui_rect_t draw_line_rect = ui_is_flag_set(widget, UI_FLAG_FLOATING) ?
+                line_rect : ui_rect_intersect(clip_rect, line_rect);
 
-            if (!ui_rect_contains(widget->rect, inner_rect))
+            if (draw_line_rect.width <= 0.0f || draw_line_rect.height <= 0.0f)
             {
                 continue;
             }
 
             ui_draw_command_t* draw_command = ui_push_draw_command();
             draw_command->kind = UI_DRAW_TEXT;
-            draw_command->x = text_line->position[0];
-            draw_command->y = text_line->position[1];
-            draw_command->width = text_line->size[0];
-            draw_command->height = text_line->size[1];
+            draw_command->x = draw_line_rect.x;
+            draw_command->y = draw_line_rect.y;
+            draw_command->width = draw_line_rect.width;
+            draw_command->height = draw_line_rect.height;
             draw_command->color = widget->font_color;
             draw_command->font = widget->font;
             draw_command->text = widget->label + text_line->offset;
@@ -1130,49 +1164,54 @@ static void ui_emit_draw_commands(ui_widget_t* widget)
     }
 }
 
-static void ui_emit_subtree(ui_widget_t* root_widget)
+static void ui_emit_subtree(ui_widget_t* root_widget, ui_rect_t clip_rect)
 {
-    ui_emit_draw_commands(root_widget);
+    ui_emit_draw_commands(root_widget, clip_rect);
+
+    ui_rect_t child_clip_rect = ui_rect_intersect(clip_rect, root_widget->rect);
 
     for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
     {
-        ui_emit_subtree(child_widget);
+        ui_emit_subtree(child_widget, child_clip_rect);
     }
 }
 
-static void ui_emit_normal_pass(ui_widget_t* root_widget)
+static void ui_emit_normal_pass(ui_widget_t* root_widget, ui_rect_t clip_rect)
 {
     if (ui_is_flag_set(root_widget, UI_FLAG_FLOATING))
     {
         return;
     }
 
-    ui_emit_draw_commands(root_widget);
+    ui_emit_draw_commands(root_widget, clip_rect);
+
+    ui_rect_t child_clip_rect = ui_rect_intersect(clip_rect, root_widget->rect);
 
     for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
     {
-        ui_emit_normal_pass(child_widget);
+        ui_emit_normal_pass(child_widget, child_clip_rect);
     }
 }
 
-static void ui_emit_floating_pass(ui_widget_t* root_widget)
+static void ui_emit_floating_pass(ui_widget_t* root_widget, ui_rect_t clip_rect)
 {
     if (ui_is_flag_set(root_widget, UI_FLAG_FLOATING))
     {
-        ui_emit_subtree(root_widget);
+        ui_emit_subtree(root_widget, clip_rect);
         return;
     }
 
     for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
     {
-        ui_emit_floating_pass(child_widget);
+        ui_emit_floating_pass(child_widget, clip_rect);
     }
 }
 
 static void ui_emit_all_draw_commands(ui_widget_t* root_widget)
 {
-    ui_emit_normal_pass(root_widget);
-    ui_emit_floating_pass(root_widget);
+    ui_rect_t clip_rect = global_ui->root_widget->rect;
+    ui_emit_normal_pass(root_widget, clip_rect);
+    ui_emit_floating_pass(root_widget, clip_rect);
 }
 
 static void ui_init(memory_arena_t* memory_arena, ui_callbacks_t callbacks)

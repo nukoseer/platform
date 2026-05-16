@@ -51,18 +51,18 @@ static graphics_2d_create_font_function(gfx_2d_create_font)
 {
     graphics_2d_font_t font = { 0 };
     HRESULT result = S_OK;
-    WCHAR font_name_wide[32] = { 0 };
-    size_t length = strlen(font_name);
+    WCHAR font_name_wchar[32] = { 0 };
+    i32 font_name_length = (i32)strlen(font_name);
     
-    size_t required_wide_length = mbstowcs(0, font_name, length);
-    assert(required_wide_length < array_count(font_name_wide));
+    i32 wchar_size = MultiByteToWideChar(CP_UTF8, 0, font_name, font_name_length, NULL, 0);
+    assert(wchar_size + 1 < array_count(font_name_wchar) && "[GFX2D] Failed to convert from UTF-8 to UTF-16.");
 
-    size_t converted = mbstowcs(font_name_wide, font_name, length);
-    assert(converted == required_wide_length);
+    MultiByteToWideChar(CP_UTF8, 0, font_name, font_name_length, font_name_wchar, wchar_size);
+    font_name_wchar[wchar_size] = L'\0';
 
     IDWriteTextFormat* text_format = 0;
     f32 font_size = point_size * 96.0f / 72.0f;
-    result = IDWriteFactory_CreateTextFormat(global_d2d1.dwrite->factory, font_name_wide, 0,
+    result = IDWriteFactory_CreateTextFormat(global_d2d1.dwrite->factory, font_name_wchar, 0,
                                              DWRITE_FONT_WEIGHT_REGULAR,
                                              DWRITE_FONT_STYLE_NORMAL,
                                              DWRITE_FONT_STRETCH_NORMAL,
@@ -98,7 +98,7 @@ static graphics_2d_create_font_function(gfx_2d_create_font)
         .line_height = line_height,
     };
     
-    memcpy(gfx_2d_font->font_name, font_name, length);
+    memcpy(gfx_2d_font->font_name, font_name, font_name_length);
 
     font.platform = pack_generation_index(font_generation, font_index);
     
