@@ -486,7 +486,7 @@ static ui_widget_t* ui_widget_build_from_key(ui_key_t key)
     widget->padding = ui_top_padding();
     widget->color = ui_top_color();
     widget->border = ui_top_border_props();
-    widget->flags |= ui_top_flags();
+    widget->flags = ui_top_flags();
     widget->anchor = ui_top_anchor();
     widget->anchor_offset[UI_AXIS_X] = ui_top_anchor_offset().x;
     widget->anchor_offset[UI_AXIS_Y] = ui_top_anchor_offset().y;

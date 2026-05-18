@@ -262,6 +262,9 @@ static inline ui_alignment_t ui_align_trailing(void);
 
 static ui_widget_t* ui_widget_build_from_key(ui_key_t key);
 static ui_widget_t* ui_widget_build_from_string(const char* widget_name);
+static ui_key_t ui_get_key_from_string(ui_key_t key, const char* string);
+static ui_widget_t* ui_widget_from_key(ui_key_t key);
+static ui_signal_t ui_signal_for(ui_widget_t* widget);
 
 static ui_widget_t* ui_widget_group_begin(const char* widget_name, f32 x, f32 y);
 static inline void ui_widget_group_end(void);

@@ -1665,42 +1665,34 @@ update_function(update)
         ui_next_anchored(UI_ANCHOR_TOP_LEFT, UI_ANCHOR_CENTER_LEFT, 16.0f, 2.0f);
         ui_widget_labeled("search-header", "SEARCH");
     
-        ui_next_size(ui_percent(1.0f, 0.0f), ui_percent(1.0f, 1.0f));
+        ui_next_size(ui_percent(1.0f, 1.0f), ui_percent(1.0f, 1.0f));
         ui_next_border(1.0f, theme->fg_color);
-        ui_widget_named_row("search-bar-row")
+        ui_next_padding(4.0f);
+        ui_widget_named_column("search-bar-column")
         {
-            ui_widget_spacer(ui_pixel(8.0f, 1.0f));
-                
-            ui_push_label_alignment((ui_alignment_t){UI_ALIGNMENT_LEADING, UI_ALIGNMENT_CENTER});
-
-            if (show_icon)
+            ui_next_size(ui_percent(1.0f, 1.0f), ui_percent(1.0f, 1.0f));
+            ui_widget_named_row("search-bar-row")
             {
-                ui_next_size(ui_content(1.0f), ui_percent(1.0f, 1.0f));
+                if (show_icon)
+                {
+                    ui_next_size(ui_em(1.5f, 1.0f), ui_percent(1.0f, 1.0f));
+                    ui_next_flags(UI_FLAG_CLICKABLE);
+                    ui_next_label_alignment(ui_align_center());
+                    ui_widget_labeled("icon-field", ">");
+                }
+
+                ui_next_size(ui_percent(1.0f, 0.0f), ui_percent(1.0f, 1.0f));
                 ui_next_flags(UI_FLAG_CLICKABLE);
-                ui_widget_labeled("icon-field", ">");
+                ui_next_label_alignment((ui_alignment_t){ UI_ALIGNMENT_LEADING, UI_ALIGNMENT_CENTER });
+                ui_widget_labeled("search-bar", "...");
 
-                ui_widget_spacer(ui_pixel(8.0f, 1.0f));
+                ui_next_size(ui_em(1.5f, 1.0f), ui_percent(1.0f, 1.0f));
+                ui_next_flags(UI_FLAG_CLICKABLE);
+                ui_next_border(1.0f, theme->fg_color);
+                ui_next_show_border(ui_widget_last_signal("cancel-field").hovering);
+                ui_next_label_alignment(ui_align_center());
+                ui_widget_labeled("cancel-field", "-");
             }
-
-            ui_next_size(ui_percent(1.0f, 0.0f), ui_percent(1.0f, 1.0f));
-            ui_next_flags(UI_FLAG_CLICKABLE);
-            ui_signal_t search_bar_signal = ui_widget_labeled("search-bar", "...");
-
-            if (search_bar_signal.hovering)
-            {
-                ui_widget_spacer(ui_pixel(8.0f, 1.0f));
-                ui_next_size(ui_content(1.0f), ui_percent(1.0f, 1.0f));
-                ui_widget_labeled("signal-field", "signal");
-            }
-
-            ui_widget_spacer(ui_pixel(8.0f, 1.0f));
-
-            ui_next_size(ui_content(1.0f), ui_percent(1.0f, 1.0f));
-            ui_widget_labeled("cancel-field", "-");
-
-            ui_pop_label_alignment();
-                
-            ui_widget_spacer(ui_pixel(8.0f, 1.0f));
         }
     }
 

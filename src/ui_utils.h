@@ -58,10 +58,7 @@ static void ui_stack_push_flags(ui_flags_t flags)
     
     assert(stack->count < stack->size && "[UI] Invalid stack count.");
     
-    ui_flags_t top_flags = *(ui_flags_t*)ui_stack_top(&global_ui->stacks.flags);
-    ui_flags_t new_flags = top_flags | flags;
-    
-    memcpy(stack->data + stack->stride * stack->count, &new_flags, stack->stride);
+    memcpy(stack->data + stack->stride * stack->count, &flags, stack->stride);
     stack->count++;
 }
 
@@ -70,16 +67,15 @@ static void ui_stack_set_flags(ui_flags_t flags)
     ui_stack_t* stack = &global_ui->stacks.flags;
 
     ui_flags_t top_flags = *(ui_flags_t*)ui_stack_top(&global_ui->stacks.flags);
-    ui_flags_t new_flags = top_flags | flags;
     
     if (stack->auto_pop)
     {
-        memcpy(stack->data + stack->stride * (stack->count - 1), &new_flags, stack->stride);
+        memcpy(stack->data + stack->stride * (stack->count - 1), &flags, stack->stride);
     }
     else
     {
         assert(stack->count < stack->size && "[UI] Invalid stack count.");
-        memcpy(stack->data + stack->stride * stack->count, &new_flags, stack->stride);
+        memcpy(stack->data + stack->stride * stack->count, &flags, stack->stride);
         stack->count++;
         stack->auto_pop = true;
     }
@@ -129,8 +125,10 @@ static void ui_stack_set_flags(ui_flags_t flags)
 #define ui_top_border_props() ui_top(&global_ui->stacks.border, ui_border_t)
 #define ui_pop_border_props() ui_pop(&global_ui->stacks.border)
 
-#define ui_push_flags(value) ui_stack_push_flags(value)
-#define ui_next_flags(value) ui_stack_set_flags(value)
+#define ui_push_flags(value) ui_stack_push_flags(ui_top_flags() | (value))
+#define ui_next_flags(value) ui_stack_set_flags(ui_top_flags() | (value))
+#define ui_push_clear_flags(value) ui_stack_push_flags(ui_top_flags() & ~(value))
+#define ui_next_clear_flags(value) ui_stack_set_flags(ui_top_flags() & ~(value))
 #define ui_top_flags() ui_top(&global_ui->stacks.flags, ui_flags_t)
 #define ui_pop_flags() ui_pop(&global_ui->stacks.flags)
 
@@ -254,12 +252,19 @@ static ui_size_t ui_top_size_axis(ui_axis_t axis)
 #define ui_widget_named_column(name) defer_loop(ui_widget_named_column_begin(name), ui_widget_named_column_end())
 #define ui_widget_center() defer_loop(ui_widget_spacer(ui_percent(1.0f, 0.0f)), ui_widget_spacer(ui_percent(1.0f, 0.0f)))
 
-#define ui_next_border(thickness, color) ui_next_flags(ui_top_flags() | UI_FLAG_DRAW_BORDER); ui_next_border_props((thickness), (color))
-#define ui_next_show_border(thickness, color) ui_next_flags(ui_top_flags() | UI_FLAG_DRAW_BORDER)
-#define ui_next_hide_border(thickness, color) ui_next_flags(ui_top_flags() & ~UI_FLAG_DRAW_BORDER)
-#define ui_next_anchored(parent_anchor, self_anchor, x, y) ui_next_flags(UI_FLAG_FLOATING); ui_next_anchor(parent_anchor, self_anchor); ui_next_anchor_offset(x, y)
-#define ui_push_anchored(parent_anchor, self_anchor, x, y) ui_push_flags(UI_FLAG_FLOATING); ui_push_anchor(parent_anchor, self_anchor); ui_push_anchor_offset(x, y)
-#define ui_pop_anchored() ui_pop_flags(); ui_pop_anchor(); ui_pop_anchor_offset()
+#define ui_next_border(thickness, color) do { ui_next_flags(UI_FLAG_DRAW_BORDER); ui_next_border_props((thickness), (color)); } while (0)
+#define ui_next_show_border(value) (value) ? ui_next_flags(UI_FLAG_DRAW_BORDER) : ui_next_clear_flags(UI_FLAG_DRAW_BORDER)
+#define ui_next_anchored(parent_anchor, self_anchor, x, y) do { ui_next_flags(UI_FLAG_FLOATING); ui_next_anchor(parent_anchor, self_anchor); ui_next_anchor_offset(x, y); } while (0) 
+#define ui_push_anchored(parent_anchor, self_anchor, x, y) do { ui_push_flags(UI_FLAG_FLOATING); ui_push_anchor(parent_anchor, self_anchor); ui_push_anchor_offset(x, y); } while (0)
+#define ui_pop_anchored() do { ui_pop_flags(); ui_pop_anchor(); ui_pop_anchor_offset(); } while (0)
+
+static ui_signal_t ui_widget_last_signal(const char* widget_name)
+{
+    ui_widget_t* widget = ui_widget_from_key(ui_get_key_from_string(ui_top_parent()->key, widget_name));
+    ui_signal_t signal = widget ? ui_signal_for(widget) : (ui_signal_t){ 0 };
+
+    return signal;
+}
 
 static ui_widget_t* ui_widget_spacer(ui_size_t size)
 {
