@@ -1187,26 +1187,6 @@ static void earth_rotation(const input_t* input, f32 delta_time)
     }    
 }
 
-static ui_measure_text_width_function(measure_text_width)
-{
-    graphics_2d_font_t graphics_font = *(graphics_2d_font_t*)font;
-    graphics_t* graphics = (graphics_t*)parameter;
-
-    f32 text_width = graphics->measure_text_width(graphics_font, text, text_length);
-
-    return text_width;
-}
-
-static ui_get_line_height_function(get_line_height)
-{
-    graphics_2d_font_t graphics_font = *(graphics_2d_font_t*)font;
-    graphics_t* graphics = (graphics_t*)parameter;
-
-    f32 line_height = graphics->get_line_height(graphics_font);
-
-    return line_height;
-}
-
 init_function(init)
 {
     memory_t* memory = platform->memory;
@@ -1225,12 +1205,7 @@ init_function(init)
     init_shape_ui(graphics, &game->shape_info_ui, &game->country_data);
     init_skybox(memory_arena, graphics, io, thread_pool, &game->skybox_info);
     init_theme(game);
-    ui_init(memory_arena, (ui_callbacks_t)
-    {
-        .measure_text_width = measure_text_width,
-        .get_line_height = get_line_height,
-        .parameter = platform->graphics,
-    });
+    ui_init(memory_arena);
 
     game->shape_value = 1.0f;
     game->shape_direction = 1.0f;
@@ -1435,9 +1410,9 @@ update_function(update)
     game_t* game = (game_t*)memory->permanent;
     camera_t* camera = &game->camera;
 
-    if (input->mouse_position.z != 0.0f)
+    if (input->wheel != 0.0f)
     {
-        camera->position.z += 3.0f * platform->delta_time * -input->mouse_position.z;
+        camera->position.z += 3.0f * platform->delta_time * -input->wheel;
     }
 
     update_camera(camera);
@@ -1486,21 +1461,11 @@ update_function(update)
     theme_t* theme = get_current_theme(game);
     
 #if FONT_ENABLE
-    ui_input_t ui_input =
-    {
-        .mouse_position = input->mouse_position.xy,
-        .mouse_buttons =
-        {
-            [0] = input_is_key_down(input, KEY_MOUSE_LEFT),
-            [1] = input_is_key_down(input, KEY_MOUSE_MIDDLE),
-            [2] = input_is_key_down(input, KEY_MOUSE_RIGHT),
-        },
-    };
-    
-    ui_begin(ui_input, (f32)platform->width, (f32)platform->height);
+    ui_begin(graphics, input, (f32)platform->width, (f32)platform->height);
     ui_push_color(theme->bg_color);
     ui_push_font(&game->font_12, graphics->get_font_pixel_size(game->font_12));
     ui_push_font_color(theme->font_color);
+    ui_push_flags(UI_FLAG_WRAP_TEXT);
 
     ui_next_size(ui_pixel(430.0f, 1.0f), ui_children(1.0f));
     ui_next_padding(4.0f); ui_next_axis(ui_axis_y());
@@ -1511,16 +1476,16 @@ update_function(update)
         ui_push_size(ui_content(1.0f), ui_content(1.0f));
         ui_push_padding(4.0f);
         ui_push_flags(UI_FLAG_DRAW_BACKGROUND);
-        ui_push_label_alignment(ui_align_center());
+        ui_push_text_alignment(ui_align_center());
 
         ui_next_anchored(UI_ANCHOR_TOP_LEFT, UI_ANCHOR_CENTER_LEFT, 16.0f, 2.0f);
-        ui_widget_labeled("country-data", "COUNTRY DATA");
+        ui_widget_text("country-data", "COUNTRY DATA");
 
         ui_next_anchored(UI_ANCHOR_TOP_RIGHT, UI_ANCHOR_CENTER_RIGHT, -16.0f, 2.0f);
         ui_next_border(1.0f, theme->fg_color);
-        ui_widget_labeled("active", "[ACTIVE]");
+        ui_widget_text("active", "[ACTIVE]");
 
-        ui_pop_label_alignment();
+        ui_pop_text_alignment();
         ui_pop_flags();
         ui_pop_padding();
         ui_pop_size();
@@ -1539,12 +1504,12 @@ update_function(update)
                 ui_widget_named_column("query-column")
                 {
                     ui_next_size(ui_percent(1.0f, 1.0f), ui_content(1.0f));
-                    ui_next_label_alignment(ui_align_leading());
-                    ui_widget_labeled("query", "> QUERY: country.geo");
+                    ui_next_text_alignment(ui_align_leading());
+                    ui_widget_text("query", "> QUERY: country.geo");
                     
                     ui_next_size(ui_percent(1.0f, 1.0f), ui_content(1.0f));
-                    ui_next_label_alignment(ui_align_leading());
-                    ui_widget_labeled("region-id", "> REGION ID: 0xA4F2");
+                    ui_next_text_alignment(ui_align_leading());
+                    ui_widget_text("region-id", "> REGION ID: 0xA4F2");
                 }
             }
 
@@ -1580,8 +1545,8 @@ update_function(update)
                             country_name_t country_name = country_get_name(game->country_index);
                         
                             ui_next_size(ui_percent(1.0f, 1.0f), ui_content(1.0f));
-                            ui_next_label_alignment(ui_align_leading());
-                            ui_widget_labeled("value", country_name.name ? country_name.name : "Not Selected");
+                            ui_next_text_alignment(ui_align_leading());
+                            ui_widget_text("value", country_name.name ? country_name.name : "Not Selected");
 
                             ui_next_size(ui_percent(1.0f, 1.0f), ui_pixel(1.0f, 1.0f));
                             ui_next_color(theme->font_color); ui_next_flags(UI_FLAG_DRAW_BACKGROUND);
@@ -1590,16 +1555,16 @@ update_function(update)
                             ui_widget_spacer(ui_pixel(8.0f, 1.0f));
 
                             ui_next_size(ui_percent(1.0f, 1.0f), ui_content(1.0f));
-                            ui_next_label_alignment(ui_align_leading());
-                            ui_widget_labeled("pop", "POP:  67.4M");
+                            ui_next_text_alignment(ui_align_leading());
+                            ui_widget_text("pop", "POP:  67.4M");
 
                             ui_next_size(ui_percent(1.0f, 1.0f), ui_content(1.0f));
-                            ui_next_label_alignment(ui_align_leading());
-                            ui_widget_labeled("area", "AREA: 643K km2");
+                            ui_next_text_alignment(ui_align_leading());
+                            ui_widget_text("area", "AREA: 643K km2");
 
                             ui_next_size(ui_percent(1.0f, 1.0f), ui_content(1.0f));
-                            ui_next_label_alignment(ui_align_leading());
-                            ui_widget_labeled("gov", "GOV: REPUBLIC");
+                            ui_next_text_alignment(ui_align_leading());
+                            ui_widget_text("gov", "GOV: REPUBLIC");
                         }
                     }
                 }
@@ -1614,8 +1579,8 @@ update_function(update)
                 ui_widget_named_row("status-row")
                 {
                     ui_next_size(ui_content(1.0f), ui_percent(1.0f, 1.0f));
-                    ui_next_label_alignment(ui_align_center());
-                    ui_widget_labeled("status", "STATUS:");
+                    ui_next_text_alignment(ui_align_center());
+                    ui_widget_text("status", "STATUS:");
 
                     ui_widget_spacer(ui_pixel(8.0f, 1.0f));
 
@@ -1636,8 +1601,8 @@ update_function(update)
                     ui_widget_spacer(ui_pixel(8.0f, 1.0f));
 
                     ui_next_size(ui_content(1.0f), ui_percent(1.0f, 1.0f));
-                    ui_next_label_alignment(ui_align_center());
-                    ui_widget_labeled("percent", "80%");
+                    ui_next_text_alignment(ui_align_center());
+                    ui_widget_text("percent", "80%");
                 }
             }
 
@@ -1646,13 +1611,13 @@ update_function(update)
 
         ui_next_size(ui_content(1.0f), ui_content(1.0f)); ui_next_padding(4.0f);
         ui_next_anchored(UI_ANCHOR_BOTTOM_RIGHT, UI_ANCHOR_CENTER_RIGHT, -16.0f, -2.0f);
-        ui_next_flags(UI_FLAG_DRAW_BACKGROUND); ui_next_label_alignment(ui_align_center());
-        ui_widget_labeled("number-code", "0x7F.A1.42");
+        ui_next_flags(UI_FLAG_DRAW_BACKGROUND); ui_next_text_alignment(ui_align_center());
+        ui_widget_text("number-code", "0x7F.A1.42");
     }
 
     f32 search_container_width = platform->width * 0.25f;
     bool show_icon = search_container_width >= 200.0f;
-    ui_next_size(ui_pixel(search_container_width, 1.0f), ui_em(3.0f, 1.0f));
+    ui_next_size(ui_pixel(search_container_width, 1.0f), ui_em(3.5f, 1.0f));
     ui_next_axis(ui_axis_x());
     ui_next_border(1.0f, theme->fg_color);
     ui_next_flags(UI_FLAG_DRAW_BACKGROUND);
@@ -1663,7 +1628,7 @@ update_function(update)
         ui_next_padding(4.0f);
         ui_next_flags(UI_FLAG_DRAW_BACKGROUND);
         ui_next_anchored(UI_ANCHOR_TOP_LEFT, UI_ANCHOR_CENTER_LEFT, 16.0f, 2.0f);
-        ui_widget_labeled("search-header", "SEARCH");
+        ui_widget_text("search-header", "SEARCH");
     
         ui_next_size(ui_percent(1.0f, 1.0f), ui_percent(1.0f, 1.0f));
         ui_next_border(1.0f, theme->fg_color);
@@ -1677,25 +1642,34 @@ update_function(update)
                 {
                     ui_next_size(ui_em(1.5f, 1.0f), ui_percent(1.0f, 1.0f));
                     ui_next_flags(UI_FLAG_CLICKABLE);
-                    ui_next_label_alignment(ui_align_center());
-                    ui_widget_labeled("icon-field", ">");
+                    ui_next_text_alignment(ui_align_center());
+                    ui_widget_text("icon-field", ">");
                 }
 
                 ui_next_size(ui_percent(1.0f, 0.0f), ui_percent(1.0f, 1.0f));
                 ui_next_flags(UI_FLAG_CLICKABLE);
-                ui_next_label_alignment((ui_alignment_t){ UI_ALIGNMENT_LEADING, UI_ALIGNMENT_CENTER });
-                ui_widget_labeled("search-bar", "...");
-
+                ui_next_clear_flags(UI_FLAG_WRAP_TEXT);
+                ui_next_text_alignment((ui_alignment_t){ UI_ALIGNMENT_LEADING, UI_ALIGNMENT_CENTER });
+                static ui_text_edit_t search_text_edit = { 0 };
+                ui_widget_text_field(input, "search-bar", &search_text_edit);
+                
                 ui_next_size(ui_em(1.5f, 1.0f), ui_percent(1.0f, 1.0f));
                 ui_next_flags(UI_FLAG_CLICKABLE);
                 ui_next_border(1.0f, theme->fg_color);
                 ui_next_show_border(ui_widget_last_signal("cancel-field").hovering);
-                ui_next_label_alignment(ui_align_center());
-                ui_widget_labeled("cancel-field", "-");
+                ui_next_text_alignment(ui_align_center());
+                ui_widget_t* cancel_widget = ui_widget_text("cancel-field", "-");
+                if (ui_signal_for(cancel_widget).clicked)
+                {
+                    search_text_edit.text[0] = '\0';
+                    search_text_edit.cursor = 0;
+                    search_text_edit.length = 0;
+                }
             }
         }
     }
 
+    ui_pop_flags();
     ui_pop_font_color();
     ui_pop_font();
     ui_pop_color();

@@ -152,10 +152,10 @@ static void ui_stack_set_flags(ui_flags_t flags)
 #define ui_top_font_color() ui_top(&global_ui->stacks.font_color, vec4)
 #define ui_pop_font_color() ui_pop(&global_ui->stacks.font_color)
 
-#define ui_push_label_alignment(...) ui_push(&global_ui->stacks.label_alignment, ui_alignment_t, __VA_ARGS__)
-#define ui_next_label_alignment(...) ui_next(&global_ui->stacks.label_alignment, ui_alignment_t, __VA_ARGS__)
-#define ui_top_label_alignment() ui_top(&global_ui->stacks.label_alignment, ui_alignment_t)
-#define ui_pop_label_alignment() ui_pop(&global_ui->stacks.label_alignment)
+#define ui_push_text_alignment(...) ui_push(&global_ui->stacks.text_alignment, ui_alignment_t, __VA_ARGS__)
+#define ui_next_text_alignment(...) ui_next(&global_ui->stacks.text_alignment, ui_alignment_t, __VA_ARGS__)
+#define ui_top_text_alignment() ui_top(&global_ui->stacks.text_alignment, ui_alignment_t)
+#define ui_pop_text_alignment() ui_pop(&global_ui->stacks.text_alignment)
 
 static void ui_push_size_axis(ui_axis_t axis, ui_size_t size)
 {
@@ -337,6 +337,162 @@ static ui_widget_t* ui_widget_column_begin(void)
 static void ui_widget_column_end(void)
 {
     ui_widget_named_column_end();
+}
+
+static void ui_text_edit_insert(ui_text_edit_t* text_edit, key_t key)
+{
+    if (text_edit->length >= array_count(text_edit->text))
+    {
+        return;
+    }
+
+    memmove(text_edit->text + text_edit->cursor + 1, text_edit->text + text_edit->cursor, text_edit->length - text_edit->cursor);
+    text_edit->text[text_edit->cursor] = (char)key;
+    text_edit->cursor++;
+    text_edit->length++;
+    text_edit->text[text_edit->length] = '\0';
+}
+
+static void ui_text_edit_backspace(ui_text_edit_t* text_edit)
+{
+    if (text_edit->cursor == 0)
+    {
+        return;
+    }
+
+    memmove(text_edit->text + text_edit->cursor - 1, text_edit->text + text_edit->cursor, text_edit->length - text_edit->cursor);
+    text_edit->cursor--;
+    text_edit->length--;
+    text_edit->text[text_edit->length] = '\0';
+}
+
+static void ui_text_edit_backspace_all(ui_text_edit_t* text_edit)
+{
+    if (text_edit->cursor == 0)
+    {
+        return;
+    }
+
+    memmove(text_edit->text, text_edit->text + text_edit->cursor, text_edit->length - text_edit->cursor);
+    text_edit->length = text_edit->length - text_edit->cursor;
+    text_edit->cursor = 0;
+    text_edit->text[text_edit->length] = '\0';
+}
+
+static void ui_text_edit_delete(ui_text_edit_t* text_edit)
+{
+    if (text_edit->cursor == text_edit->length)
+    {
+        return;
+    }
+
+    memmove(text_edit->text + text_edit->cursor, text_edit->text + text_edit->cursor + 1, text_edit->length - text_edit->cursor);
+    text_edit->length--;
+    text_edit->text[text_edit->length] = '\0';
+}
+
+static void ui_text_edit_delete_all(ui_text_edit_t* text_edit)
+{
+    if (text_edit->cursor == text_edit->length)
+    {
+        return;
+    }
+
+    text_edit->length = text_edit->cursor;
+    text_edit->text[text_edit->cursor] = '\0';
+}
+
+static ui_signal_t ui_widget_text_field(input_t* input, const char* name, ui_text_edit_t* text_edit)
+{
+    ui_widget_t* widget = ui_widget_text_edit(name, 0);
+    ui_signal_t signal = ui_signal_for(widget);
+
+    if (signal.clicked)
+    {
+        ui_set_focus(widget->key);
+    }
+
+    if (ui_is_focused(widget->key))
+    {
+        for (u32 i = 0; i < input->event_count; ++i)
+        {
+            input_event_t* event = input->events + i;
+
+            if (event->consumed)
+            {
+                continue;
+            }
+
+            switch (event->kind)
+            {
+                case INPUT_EVENT_TEXT:
+                {
+                    if (event->value >= 32 && event->value <= 126)
+                    {
+                        ui_text_edit_insert(text_edit, event->value);
+                        event->consumed = true;
+                    }
+                } break;
+
+                case INPUT_EVENT_KEY_PRESS:
+                {
+                    if (event->value == KEY_BACKSPACE ||
+                        event->value == KEY_H && input->modifiers & KEY_MODIFIER_CTRL)
+                    {
+                        ui_text_edit_backspace(text_edit);
+                        event->consumed = true;
+                    }
+
+                    if (event->value == KEY_H && input->modifiers & KEY_MODIFIER_ALT)
+                    {
+                        ui_text_edit_backspace_all(text_edit);
+                        event->consumed = true;
+                    }
+                                
+                    if (event->value == KEY_LEFT)
+                    {
+                        text_edit->cursor = (i32)max(0.0f, text_edit->cursor - 1);
+                        event->consumed = true;
+                    }
+
+                    if (event->value == KEY_RIGHT)
+                    {
+                        text_edit->cursor = (i32)min(text_edit->length, text_edit->cursor + 1);
+                        event->consumed = true;
+                    }
+
+                    if (event->value == KEY_E && input->modifiers & KEY_MODIFIER_CTRL)
+                    {
+                        text_edit->cursor = text_edit->length;
+                        event->consumed = true;
+                    }
+
+                    if (event->value == KEY_A && input->modifiers & KEY_MODIFIER_CTRL)
+                    {
+                        text_edit->cursor = 0;
+                        event->consumed = true;
+                    }
+
+                    if (event->value == KEY_D && input->modifiers & KEY_MODIFIER_CTRL)
+                    {
+                        ui_text_edit_delete(text_edit);
+                        event->consumed = true;
+                    }
+
+                    if (event->value == KEY_D && input->modifiers & KEY_MODIFIER_ALT)
+                    {
+                        ui_text_edit_delete_all(text_edit);
+                        event->consumed = true;
+                    }
+                    
+                } break;
+            }
+        }
+    }
+
+    ui_equip_text_edit(widget, text_edit);
+
+    return signal;
 }
 
 #define H_UI_UTILS_H

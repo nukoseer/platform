@@ -511,6 +511,7 @@ static bool process_thread_messages(window_t* window, input_t* input)
                         key_map[vk_f] = (key_t)key;
                     }
 
+                    key_map[VK_BACK] = KEY_BACKSPACE;
                     key_map[VK_TAB] = KEY_TAB;
                     key_map[VK_SPACE] = KEY_SPACE;
                     key_map[VK_RETURN] = KEY_ENTER;
@@ -574,7 +575,8 @@ static bool process_thread_messages(window_t* window, input_t* input)
     GetCursorPos(&mouse_point);
     ScreenToClient(window->hwnd, &mouse_point);
 
-    input->mouse_position = v3((f32)mouse_point.x, (f32)mouse_point.y, mouse_z);
+    input->mouse_position = v2((f32)mouse_point.x, (f32)mouse_point.y);
+    input->wheel = mouse_z;
     input->mouse_delta = v2((f32)mouse_point.x - (f32)prev_mouse_point.x, (f32)mouse_point.y - prev_mouse_point.y);
 
     if (input->mouse_position.x < 0.0f || input->mouse_position.x > (f32)window->width ||

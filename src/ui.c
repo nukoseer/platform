@@ -27,11 +27,15 @@ typedef struct ui_stacks_t
     
     ui_stack_t font;
     ui_stack_t font_color;
-    ui_stack_t label_alignment;
+    ui_stack_t text_alignment;
 } ui_stacks_t;
 
 typedef struct ui_t
 {
+    // NOTE: These are from platform layer.
+    graphics_t* graphics;
+    input_t* input;
+    
     memory_arena_t* arena;
     memory_arena_t* frame_arena;
     ui_widget_t* root_widget;
@@ -41,16 +45,12 @@ typedef struct ui_t
     ui_draw_command_chunk_t* draw_commands_first;
     ui_draw_command_chunk_t* draw_commands_last;
     u32 draw_command_count;
-    ui_callbacks_t callbacks;
 
     ui_key_t hot_key;
     ui_key_t active_key;
     ui_key_t clicked_key;
     ui_key_t released_key;
-    
-    vec2 mouse_position;
-    bool mouse_down[3];
-    bool mouse_down_prev[3];
+    ui_key_t focus_key;
 } ui_t;
 
 static ui_t* global_ui;
@@ -211,14 +211,14 @@ static inline ui_alignment_t ui_align_trailing(void)
     return widget_alignment;
 }
 
-static inline f32 ui_label_content_position(ui_widget_t* widget, ui_axis_t axis)
+static inline f32 ui_text_content_position(ui_widget_t* widget, ui_axis_t axis)
 {
     f32 content_position = widget->rect.xy[axis] + widget->padding;
 
     return content_position;
 }
 
-static inline f32 ui_label_content_size(ui_widget_t* widget, ui_axis_t axis)
+static inline f32 ui_text_content_size(ui_widget_t* widget, ui_axis_t axis)
 {
     f32 content_size = widget->rect.size[axis] - widget->padding * 2.0f;
 
@@ -463,7 +463,7 @@ static ui_widget_t* ui_widget_build_from_key(ui_key_t key)
     widget->parent = widget->child_list.first = widget->child_list.last = widget->child_next = widget->child_prev = 0;
     widget->key = key;
     widget->position = (ui_position_t){ 0 };
-    widget->label_length = 0;
+    widget->text_length = 0;
     widget->text_line = 0;
     widget->fixed_size[UI_AXIS_X] = 0.0f;
     widget->fixed_size[UI_AXIS_Y] = 0.0f;
@@ -517,7 +517,29 @@ static ui_widget_t* ui_widget_build_from_string(const char* widget_name)
     return widget;
 }
 
-static ui_signal_t ui_signal_for(ui_widget_t* widget)
+static inline void ui_set_focus(ui_key_t key)
+{
+    global_ui->focus_key = key;
+}
+
+static inline void ui_clear_focus(ui_key_t key)
+{
+    global_ui->focus_key = (ui_key_t){ 0 };
+}
+
+static inline bool ui_is_focused(ui_key_t key)
+{
+    bool result = false;
+
+    if (ui_keys_equal(global_ui->focus_key, key))
+    {
+        result = true;
+    }
+
+    return result;
+}
+
+static inline ui_signal_t ui_signal_for(ui_widget_t* widget)
 {
     ui_signal_t signal =
     {
@@ -564,48 +586,62 @@ static ui_widget_t* ui_widget(const char* widget_name)
     return widget;
 }
 
-static void ui_set_label(ui_widget_t* widget, const char* label, u32 label_length)
+static void ui_equip_text(ui_widget_t* widget, const char* text, u32 text_length)
 {
-    assert(label && label_length < array_count(widget->label) && "[UI] Invalid label.");
+    if (text && text_length)
+    {
+        widget->text = ma_push_size(global_ui->frame_arena, text_length);
 
-    memcpy(widget->label, label, label_length);
-    widget->label[label_length] = '\0';
-    widget->label_length = label_length;
+        memcpy(widget->text, text, text_length);
+        widget->text[text_length] = '\0';
+        widget->text_length = text_length;
 
-    widget->font = ui_top_font().font;
-    widget->font_color = ui_top_font_color();
-    widget->label_alignment = ui_top_label_alignment();
-    
-    ui_measure_text_width_f* measure_text_width = global_ui->callbacks.measure_text_width;
-    ui_get_line_height_f* get_line_height = global_ui->callbacks.get_line_height;
-    void* parameter = global_ui->callbacks.parameter;
-        
-    widget->label_size[UI_AXIS_X] = measure_text_width(widget->font, widget->label, widget->label_length, parameter);
-    widget->label_size[UI_AXIS_Y] = get_line_height(widget->font, parameter);
+        widget->font = ui_top_font().font;
+        widget->font_color = ui_top_font_color();
+        widget->text_alignment = ui_top_text_alignment();
+
+        graphics_2d_font_t font = *(graphics_2d_font_t*)widget->font;
+        widget->text_size[UI_AXIS_X] = global_ui->graphics->measure_text_width(font, widget->text, widget->text_length);
+        widget->text_size[UI_AXIS_Y] = global_ui->graphics->get_line_height(font);
+    }
 
     ui_stack_auto_pop(&global_ui->stacks.font);
     ui_stack_auto_pop(&global_ui->stacks.font_color);
-    ui_stack_auto_pop(&global_ui->stacks.label_alignment);
+    ui_stack_auto_pop(&global_ui->stacks.text_alignment);
 }
 
-static ui_signal_t ui_widget_labeled(const char* widget_name, const char* label)
+static void ui_equip_text_edit(ui_widget_t* widget, ui_text_edit_t* text_edit)
+{
+    if (text_edit)
+    {
+        ui_equip_text(widget, text_edit->text, text_edit->length);
+        widget->text_edit = text_edit;
+    }
+}
+
+static ui_widget_t* ui_widget_text(const char* widget_name, const char* text)
 {
     ui_next_flags(UI_FLAG_DRAW_TEXT);
     ui_widget_t* widget = ui_widget_build_from_string(widget_name);
-    assert(label && "[UI] Invalid label.");
-    ui_set_label(widget, label, (u32)strlen(label));
+    ui_equip_text(widget, text, (u32)strlen(text));
 
-    ui_signal_t signal = ui_signal_for(widget);
+    return widget;
+}
 
-    return signal;
+static ui_widget_t* ui_widget_text_edit(const char* widget_name, ui_text_edit_t* text_edit)
+{
+    ui_next_flags(UI_FLAG_DRAW_TEXT_EDIT);
+    ui_widget_t* widget = ui_widget_build_from_string(widget_name);
+    ui_equip_text_edit(widget, text_edit);
+
+    return widget;
 }
 
 static void ui_resolve_text_lines(ui_widget_t* root_widget, ui_axis_t axis)
 {
-    if (root_widget->label_length)
+    if (root_widget->text_length)
     {
-        ui_measure_text_width_f* measure_text_width = global_ui->callbacks.measure_text_width;
-        void* parameter = global_ui->callbacks.parameter;
+        graphics_2d_font_t font = *(graphics_2d_font_t*)root_widget->font;
         f32 wrap_width = root_widget->fixed_size[UI_AXIS_X] - root_widget->padding * 2.0f;
 
         if (wrap_width < 0.0f)
@@ -613,89 +649,143 @@ static void ui_resolve_text_lines(ui_widget_t* root_widget, ui_axis_t axis)
             wrap_width = 0.0f;
         }
 
-        i32 start_offset = 0;
-        i32 end_offset = root_widget->label_length;
-        ui_text_line_t* tail_text_line = 0;
-            
-        while (start_offset < end_offset)
+        if (root_widget->text_edit)
         {
-            i32 fits_end = start_offset;
-            i32 space = string_find_leading_char(root_widget->label, start_offset, end_offset - start_offset, ' ');
-            i32 word_end = space == -1 ? end_offset : space + 1;
+            i32 start_offset = 0;
+            i32 end_offset = root_widget->text_length;
+            i32 max_end_offset = 0;
+            f32 max_width = 0.0f;
 
-            while (word_end != -1 && word_end <= end_offset)
+            while (start_offset < end_offset)
             {
-                f32 width = measure_text_width(root_widget->font,
-                                               root_widget->label + start_offset, word_end - start_offset,
-                                               parameter);
-
-                if (width > wrap_width)
+                f32 width = global_ui->graphics->measure_text_width(font, root_widget->text + start_offset, end_offset - start_offset);
+                
+                if (width < wrap_width)
                 {
+                    max_end_offset = end_offset;
                     break;
                 }
-
-                fits_end = word_end;
-
-                if (word_end == end_offset)
-                {
-                    break;
-                }
-
-                space = string_find_leading_char(root_widget->label, word_end, end_offset - word_end, ' ');
-                word_end = space == -1 ? end_offset : space + 1;
+                
+                --end_offset;
             }
-
-            if (fits_end == start_offset)
+            
+            ui_text_line_t* text_line = ma_push_struct_zero(global_ui->frame_arena, ui_text_line_t);
+            text_line->offset = 0;
+            text_line->length = root_widget->text_length;
+            text_line->size[UI_AXIS_X] = global_ui->graphics->measure_text_width(font, root_widget->text, root_widget->text_length);
+            text_line->size[UI_AXIS_Y] = root_widget->text_size[UI_AXIS_Y];
+            text_line->max_width = wrap_width;
+            text_line->max_end_offset = max_end_offset;
+            root_widget->text_line = text_line;
+        }
+        else
+        {
+            if (ui_is_flag_set(root_widget, UI_FLAG_WRAP_TEXT))
             {
-                for (i32 i = start_offset + 1; i <= end_offset; ++i)
+                i32 start_offset = 0;
+                i32 end_offset = root_widget->text_length;
+                ui_text_line_t* tail_text_line = 0;
+            
+                while (start_offset < end_offset)
                 {
-                    if (measure_text_width(root_widget->font,
-                                           root_widget->label + start_offset, i - start_offset,
-                                           parameter) > wrap_width)
+                    i32 fits_end = start_offset;
+                    i32 space = string_find_leading_char(root_widget->text, start_offset, end_offset - start_offset, ' ');
+                    i32 word_end = space == -1 ? end_offset : space + 1;
+
+                    while (word_end != -1 && word_end <= end_offset)
                     {
-                        fits_end = max(i - 1, start_offset + 1);
+                        f32 width = global_ui->graphics->measure_text_width(font, root_widget->text + start_offset, word_end - start_offset);
+
+                        if (width > wrap_width)
+                        {
+                            break;
+                        }
+
+                        fits_end = word_end;
+
+                        if (word_end == end_offset)
+                        {
+                            break;
+                        }
+
+                        space = string_find_leading_char(root_widget->text, word_end, end_offset - word_end, ' ');
+                        word_end = space == -1 ? end_offset : space + 1;
+                    }
+
+                    if (fits_end == start_offset)
+                    {
+                        for (i32 i = start_offset + 1; i <= end_offset; ++i)
+                        {
+                            if (global_ui->graphics->measure_text_width(font, root_widget->text + start_offset, i - start_offset) > wrap_width)
+                            {
+                                fits_end = max(i - 1, start_offset + 1);
+                                break;
+                            }
+
+                            fits_end = i;
+                        }
                         break;
                     }
 
-                    fits_end = i;
-                }
-                break;
-            }
-
-            //NOTE: Remove leading spaces from the line.
-            while (start_offset < fits_end && root_widget->label[start_offset] == ' ')
-            {
-                ++start_offset;
-            }
+                    //NOTE: Remove leading spaces from the line.
+                    while (start_offset < fits_end && root_widget->text[start_offset] == ' ')
+                    {
+                        ++start_offset;
+                    }
                 
-            // NOTE: Remove trailing spaces from the line.
-            i32 fits_end_wo_trailing_spaces = fits_end;
-            while (fits_end_wo_trailing_spaces > start_offset && root_widget->label[fits_end_wo_trailing_spaces - 1] == ' ')
-            {
-                --fits_end_wo_trailing_spaces;
-            }
+                    // NOTE: Remove trailing spaces from the line.
+                    i32 fits_end_wo_trailing_spaces = fits_end;
+                    while (fits_end_wo_trailing_spaces > start_offset && root_widget->text[fits_end_wo_trailing_spaces - 1] == ' ')
+                    {
+                        --fits_end_wo_trailing_spaces;
+                    }
 
-            ui_text_line_t* text_line = ma_push_struct_zero(global_ui->frame_arena, ui_text_line_t);
-            text_line->offset = start_offset;
-            text_line->length = fits_end_wo_trailing_spaces - start_offset;
-            text_line->size[UI_AXIS_X] = measure_text_width(root_widget->font,
-                                                            root_widget->label + start_offset,
-                                                            fits_end_wo_trailing_spaces - start_offset,
-                                                            parameter);
-            text_line->size[UI_AXIS_Y] = root_widget->label_size[UI_AXIS_Y];
+                    ui_text_line_t* text_line = ma_push_struct_zero(global_ui->frame_arena, ui_text_line_t);
+                    text_line->offset = start_offset;
+                    text_line->length = fits_end_wo_trailing_spaces - start_offset;
+                    text_line->size[UI_AXIS_X] = global_ui->graphics->measure_text_width(font, root_widget->text + start_offset,
+                                                                                         fits_end_wo_trailing_spaces - start_offset);
+                    text_line->size[UI_AXIS_Y] = root_widget->text_size[UI_AXIS_Y];
 
-            if (!root_widget->text_line)
-            {
-                root_widget->text_line = text_line;
+                    if (!root_widget->text_line)
+                    {
+                        root_widget->text_line = text_line;
+                    }
+                    else
+                    {
+                        tail_text_line->next = text_line;
+                        text_line->prev = tail_text_line;
+                    }
+                    tail_text_line = text_line;
+
+                    start_offset = fits_end;
+                }
             }
             else
             {
-                tail_text_line->next = text_line;
-                text_line->prev = tail_text_line;
-            }
-            tail_text_line = text_line;
+                i32 start_offset = 0;
+                i32 end_offset = root_widget->text_length;
 
-            start_offset = fits_end;
+                while (start_offset < end_offset)
+                {
+                    f32 width = global_ui->graphics->measure_text_width(font,root_widget->text + start_offset, end_offset - start_offset);
+                
+                    if (width < wrap_width)
+                    {
+                        break;
+                    }
+                
+                    --end_offset;
+                }
+
+                ui_text_line_t* text_line = ma_push_struct_zero(global_ui->frame_arena, ui_text_line_t);
+                text_line->offset = start_offset;
+                text_line->length = end_offset - start_offset;
+                text_line->size[UI_AXIS_X] = global_ui->graphics->measure_text_width(font, root_widget->text + start_offset,
+                                                                                     end_offset - start_offset);
+                text_line->size[UI_AXIS_Y] = root_widget->text_size[UI_AXIS_Y];
+                root_widget->text_line = text_line;
+            }
         }
     }
 
@@ -708,10 +798,10 @@ static void ui_resolve_text_lines(ui_widget_t* root_widget, ui_axis_t axis)
 static inline f32 ui_resolve_text_line_alignment(ui_widget_t* widget, ui_text_line_t* text_line, ui_axis_t axis)
 {
     f32 position = 0.0f;
-    f32 content_position = ui_label_content_position(widget, axis);
-    f32 content_size = ui_label_content_size(widget, axis);
+    f32 content_position = ui_text_content_position(widget, axis);
+    f32 content_size = ui_text_content_size(widget, axis);
         
-    switch (widget->label_alignment.value[axis])
+    switch (widget->text_alignment.value[axis])
     {
         case UI_ALIGNMENT_LEADING:
         {
@@ -730,7 +820,7 @@ static inline f32 ui_resolve_text_line_alignment(ui_widget_t* widget, ui_text_li
 
         default:
         {
-            assert(!"[UI] Invalid label alignment.");
+            assert(!"[UI] Invalid text alignment.");
         } break;
     }
 
@@ -742,9 +832,9 @@ static inline f32 ui_resolve_text_line_alignment(ui_widget_t* widget, ui_text_li
     return position;
 }
 
-static void ui_resolve_label_alignment(ui_widget_t* widget, ui_axis_t axis)
+static void ui_resolve_text_alignment(ui_widget_t* widget, ui_axis_t axis)
 {
-    if (widget->label_length)
+    if (widget->text_length)
     {
         if (axis == UI_AXIS_X)
         {
@@ -755,7 +845,7 @@ static void ui_resolve_label_alignment(ui_widget_t* widget, ui_axis_t axis)
         }
         else if (axis == UI_AXIS_Y)
         {
-            f32 line_height = widget->label_size[axis];
+            f32 line_height = widget->text_size[axis];
             i32 line_count = 0;
                 
             for (ui_text_line_t* text_line = widget->text_line; text_line; text_line = text_line->next)
@@ -862,9 +952,8 @@ static void ui_resolve_sizes(ui_widget_t* root_widget, ui_axis_t axis)
             {
                 if (axis == UI_AXIS_X)
                 {
-                    ui_measure_text_width_f* measure_text_width = global_ui->callbacks.measure_text_width;
-                    void* parameter = global_ui->callbacks.parameter;
-                    f32 width = measure_text_width(child_widget->font, child_widget->label, child_widget->label_length, parameter);
+                    graphics_2d_font_t font = *(graphics_2d_font_t*)child_widget->font;
+                    f32 width = global_ui->graphics->measure_text_width(font, child_widget->text, child_widget->text_length);
                     child_widget->fixed_size[axis] = width + child_widget->padding * 2.0f;
                 }
                 else if (axis == UI_AXIS_Y)
@@ -881,7 +970,7 @@ static void ui_resolve_sizes(ui_widget_t* root_widget, ui_axis_t axis)
                         line_count = 1;
                     }
                     
-                    child_widget->fixed_size[axis] = line_count * child_widget->label_size[axis] + child_widget->padding * 2.0f;
+                    child_widget->fixed_size[axis] = line_count * child_widget->text_size[axis] + child_widget->padding * 2.0f;
                 }
             } break;
 
@@ -963,7 +1052,7 @@ static void ui_resolve_layout(ui_widget_t* root_widget, ui_axis_t axis)
         child_widget->rect.xy[axis] = root_widget->rect.xy[axis] + child_widget->position.xy[axis] + layout_at;
         child_widget->rect.size[axis] = child_widget->fixed_size[axis];
 
-        ui_resolve_label_alignment(child_widget, axis);
+        ui_resolve_text_alignment(child_widget, axis);
 
         if (!is_root && root_widget->layout_axis == axis)
         {
@@ -986,7 +1075,7 @@ static void ui_resolve_layout(ui_widget_t* root_widget, ui_axis_t axis)
         child_widget->rect.xy[axis] = root_anchor - child_anchor + child_widget->anchor_offset[axis];
         child_widget->rect.size[axis] = child_widget->fixed_size[axis];
         
-        ui_resolve_label_alignment(child_widget, axis);
+        ui_resolve_text_alignment(child_widget, axis);
     }
 
     for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
@@ -1005,15 +1094,15 @@ static void ui_print_info(ui_widget_t* root_widget)
             root_widget->rect.x, root_widget->rect.y,
             root_widget->rect.width, root_widget->rect.height);
 
-    if (root_widget->label_length)
+    if (root_widget->text_length)
     {
         fprintf(stderr, 
-            "   - label: %s\n"
-            "   - label length: %u\n"
-            "   - label width: %f\n"
-            "   - label height: %f\n",
-            root_widget->label, root_widget->label_length,
-            root_widget->label_size[UI_AXIS_X], root_widget->label_size[UI_AXIS_Y]);
+            "   - text: %s\n"
+            "   - text length: %u\n"
+            "   - text width: %f\n"
+            "   - text height: %f\n",
+            root_widget->text, root_widget->text_length,
+            root_widget->text_size[UI_AXIS_X], root_widget->text_size[UI_AXIS_Y]);
 
         fprintf(stderr, "   - text lines:\n");
 
@@ -1024,7 +1113,7 @@ static void ui_print_info(ui_widget_t* root_widget)
                     "      - length: %d\n"
                     "      - width: %f\n"
                     "      - height: %f\n",
-                    root_widget->text_line->length, root_widget->label + root_widget->text_line->offset,
+                    root_widget->text_line->length, root_widget->text + root_widget->text_line->offset,
                     root_widget->text_line->length, root_widget->text_line->size[0], root_widget->text_line->size[1]);
             
             root_widget->text_line = root_widget->text_line->next;
@@ -1147,10 +1236,40 @@ static void ui_emit_draw_commands(ui_widget_t* widget, ui_rect_t clip_rect)
         draw_command->height = draw_rect.height;
     }
 
-    if (ui_is_flag_set(widget, UI_FLAG_DRAW_TEXT) && widget->label_length)
+    if (widget->text_length)
     {
-        for (ui_text_line_t* text_line = widget->text_line; text_line; text_line = text_line->next)
+        if (ui_is_flag_set(widget, UI_FLAG_DRAW_TEXT))
         {
+            for (ui_text_line_t* text_line = widget->text_line; text_line; text_line = text_line->next)
+            {
+                ui_rect_t line_rect = (ui_rect_t)
+                {
+                    text_line->position[0], text_line->position[1],
+                    text_line->size[0], text_line->size[1]
+                };
+                ui_rect_t draw_line_rect = ui_is_flag_set(widget, UI_FLAG_FLOATING) ?
+                    line_rect : ui_rect_intersect(clip_rect, line_rect);
+
+                if (draw_line_rect.width <= 0.0f || draw_line_rect.height <= 0.0f)
+                {
+                    continue;
+                }
+
+                ui_draw_command_t* draw_command = ui_push_draw_command();
+                draw_command->kind = UI_DRAW_TEXT;
+                draw_command->x = draw_line_rect.x;
+                draw_command->y = draw_line_rect.y;
+                draw_command->width = draw_line_rect.width;
+                draw_command->height = draw_line_rect.height;
+                draw_command->color = widget->font_color;
+                draw_command->font = widget->font;
+                draw_command->text = widget->text + text_line->offset;
+                draw_command->length = text_line->length;
+            }
+        }
+        else if (ui_is_flag_set(widget, UI_FLAG_DRAW_TEXT_EDIT))
+        {
+            ui_text_line_t* text_line = widget->text_line;
             ui_rect_t line_rect = (ui_rect_t)
             {
                 text_line->position[0], text_line->position[1],
@@ -1159,21 +1278,46 @@ static void ui_emit_draw_commands(ui_widget_t* widget, ui_rect_t clip_rect)
             ui_rect_t draw_line_rect = ui_is_flag_set(widget, UI_FLAG_FLOATING) ?
                 line_rect : ui_rect_intersect(clip_rect, line_rect);
 
-            if (draw_line_rect.width <= 0.0f || draw_line_rect.height <= 0.0f)
+            if (draw_line_rect.width > 0.0f && draw_line_rect.height > 0.0f)
             {
-                continue;
-            }
+                f32 width = draw_line_rect.width;
+                i32 length = text_line->length;
+                i32 offset = 0;
 
-            ui_draw_command_t* draw_command = ui_push_draw_command();
-            draw_command->kind = UI_DRAW_TEXT;
-            draw_command->x = draw_line_rect.x;
-            draw_command->y = draw_line_rect.y;
-            draw_command->width = draw_line_rect.width;
-            draw_command->height = draw_line_rect.height;
-            draw_command->color = widget->font_color;
-            draw_command->font = widget->font;
-            draw_command->text = widget->label + text_line->offset;
-            draw_command->length = text_line->length;
+                if (text_line->size[UI_AXIS_X] >= width)
+                {
+                    width = text_line->max_width;
+                    length = text_line->max_end_offset;
+                    offset = text_line->length - text_line->max_end_offset;
+                }
+                
+                ui_draw_command_t* draw_command = ui_push_draw_command();
+                draw_command->kind = UI_DRAW_TEXT;
+                draw_command->x = draw_line_rect.x;
+                draw_command->y = draw_line_rect.y;
+                draw_command->width = draw_line_rect.width;
+                draw_command->height = draw_line_rect.height;
+                draw_command->color = widget->font_color;
+                draw_command->font = widget->font;
+                draw_command->text = widget->text + offset;
+                draw_command->length = length;
+
+                if (ui_keys_equal(widget->key, global_ui->focus_key))
+                {
+                    graphics_2d_font_t font = *(graphics_2d_font_t*)widget->font;
+                    f32 cursor_offset = global_ui->graphics->measure_text_width(font, widget->text + offset, widget->text_edit->cursor - offset);
+                    f32 cursor_x = draw_line_rect.x + cursor_offset;
+                    f32 cursor_y = draw_line_rect.y;
+
+                    ui_draw_command_t* cursor_command = ui_push_draw_command();
+                    cursor_command->kind = UI_DRAW_RECT;
+                    cursor_command->x = cursor_x;
+                    cursor_command->y = cursor_y;
+                    cursor_command->width = 1.0f;
+                    cursor_command->height = widget->text_size[UI_AXIS_Y];
+                    cursor_command->color = widget->font_color;
+                }
+            }
         }
     }
 }
@@ -1228,18 +1372,15 @@ static void ui_emit_all_draw_commands(ui_widget_t* root_widget)
     ui_emit_floating_pass(root_widget, clip_rect);
 }
 
-static void ui_init(memory_arena_t* memory_arena, ui_callbacks_t callbacks)
+static void ui_init(memory_arena_t* memory_arena)
 {
     assert(!global_ui && "[UI] Already initialized.");
-    assert(callbacks.measure_text_width && "[UI] measure_text_width callback is required.");
-    assert(callbacks.get_line_height && "[UI] get_line_height callback is required.");
- 
+
     memory_arena_t* ui_arena = ma_create_sub_arena(memory_arena, MIBIBYTES(4));
     memory_arena_t* ui_frame_arena = ma_create_sub_arena(ui_arena, MIBIBYTES(2));
     global_ui = (ui_t*)ma_push_size_zero(ui_arena, sizeof(ui_t));
     global_ui->arena = ui_arena;
     global_ui->frame_arena = ui_frame_arena;
-    global_ui->callbacks = callbacks;
 
     // IMPORTANT: We need to be sure to use correct types here because there is no way to 
     // catch it reliably and it can silently corrupt stacks without visible error.
@@ -1255,7 +1396,7 @@ static void ui_init(memory_arena_t* memory_arena, ui_callbacks_t callbacks)
     ui_stack_init(global_ui->arena, &global_ui->stacks.anchor_offset, sizeof(ui_anchor_offset_t), UI_STACK_SIZE);
     ui_stack_init(global_ui->arena, &global_ui->stacks.font, sizeof(ui_font_t), UI_STACK_SIZE);
     ui_stack_init(global_ui->arena, &global_ui->stacks.font_color, sizeof(vec4), UI_STACK_SIZE);
-    ui_stack_init(global_ui->arena, &global_ui->stacks.label_alignment, sizeof(ui_alignment_t), UI_STACK_SIZE);
+    ui_stack_init(global_ui->arena, &global_ui->stacks.text_alignment, sizeof(ui_alignment_t), UI_STACK_SIZE);
 
 }
 
@@ -1302,7 +1443,7 @@ static ui_widget_t* ui_hit_test(ui_widget_t* root_widget, vec2 mouse_position)
 static void ui_resolve_hot(void)
 {
     global_ui->hot_key = (ui_key_t){ 0 };
-    ui_widget_t* widget = ui_hit_test(global_ui->root_widget, global_ui->mouse_position);
+    ui_widget_t* widget = ui_hit_test(global_ui->root_widget, global_ui->input->mouse_position);
 
     if (widget)
     {
@@ -1311,24 +1452,10 @@ static void ui_resolve_hot(void)
     }
 }
 
-static inline bool ui_mouse_pressed(i32 index)
-{
-    bool result = global_ui->mouse_down[index] && !global_ui->mouse_down_prev[index];
-
-    return result;
-}
-
-static inline bool ui_mouse_released(i32 index)
-{
-    bool result = !global_ui->mouse_down[index] && global_ui->mouse_down_prev[index];
-
-    return result;
-}
-
 static void ui_resolve_active(void)
 {
-    bool pressed = ui_mouse_pressed(0);
-    bool released = ui_mouse_released(0);
+    bool pressed = input_is_key_pressed(global_ui->input, KEY_MOUSE_LEFT);
+    bool released = input_is_key_released(global_ui->input, KEY_MOUSE_LEFT);
 
     if (pressed)
     {
@@ -1362,6 +1489,29 @@ static void ui_resolve_active(void)
     }
 }
 
+static void ui_resolve_focus(void)
+{
+    bool pressed = input_is_key_pressed(global_ui->input, KEY_MOUSE_LEFT);
+
+    if (pressed)
+    {
+        ui_widget_t* hot_widget = ui_widget_from_key(global_ui->hot_key);
+
+        if (hot_widget && ui_is_flag_set(hot_widget, UI_FLAG_FOCUSABLE))
+        {
+            global_ui->focus_key = hot_widget->key;
+        }
+        else if (hot_widget && ui_keys_equal(hot_widget->key, global_ui->focus_key))
+        {
+            global_ui->focus_key = hot_widget->key;
+        }
+        else
+        {
+            global_ui->focus_key = (ui_key_t){ 0 };
+        }
+    }
+}
+
 static void ui_resolve_interaction(void)
 {
     ui_widget_t* widget = 0;
@@ -1391,20 +1541,18 @@ static void ui_resolve_interaction(void)
     
     ui_resolve_hot();
     ui_resolve_active();
+    ui_resolve_focus();
 }
 
-static void ui_begin(ui_input_t input, f32 width, f32 height)
+static void ui_begin(graphics_t* graphics, input_t* input, f32 width, f32 height)
 {
     assert(global_ui && "[UI] Not initialized.");
+    assert(input && "[UI] Input is required.");
+    assert(graphics && "[UI] Graphics is required.");
 
-    global_ui->mouse_position = input.mouse_position;
+    global_ui->graphics = graphics;
+    global_ui->input = input;
     
-    for (i32 i = 0; i < 3; ++i)
-    {
-        global_ui->mouse_down_prev[i] = global_ui->mouse_down[i];
-        global_ui->mouse_down[i] = input.mouse_buttons[i];
-    }
-
     ma_reset(global_ui->frame_arena);
     global_ui->draw_commands_first = 0;
     global_ui->draw_commands_last = 0;
@@ -1425,7 +1573,7 @@ static void ui_begin(ui_input_t input, f32 width, f32 height)
     ui_stack_push(&global_ui->stacks.anchor_offset, &(ui_anchor_offset_t){ 0 });
     ui_stack_push(&global_ui->stacks.font, &(ui_font_t){ 0 });
     ui_stack_push(&global_ui->stacks.font_color, &(vec4){ 0 });
-    ui_stack_push(&global_ui->stacks.label_alignment, &(ui_alignment_t){ 0 });
+    ui_stack_push(&global_ui->stacks.text_alignment, &(ui_alignment_t){ 0 });
 
     global_ui->root_widget = ui_widget_group_begin("root_widget", 0.0f, 0.0f);
     global_ui->root_widget->fixed_size[UI_AXIS_X] = width;
@@ -1465,7 +1613,7 @@ static void ui_end(void)
     ui_pop_anchor_offset();
     ui_pop_font();
     ui_pop_font_color();
-    ui_pop_label_alignment();
+    ui_pop_text_alignment();
 
     global_ui->root_widget = 0;
 
@@ -1481,7 +1629,7 @@ static void ui_end(void)
     assert(global_ui->stacks.anchor_offset.count == 0 && "[UI] Invalid anchor offset stack count.");
     assert(global_ui->stacks.font.count == 0 && "[UI] Invalid font stack count.");
     assert(global_ui->stacks.font_color.count == 0 && "[UI] Invalid font_color stack count.");
-    assert(global_ui->stacks.label_alignment.count == 0 && "[UI] Invalid label_alignment stack count.");
+    assert(global_ui->stacks.text_alignment.count == 0 && "[UI] Invalid text_alignment stack count.");
 }
 
 static ui_draw_command_iter_t ui_draw_command_iter(void)
