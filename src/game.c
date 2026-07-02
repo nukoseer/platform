@@ -1646,25 +1646,28 @@ update_function(update)
                     ui_widget_text("icon-field", ">");
                 }
 
-                ui_next_size(ui_percent(1.0f, 0.0f), ui_percent(1.0f, 1.0f));
-                ui_next_flags(UI_FLAG_CLICKABLE);
-                ui_next_clear_flags(UI_FLAG_WRAP_TEXT);
-                ui_next_text_alignment((ui_alignment_t){ UI_ALIGNMENT_LEADING, UI_ALIGNMENT_CENTER });
                 static ui_text_edit_t search_text_edit = { 0 };
-                ui_widget_text_field(input, "search-bar", &search_text_edit);
+                ui_signal_t cancel_last_signal = ui_widget_last_signal("cancel-field");
                 
-                ui_next_size(ui_em(1.5f, 1.0f), ui_percent(1.0f, 1.0f));
-                ui_next_flags(UI_FLAG_CLICKABLE);
-                ui_next_border(1.0f, theme->fg_color);
-                ui_next_show_border(ui_widget_last_signal("cancel-field").hovering);
-                ui_next_text_alignment(ui_align_center());
-                ui_widget_t* cancel_widget = ui_widget_text("cancel-field", "-");
-                if (ui_signal_for(cancel_widget).clicked)
+                if (cancel_last_signal.clicked)
                 {
                     search_text_edit.text[0] = '\0';
                     search_text_edit.cursor = 0;
                     search_text_edit.length = 0;
                 }
+                
+                ui_next_size(ui_percent(1.0f, 0.0f), ui_percent(1.0f, 1.0f));
+                ui_next_flags(UI_FLAG_CLICKABLE);
+                ui_next_clear_flags(UI_FLAG_WRAP_TEXT);
+                ui_next_text_alignment((ui_alignment_t){ UI_ALIGNMENT_LEADING, UI_ALIGNMENT_CENTER });
+                ui_widget_text_editable("search-bar", &search_text_edit);
+                
+                ui_next_size(ui_em(1.5f, 1.0f), ui_percent(1.0f, 1.0f));
+                ui_next_flags(UI_FLAG_CLICKABLE);
+                ui_next_border(1.0f, theme->fg_color);
+                ui_next_show_border(cancel_last_signal.hovering);
+                ui_next_text_alignment(ui_align_center());
+                ui_widget_text("cancel-field", "-");
             }
         }
     }

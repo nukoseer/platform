@@ -1,11 +1,5 @@
 #ifndef H_UI_H
 
-#define ui_measure_text_width_function(name) f32 name(void* font, const char* text, usize text_length, void* parameter)
-typedef ui_measure_text_width_function(ui_measure_text_width_f);
-
-#define ui_get_line_height_function(name) f32 name(void* font, void* parameter)
-typedef ui_get_line_height_function(ui_get_line_height_f);
-
 typedef struct ui_key_t
 {
     u64 value;

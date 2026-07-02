@@ -410,11 +410,11 @@ static inline void input_event_push(input_t* input, input_event_kind_t kind, u32
     event->consumed = false;
     event->value = value;
 
-    if (kind == INPUT_EVENT_KEY_PRESS)
+    if (kind == INPUT_EVENT_KEY_PRESS || kind == INPUT_EVENT_MOUSE_PRESS)
     {
         input->key_down[value] = true;
     }
-    else if (kind == INPUT_EVENT_KEY_RELEASE)
+    else if (kind == INPUT_EVENT_KEY_RELEASE || kind == INPUT_EVENT_MOUSE_RELEASE)
     {
         input->key_down[value] = false;
     }
@@ -448,35 +448,35 @@ static bool process_thread_messages(window_t* window, input_t* input)
             case WM_LBUTTONDOWN:
             {
                 SetCapture(window->hwnd);
-                input_event_push(input, INPUT_EVENT_KEY_PRESS, KEY_MOUSE_LEFT);
+                input_event_push(input, INPUT_EVENT_MOUSE_PRESS, KEY_MOUSE_LEFT);
             } break;
 
             case WM_LBUTTONUP:
             {
-                input_event_push(input, INPUT_EVENT_KEY_RELEASE, KEY_MOUSE_LEFT);
+                input_event_push(input, INPUT_EVENT_MOUSE_RELEASE, KEY_MOUSE_LEFT);
                 ReleaseCapture();
             } break;
 
             case WM_RBUTTONDOWN:
             {
                 SetCapture(window->hwnd);
-                input_event_push(input, INPUT_EVENT_KEY_PRESS, KEY_MOUSE_RIGHT);
+                input_event_push(input, INPUT_EVENT_MOUSE_PRESS, KEY_MOUSE_RIGHT);
             } break;
             
             case WM_RBUTTONUP:
             {
-                input_event_push(input, INPUT_EVENT_KEY_RELEASE, KEY_MOUSE_RIGHT);
+                input_event_push(input, INPUT_EVENT_MOUSE_RELEASE, KEY_MOUSE_RIGHT);
             } break;
 
             case WM_MBUTTONDOWN:
             {
                 SetCapture(window->hwnd);
-                input_event_push(input, INPUT_EVENT_KEY_PRESS, KEY_MOUSE_MIDDLE);
+                input_event_push(input, INPUT_EVENT_MOUSE_PRESS, KEY_MOUSE_MIDDLE);
             } break;
             
             case WM_MBUTTONUP:
             {
-                input_event_push(input, INPUT_EVENT_KEY_RELEASE, KEY_MOUSE_MIDDLE);
+                input_event_push(input, INPUT_EVENT_MOUSE_RELEASE, KEY_MOUSE_MIDDLE);
                 ReleaseCapture();
             } break;
             

@@ -77,6 +77,7 @@ typedef enum key_t
     KEY_X,
     KEY_Y,
     KEY_Z,
+    KEY_BACKSPACE,
     KEY_TAB,
     KEY_SPACE,
     KEY_ENTER,
@@ -101,6 +102,8 @@ typedef enum input_event_kind_t
     INPUT_EVENT_TEXT,
     INPUT_EVENT_KEY_PRESS,
     INPUT_EVENT_KEY_RELEASE,
+    INPUT_EVENT_MOUSE_PRESS,
+    INPUT_EVENT_MOUSE_RELEASE,
     
     INPUT_EVENT_COUNT,
 } input_event_kind_t;
@@ -110,7 +113,6 @@ typedef struct input_event_t
     input_event_kind_t kind;
     bool consumed;
     u32 value;
-    
 } input_event_t;
 
 typedef struct input_t
@@ -119,9 +121,9 @@ typedef struct input_t
     u32 event_count;
 
     key_modifier_t modifiers;    
-    vec3 mouse_position;
+    vec2 mouse_position;
+    f32 wheel;
     vec2 mouse_delta;
-    bool mouse_down[3];
     bool key_down[KEY_COUNT];
 } input_t;
 
@@ -133,9 +135,9 @@ static inline bool input_is_key_down(const input_t* input, key_t key)
     return result;
 }
 
-static inline bool input_is_key_pressed(const input_t* input, key_t key)
+static inline input_event_t* input_find_event(const input_t* input, input_event_kind_t kind, u32 value)
 {
-    bool result = false;
+    input_event_t* result = 0;
     
     for (u32 i = 0; i < input->event_count; ++i)
     {
@@ -146,55 +148,82 @@ static inline bool input_is_key_pressed(const input_t* input, key_t key)
             continue;
         }
 
-        if (event->kind == INPUT_EVENT_KEY_PRESS && event->value == key)
+        if (event->kind != kind)
         {
-            result = true;
-            break;
+            continue;
         }
+
+        if (event->value != value)
+        {
+            continue;
+        }
+
+        result = (input_event_t*)event;
+        break;
     }
+
+    return result;
+}
+
+static inline bool input_is_key_pressed(const input_t* input, key_t key)
+{
+    bool result = input_find_event(input, INPUT_EVENT_KEY_PRESS, key) != 0;
 
     return result;
 }
 
 static inline bool input_is_key_released(const input_t* input, key_t key)
 {
+    bool result = input_find_event(input, INPUT_EVENT_KEY_RELEASE, key) != 0;
+
+    return result;
+}
+
+static inline bool input_is_mouse_pressed(const input_t* input, key_t key)
+{
+    bool result = input_find_event(input, INPUT_EVENT_MOUSE_PRESS, key) != 0;
+
+    return result;
+}
+
+static inline bool input_is_mouse_released(const input_t* input, key_t key)
+{
+    bool result = input_find_event(input, INPUT_EVENT_MOUSE_RELEASE, key) != 0;
+
+    return result;
+}
+
+static inline bool input_consume_event(input_t* input, input_event_kind_t kind, key_t key)
+{
     bool result = false;
-    
-    for (u32 i = 0; i < input->event_count; ++i)
+    input_event_t* event = input_find_event(input, kind, key);
+
+    if (event)
     {
-        const input_event_t* event = input->events + i;
-
-        if (event->consumed)
-        {
-            continue;
-        }
-
-        if (event->kind == INPUT_EVENT_KEY_RELEASE && event->value == key)
-        {
-            result = true;
-            break;
-        }
+        event->consumed = true;
+        result = true;
     }
 
     return result;
 }
 
-static inline bool input_consume_event(input_t* input, input_event_kind_t kind, u32 value)
+static inline key_t input_consume_next_event(input_t* input, input_event_kind_t kind, u32* index)
 {
-    bool result = false;
+    key_t result = KEY_NULL;
     
-    for (u32 i = 0; i < input->event_count; ++i)
+    while (*index < input->event_count)
     {
-        input_event_t* event = input->events + i;
+        input_event_t* event = input->events + *index;
+        (*index)++;
 
         if (event->consumed)
         {
             continue;
         }
 
-        if (event->kind == kind && event->value == value)
+        if (event->kind == kind)
         {
-            result = true;
+            result = (key_t)event->value;
             event->consumed = true;
             break;
         }
@@ -203,17 +232,27 @@ static inline bool input_consume_event(input_t* input, input_event_kind_t kind, 
     return result;
 }
 
-static inline bool input_consume_key_press(input_t* input, key_t key)
+static inline u32 input_consume_next_text_event(input_t* input, u32* index)
 {
-    bool result = input_consume_event(input, INPUT_EVENT_KEY_PRESS, key);
+    u32 result = 0;
+    
+    while (*index < input->event_count)
+    {
+        input_event_t* event = input->events + *index;
+        (*index)++;
+        
+        if (event->consumed)
+        {
+            continue;
+        }
 
-    return result;
-}
-
-
-static inline bool input_consume_key_release(input_t* input, key_t key)
-{
-    bool result = input_consume_event(input, INPUT_EVENT_KEY_RELEASE, key);
+        if (event->kind == INPUT_EVENT_TEXT && event->value >= 32)
+        {
+            event->consumed = true;
+            result = event->value;
+            break;
+        }
+    }
 
     return result;
 }

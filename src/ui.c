@@ -1290,6 +1290,11 @@ static void ui_emit_draw_commands(ui_widget_t* widget, ui_rect_t clip_rect)
                     length = text_line->max_end_offset;
                     offset = text_line->length - text_line->max_end_offset;
                 }
+
+                if (widget->text_edit->cursor < offset)
+                {
+                    offset = widget->text_edit->cursor;
+                }
                 
                 ui_draw_command_t* draw_command = ui_push_draw_command();
                 draw_command->kind = UI_DRAW_TEXT;
@@ -1306,6 +1311,7 @@ static void ui_emit_draw_commands(ui_widget_t* widget, ui_rect_t clip_rect)
                 {
                     graphics_2d_font_t font = *(graphics_2d_font_t*)widget->font;
                     f32 cursor_offset = global_ui->graphics->measure_text_width(font, widget->text + offset, widget->text_edit->cursor - offset);
+
                     f32 cursor_x = draw_line_rect.x + cursor_offset;
                     f32 cursor_y = draw_line_rect.y;
 
@@ -1454,8 +1460,8 @@ static void ui_resolve_hot(void)
 
 static void ui_resolve_active(void)
 {
-    bool pressed = input_is_key_pressed(global_ui->input, KEY_MOUSE_LEFT);
-    bool released = input_is_key_released(global_ui->input, KEY_MOUSE_LEFT);
+    bool pressed = input_is_mouse_pressed(global_ui->input, KEY_MOUSE_LEFT);
+    bool released = input_is_mouse_released(global_ui->input, KEY_MOUSE_LEFT);
 
     if (pressed)
     {

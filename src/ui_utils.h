@@ -402,8 +402,9 @@ static void ui_text_edit_delete_all(ui_text_edit_t* text_edit)
     text_edit->text[text_edit->cursor] = '\0';
 }
 
-static ui_signal_t ui_widget_text_field(input_t* input, const char* name, ui_text_edit_t* text_edit)
+static ui_signal_t ui_widget_text_editable(const char* name, ui_text_edit_t* text_edit)
 {
+    input_t* input = global_ui->input;
     ui_widget_t* widget = ui_widget_text_edit(name, 0);
     ui_signal_t signal = ui_signal_for(widget);
 
@@ -414,78 +415,56 @@ static ui_signal_t ui_widget_text_field(input_t* input, const char* name, ui_tex
 
     if (ui_is_focused(widget->key))
     {
-        for (u32 i = 0; i < input->event_count; ++i)
+        u32 codepoint_index = 0;
+        u32 codepoint = 0;
+        u32 key_index = 0;
+        key_t key = KEY_NULL;
+        
+        while ((codepoint = input_consume_next_text_event(input, &codepoint_index)) != 0)
         {
-            input_event_t* event = input->events + i;
+            ui_text_edit_insert(text_edit, codepoint);
+        }
 
-            if (event->consumed)
+        while ((key = input_consume_next_event(input, INPUT_EVENT_KEY_PRESS, &key_index)) != KEY_NULL)
+        {
+            if (key == KEY_BACKSPACE || (key == KEY_H && (input->modifiers & KEY_MODIFIER_CTRL)))
             {
-                continue;
+                ui_text_edit_backspace(text_edit);
             }
 
-            switch (event->kind)
+            if (key == KEY_H && input->modifiers & KEY_MODIFIER_ALT)
             {
-                case INPUT_EVENT_TEXT:
-                {
-                    if (event->value >= 32 && event->value <= 126)
-                    {
-                        ui_text_edit_insert(text_edit, event->value);
-                        event->consumed = true;
-                    }
-                } break;
-
-                case INPUT_EVENT_KEY_PRESS:
-                {
-                    if (event->value == KEY_BACKSPACE ||
-                        event->value == KEY_H && input->modifiers & KEY_MODIFIER_CTRL)
-                    {
-                        ui_text_edit_backspace(text_edit);
-                        event->consumed = true;
-                    }
-
-                    if (event->value == KEY_H && input->modifiers & KEY_MODIFIER_ALT)
-                    {
-                        ui_text_edit_backspace_all(text_edit);
-                        event->consumed = true;
-                    }
+                ui_text_edit_backspace_all(text_edit);
+            }
                                 
-                    if (event->value == KEY_LEFT)
-                    {
-                        text_edit->cursor = (i32)max(0.0f, text_edit->cursor - 1);
-                        event->consumed = true;
-                    }
+            if (key == KEY_LEFT)
+            {
+                text_edit->cursor = (i32)max(0.0f, text_edit->cursor - 1);
+            }
 
-                    if (event->value == KEY_RIGHT)
-                    {
-                        text_edit->cursor = (i32)min(text_edit->length, text_edit->cursor + 1);
-                        event->consumed = true;
-                    }
+            if (key == KEY_RIGHT)
+            {
+                text_edit->cursor = (i32)min(text_edit->length, text_edit->cursor + 1);
+            }
 
-                    if (event->value == KEY_E && input->modifiers & KEY_MODIFIER_CTRL)
-                    {
-                        text_edit->cursor = text_edit->length;
-                        event->consumed = true;
-                    }
+            if (key == KEY_E && input->modifiers & KEY_MODIFIER_CTRL)
+            {
+                text_edit->cursor = text_edit->length;
+            }
 
-                    if (event->value == KEY_A && input->modifiers & KEY_MODIFIER_CTRL)
-                    {
-                        text_edit->cursor = 0;
-                        event->consumed = true;
-                    }
+            if (key == KEY_A && input->modifiers & KEY_MODIFIER_CTRL)
+            {
+                text_edit->cursor = 0;
+            }
 
-                    if (event->value == KEY_D && input->modifiers & KEY_MODIFIER_CTRL)
-                    {
-                        ui_text_edit_delete(text_edit);
-                        event->consumed = true;
-                    }
+            if (key == KEY_D && input->modifiers & KEY_MODIFIER_CTRL)
+            {
+                ui_text_edit_delete(text_edit);
+            }
 
-                    if (event->value == KEY_D && input->modifiers & KEY_MODIFIER_ALT)
-                    {
-                        ui_text_edit_delete_all(text_edit);
-                        event->consumed = true;
-                    }
-                    
-                } break;
+            if (key == KEY_D && input->modifiers & KEY_MODIFIER_ALT)
+            {
+                ui_text_edit_delete_all(text_edit);
             }
         }
     }
