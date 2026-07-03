@@ -211,14 +211,14 @@ static inline ui_alignment_t ui_align_trailing(void)
     return widget_alignment;
 }
 
-static inline f32 ui_text_content_position(ui_widget_t* widget, ui_axis_t axis)
+static inline f32 ui_content_position(ui_widget_t* widget, ui_axis_t axis)
 {
     f32 content_position = widget->rect.xy[axis] + widget->padding;
 
     return content_position;
 }
 
-static inline f32 ui_text_content_size(ui_widget_t* widget, ui_axis_t axis)
+static inline f32 ui_content_size(ui_widget_t* widget, ui_axis_t axis)
 {
     f32 content_size = widget->rect.size[axis] - widget->padding * 2.0f;
 
@@ -463,6 +463,7 @@ static ui_widget_t* ui_widget_build_from_key(ui_key_t key)
     widget->parent = widget->child_list.first = widget->child_list.last = widget->child_next = widget->child_prev = 0;
     widget->key = key;
     widget->position = (ui_position_t){ 0 };
+    widget->text = 0;
     widget->text_length = 0;
     widget->text_line = 0;
     widget->fixed_size[UI_AXIS_X] = 0.0f;
@@ -588,6 +589,12 @@ static ui_widget_t* ui_widget(const char* widget_name)
 
 static void ui_equip_text(ui_widget_t* widget, const char* text, u32 text_length)
 {
+    widget->font = ui_top_font().font;
+    widget->font_color = ui_top_font_color();
+    widget->text_alignment = ui_top_text_alignment();
+
+    graphics_2d_font_t font = *(graphics_2d_font_t*)widget->font;
+        
     if (text && text_length)
     {
         widget->text = ma_push_size(global_ui->frame_arena, text_length);
@@ -596,14 +603,10 @@ static void ui_equip_text(ui_widget_t* widget, const char* text, u32 text_length
         widget->text[text_length] = '\0';
         widget->text_length = text_length;
 
-        widget->font = ui_top_font().font;
-        widget->font_color = ui_top_font_color();
-        widget->text_alignment = ui_top_text_alignment();
-
-        graphics_2d_font_t font = *(graphics_2d_font_t*)widget->font;
         widget->text_size[UI_AXIS_X] = global_ui->graphics->measure_text_width(font, widget->text, widget->text_length);
-        widget->text_size[UI_AXIS_Y] = global_ui->graphics->get_line_height(font);
     }
+
+    widget->text_size[UI_AXIS_Y] = global_ui->graphics->get_line_height(font);
 
     ui_stack_auto_pop(&global_ui->stacks.font);
     ui_stack_auto_pop(&global_ui->stacks.font_color);
@@ -639,7 +642,7 @@ static ui_widget_t* ui_widget_text_edit(const char* widget_name, ui_text_edit_t*
 
 static void ui_resolve_text_lines(ui_widget_t* root_widget, ui_axis_t axis)
 {
-    if (root_widget->text_length)
+    if (root_widget->text)
     {
         graphics_2d_font_t font = *(graphics_2d_font_t*)root_widget->font;
         f32 wrap_width = root_widget->fixed_size[UI_AXIS_X] - root_widget->padding * 2.0f;
@@ -795,11 +798,11 @@ static void ui_resolve_text_lines(ui_widget_t* root_widget, ui_axis_t axis)
     }
 }
 
-static inline f32 ui_resolve_text_line_alignment(ui_widget_t* widget, ui_text_line_t* text_line, ui_axis_t axis)
+static inline f32 ui_resolve_alignment(ui_widget_t* widget, f32 size, ui_axis_t axis)
 {
     f32 position = 0.0f;
-    f32 content_position = ui_text_content_position(widget, axis);
-    f32 content_size = ui_text_content_size(widget, axis);
+    f32 content_position = ui_content_position(widget, axis);
+    f32 content_size = ui_content_size(widget, axis);
         
     switch (widget->text_alignment.value[axis])
     {
@@ -810,17 +813,17 @@ static inline f32 ui_resolve_text_line_alignment(ui_widget_t* widget, ui_text_li
 
         case UI_ALIGNMENT_TRAILING:
         {
-            position = content_position + content_size - text_line->size[axis];
+            position = content_position + content_size - size;
         } break;
 
         case UI_ALIGNMENT_CENTER:
         {
-            position = content_position + (content_size - text_line->size[axis]) * 0.5f;
+            position = content_position + (content_size - size) * 0.5f;
         } break;
 
         default:
         {
-            assert(!"[UI] Invalid text alignment.");
+            assert(!"[UI] Invalid alignment.");
         } break;
     }
 
@@ -832,9 +835,16 @@ static inline f32 ui_resolve_text_line_alignment(ui_widget_t* widget, ui_text_li
     return position;
 }
 
+static inline f32 ui_resolve_text_line_alignment(ui_widget_t* widget, ui_text_line_t* text_line, ui_axis_t axis)
+{
+    f32 position = ui_resolve_alignment(widget, text_line->size[axis], axis);
+
+    return position;
+}
+
 static void ui_resolve_text_alignment(ui_widget_t* widget, ui_axis_t axis)
 {
-    if (widget->text_length)
+    if (widget->text)
     {
         if (axis == UI_AXIS_X)
         {
@@ -850,7 +860,7 @@ static void ui_resolve_text_alignment(ui_widget_t* widget, ui_axis_t axis)
                 
             for (ui_text_line_t* text_line = widget->text_line; text_line; text_line = text_line->next)
             {
-                text_line->position[axis] = (ui_resolve_text_line_alignment(widget, text_line, UI_AXIS_Y) +
+                text_line->position[axis] = (ui_resolve_text_line_alignment(widget, text_line, axis) +
                                              line_count * line_height);
                 ++line_count;
             }
@@ -1236,38 +1246,40 @@ static void ui_emit_draw_commands(ui_widget_t* widget, ui_rect_t clip_rect)
         draw_command->height = draw_rect.height;
     }
 
-    if (widget->text_length)
+    if (ui_is_flag_set(widget, UI_FLAG_DRAW_TEXT))
     {
-        if (ui_is_flag_set(widget, UI_FLAG_DRAW_TEXT))
+        for (ui_text_line_t* text_line = widget->text_line; text_line; text_line = text_line->next)
         {
-            for (ui_text_line_t* text_line = widget->text_line; text_line; text_line = text_line->next)
+            ui_rect_t line_rect = (ui_rect_t)
             {
-                ui_rect_t line_rect = (ui_rect_t)
-                {
-                    text_line->position[0], text_line->position[1],
-                    text_line->size[0], text_line->size[1]
-                };
-                ui_rect_t draw_line_rect = ui_is_flag_set(widget, UI_FLAG_FLOATING) ?
-                    line_rect : ui_rect_intersect(clip_rect, line_rect);
+                text_line->position[0], text_line->position[1],
+                text_line->size[0], text_line->size[1]
+            };
+            ui_rect_t draw_line_rect = ui_is_flag_set(widget, UI_FLAG_FLOATING) ?
+                line_rect : ui_rect_intersect(clip_rect, line_rect);
 
-                if (draw_line_rect.width <= 0.0f || draw_line_rect.height <= 0.0f)
-                {
-                    continue;
-                }
-
-                ui_draw_command_t* draw_command = ui_push_draw_command();
-                draw_command->kind = UI_DRAW_TEXT;
-                draw_command->x = draw_line_rect.x;
-                draw_command->y = draw_line_rect.y;
-                draw_command->width = draw_line_rect.width;
-                draw_command->height = draw_line_rect.height;
-                draw_command->color = widget->font_color;
-                draw_command->font = widget->font;
-                draw_command->text = widget->text + text_line->offset;
-                draw_command->length = text_line->length;
+            if (draw_line_rect.width <= 0.0f || draw_line_rect.height <= 0.0f)
+            {
+                continue;
             }
+
+            ui_draw_command_t* draw_command = ui_push_draw_command();
+            draw_command->kind = UI_DRAW_TEXT;
+            draw_command->x = draw_line_rect.x;
+            draw_command->y = draw_line_rect.y;
+            draw_command->width = draw_line_rect.width;
+            draw_command->height = draw_line_rect.height;
+            draw_command->color = widget->font_color;
+            draw_command->font = widget->font;
+            draw_command->text = widget->text + text_line->offset;
+            draw_command->length = text_line->length;
         }
-        else if (ui_is_flag_set(widget, UI_FLAG_DRAW_TEXT_EDIT))
+    }
+    else if (ui_is_flag_set(widget, UI_FLAG_DRAW_TEXT_EDIT))
+    {
+        i32 text_overflow_offset = 0;
+
+        if (widget->text_line)
         {
             ui_text_line_t* text_line = widget->text_line;
             ui_rect_t line_rect = (ui_rect_t)
@@ -1280,20 +1292,23 @@ static void ui_emit_draw_commands(ui_widget_t* widget, ui_rect_t clip_rect)
 
             if (draw_line_rect.width > 0.0f && draw_line_rect.height > 0.0f)
             {
-                f32 width = draw_line_rect.width;
-                i32 length = text_line->length;
-                i32 offset = 0;
+                f32 text_width = draw_line_rect.width;
+                i32 text_length = text_line->length;
 
-                if (text_line->size[UI_AXIS_X] >= width)
+                // NOTE: Text is longer than total widget width.
+                if (text_line->size[UI_AXIS_X] >= text_width)
                 {
-                    width = text_line->max_width;
-                    length = text_line->max_end_offset;
-                    offset = text_line->length - text_line->max_end_offset;
+                    text_width = text_line->max_width;
+                    text_length = text_line->max_end_offset;
+                    text_overflow_offset = text_line->length - text_line->max_end_offset;
                 }
 
-                if (widget->text_edit->cursor < offset)
+                // NOTE: If we have text overflow and cursor is behind the overflow offset,
+                // we should clip the overflow offset to cursor to be able to see correct
+                // part of the text.
+                if (widget->text_edit->cursor < text_overflow_offset)
                 {
-                    offset = widget->text_edit->cursor;
+                    text_overflow_offset = widget->text_edit->cursor;
                 }
                 
                 ui_draw_command_t* draw_command = ui_push_draw_command();
@@ -1304,13 +1319,13 @@ static void ui_emit_draw_commands(ui_widget_t* widget, ui_rect_t clip_rect)
                 draw_command->height = draw_line_rect.height;
                 draw_command->color = widget->font_color;
                 draw_command->font = widget->font;
-                draw_command->text = widget->text + offset;
-                draw_command->length = length;
+                draw_command->text = widget->text + text_overflow_offset;
+                draw_command->length = text_length;
 
                 if (ui_keys_equal(widget->key, global_ui->focus_key))
                 {
                     graphics_2d_font_t font = *(graphics_2d_font_t*)widget->font;
-                    f32 cursor_offset = global_ui->graphics->measure_text_width(font, widget->text + offset, widget->text_edit->cursor - offset);
+                    f32 cursor_offset = global_ui->graphics->measure_text_width(font, widget->text + text_overflow_offset, widget->text_edit->cursor - text_overflow_offset);
 
                     f32 cursor_x = draw_line_rect.x + cursor_offset;
                     f32 cursor_y = draw_line_rect.y;
@@ -1323,6 +1338,29 @@ static void ui_emit_draw_commands(ui_widget_t* widget, ui_rect_t clip_rect)
                     cursor_command->height = widget->text_size[UI_AXIS_Y];
                     cursor_command->color = widget->font_color;
                 }
+            }
+        }
+        // NOTE: When there is no text we still should draw the cursor.
+        else if (ui_keys_equal(widget->key, global_ui->focus_key))
+        {
+            ui_rect_t cursor_rect = (ui_rect_t)
+            {
+                ui_resolve_alignment(widget, 1.0f, UI_AXIS_X),
+                ui_resolve_alignment(widget, widget->text_size[UI_AXIS_Y], UI_AXIS_Y),
+                1.0f, widget->text_size[UI_AXIS_Y]
+            };
+            ui_rect_t draw_cursor_rect = ui_is_flag_set(widget, UI_FLAG_FLOATING) ?
+                cursor_rect : ui_rect_intersect(clip_rect, cursor_rect);
+
+            if (draw_cursor_rect.width > 0.0f && draw_cursor_rect.height > 0)
+            {
+                ui_draw_command_t* draw_command = ui_push_draw_command();
+                draw_command->kind = UI_DRAW_RECT;
+                draw_command->x = draw_cursor_rect.x;
+                draw_command->y = draw_cursor_rect.y;
+                draw_command->width = draw_cursor_rect.width;
+                draw_command->height = draw_cursor_rect.height;
+                draw_command->color = widget->font_color;
             }
         }
     }
