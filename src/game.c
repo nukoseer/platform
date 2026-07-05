@@ -1470,12 +1470,12 @@ update_function(update)
     ui_next_size(ui_pixel(430.0f, 1.0f), ui_children(1.0f));
     ui_next_padding(4.0f); ui_next_axis(ui_axis_y());
     ui_next_border(1.0f, theme->fg_color);
-    ui_next_flags(UI_FLAG_DRAW_BACKGROUND);
+    ui_next_flags(UI_FLAG_BACKGROUND);
     ui_widget_group("container", 10.0f, 40.0f)
     {
         ui_push_size(ui_content(1.0f), ui_content(1.0f));
         ui_push_padding(4.0f);
-        ui_push_flags(UI_FLAG_DRAW_BACKGROUND);
+        ui_push_flags(UI_FLAG_BACKGROUND);
         ui_push_text_alignment(ui_align_center());
 
         ui_next_anchored(UI_ANCHOR_TOP_LEFT, UI_ANCHOR_CENTER_LEFT, 16.0f, 2.0f);
@@ -1491,7 +1491,7 @@ update_function(update)
         ui_pop_size();
 
         ui_next_size(ui_percent(1.0f, 1.0f), ui_children(1.0f));
-        ui_next_padding(8.0f); ui_next_flags(UI_FLAG_DRAW_BACKGROUND);
+        ui_next_padding(8.0f); ui_next_flags(UI_FLAG_BACKGROUND);
         ui_next_border(1.0f, theme->fg_color);
         ui_widget_group("inner-container", 0.0f, 0.0f)
         {
@@ -1526,7 +1526,7 @@ update_function(update)
                     ui_widget_group("country-shape-group", 0.0f, 0.0f)
                     {
                         ui_next_size(ui_percent(1.0f, 1.0f), ui_percent(1.0f, 1.0f));
-                        ui_next_flags(UI_FLAG_DRAW_CUSTOM);
+                        ui_next_flags(UI_FLAG_CUSTOM);
                         ui_widget("country-shape");
                     }
                 }
@@ -1549,7 +1549,7 @@ update_function(update)
                             ui_widget_text("value", country_name.name ? country_name.name : "Not Selected");
 
                             ui_next_size(ui_percent(1.0f, 1.0f), ui_pixel(1.0f, 1.0f));
-                            ui_next_color(theme->font_color); ui_next_flags(UI_FLAG_DRAW_BACKGROUND);
+                            ui_next_color(theme->font_color); ui_next_flags(UI_FLAG_BACKGROUND);
                             ui_widget("separator");
 
                             ui_widget_spacer(ui_pixel(8.0f, 1.0f));
@@ -1592,7 +1592,7 @@ update_function(update)
                         ui_widget_group("status-bar", 0, 0)
                         {
                             ui_next_size(ui_percent(0.8f, 1.0f), ui_percent(1.0f, 0.0f));
-                            ui_next_flags(UI_FLAG_DRAW_BACKGROUND);
+                            ui_next_flags(UI_FLAG_BACKGROUND);
                             ui_next_color(theme->fg_color);
                             ui_widget("status-fill");
                         }
@@ -1611,7 +1611,7 @@ update_function(update)
 
         ui_next_size(ui_content(1.0f), ui_content(1.0f)); ui_next_padding(4.0f);
         ui_next_anchored(UI_ANCHOR_BOTTOM_RIGHT, UI_ANCHOR_CENTER_RIGHT, -16.0f, -2.0f);
-        ui_next_flags(UI_FLAG_DRAW_BACKGROUND); ui_next_text_alignment(ui_align_center());
+        ui_next_flags(UI_FLAG_BACKGROUND); ui_next_text_alignment(ui_align_center());
         ui_widget_text("number-code", "0x7F.A1.42");
     }
 
@@ -1620,13 +1620,13 @@ update_function(update)
     ui_next_size(ui_pixel(search_container_width, 1.0f), ui_em(3.5f, 1.0f));
     ui_next_axis(ui_axis_x());
     ui_next_border(1.0f, theme->fg_color);
-    ui_next_flags(UI_FLAG_DRAW_BACKGROUND);
+    ui_next_flags(UI_FLAG_BACKGROUND);
     ui_next_padding(4.0f);
     ui_widget_group("search-bar-container", (platform->width - search_container_width) * 0.5f, 40.0f)
     {
         ui_next_size(ui_content(1.0f), ui_content(1.0f));
         ui_next_padding(4.0f);
-        ui_next_flags(UI_FLAG_DRAW_BACKGROUND);
+        ui_next_flags(UI_FLAG_BACKGROUND);
         ui_next_anchored(UI_ANCHOR_TOP_LEFT, UI_ANCHOR_CENTER_LEFT, 16.0f, 2.0f);
         ui_widget_text("search-header", "SEARCH");
     
@@ -1658,7 +1658,7 @@ update_function(update)
                 
                 ui_next_size(ui_percent(1.0f, 0.0f), ui_percent(1.0f, 1.0f));
                 ui_next_flags(UI_FLAG_CLICKABLE);
-                ui_next_clear_flags(UI_FLAG_WRAP_TEXT);
+                // ui_next_clear_flags(UI_FLAG_WRAP_TEXT);
                 ui_next_text_alignment((ui_alignment_t){ UI_ALIGNMENT_LEADING, UI_ALIGNMENT_CENTER });
                 ui_widget_text_editable("search-bar", &search_text_edit);
                 

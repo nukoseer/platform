@@ -175,12 +175,12 @@ typedef struct ui_text_edit_t
 
 typedef enum ui_flags_t
 {
-    UI_FLAG_DRAW_BACKGROUND  = (1 << 0),
-    UI_FLAG_DRAW_BORDER      = (1 << 1),
-    UI_FLAG_DRAW_TEXT        = (1 << 2),
-    UI_FLAG_DRAW_TEXT_EDIT   = (1 << 3),
-    UI_FLAG_DRAW_DROP_SHADOW = (1 << 4),
-    UI_FLAG_DRAW_CUSTOM      = (1 << 5),
+    UI_FLAG_BACKGROUND       = (1 << 0),
+    UI_FLAG_BORDER           = (1 << 1),
+    UI_FLAG_TEXT             = (1 << 2),
+    UI_FLAG_TEXT_EDIT        = (1 << 3),
+    UI_FLAG_DROP_SHADOW      = (1 << 4),
+    UI_FLAG_CUSTOM           = (1 << 5),
     UI_FLAG_FLOATING         = (1 << 6),
     UI_FLAG_CLICKABLE        = (1 << 7),
     UI_FLAG_FOCUSABLE        = (1 << 8),
@@ -210,6 +210,7 @@ typedef struct ui_widget_t
     void* font;
     vec4 font_color;
     ui_text_line_t* text_line;
+    u32 text_line_count;
     
     char* text;
     u32 text_length;
