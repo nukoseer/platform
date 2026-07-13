@@ -42,6 +42,8 @@ typedef struct ui_t
     ui_widget_t* free_widgets;
     ui_stacks_t stacks;
     ui_widget_list_t widget_lists[64];
+    ui_text_line_t* free_text_lines;
+
     ui_draw_command_chunk_t* draw_commands_first;
     ui_draw_command_chunk_t* draw_commands_last;
     u32 draw_command_count;
@@ -407,6 +409,47 @@ static void ui_widget_list_child_remove(ui_widget_list_t* widget_list, ui_widget
     child_widget->child_prev = 0;
 }
 
+static void ui_text_line_list_insert_back(ui_text_line_list_t* text_line_list, ui_text_line_t* text_line)
+{
+    if (!text_line_list->first && !text_line_list->last)
+    {
+        text_line_list->first = text_line_list->last = text_line;
+    }
+    else
+    {
+        text_line->next = 0;
+        text_line->prev = text_line_list->last;
+        text_line_list->last->next = text_line;
+        text_line_list->last = text_line;
+    }
+}
+
+static void ui_text_line_list_remove(ui_text_line_list_t* text_line_list, ui_text_line_t* text_line)
+{
+    if (text_line_list->first == text_line)
+    {
+        text_line_list->first = text_line_list->first->next;
+    }
+
+    if (text_line_list->last == text_line)
+    {
+        text_line_list->last = text_line_list->last->prev;
+    }
+
+    if (text_line->next)
+    {
+        text_line->next->prev = text_line->prev;
+    }
+
+    if (text_line->prev)
+    {
+        text_line->prev->next = text_line->next;
+    }
+    
+    text_line->next = 0;
+    text_line->prev = 0;
+}
+
 static ui_widget_t* ui_widget_from_key(ui_key_t key)
 {
     ui_widget_t* widget = 0;
@@ -465,8 +508,8 @@ static ui_widget_t* ui_widget_build_from_key(ui_key_t key)
     widget->position = (ui_position_t){ 0 };
     widget->text = 0;
     widget->text_length = 0;
-    widget->text_line = 0;
-    widget->text_line_count = 0;
+    // widget->text_line = 0;
+    // widget->text_line_count = 0;
     widget->fixed_size[UI_AXIS_X] = 0.0f;
     widget->fixed_size[UI_AXIS_Y] = 0.0f;
     widget->rect = (ui_rect_t){ 0 };
@@ -641,8 +684,55 @@ static ui_widget_t* ui_widget_text_edit(const char* widget_name, ui_text_edit_t*
     return widget;
 }
 
+static ui_text_line_t* ui_next_text_line(ui_widget_t* widget, ui_text_line_t* current_text_line)
+{
+    ui_text_line_t* text_line = current_text_line ? current_text_line->next : widget->text_line_list.first;
+
+    if (!text_line)
+    {
+        if (!global_ui->free_text_lines)
+        {
+            text_line = ma_push_struct(global_ui->arena, ui_text_line_t);
+        }
+        else
+        {
+            text_line = global_ui->free_text_lines;
+            global_ui->free_text_lines = global_ui->free_text_lines->next;
+        }
+
+        memset(text_line, 0, sizeof(ui_text_line_t));
+        ui_text_line_list_insert_back(&widget->text_line_list, text_line);
+        widget->text_line_count++;
+    }
+
+    return text_line;
+}
+
+static void ui_clear_text_lines(ui_widget_t* widget)
+{
+    for (ui_text_line_t* text_line = widget->text_line_list.first; text_line;)
+    {
+        ui_text_line_t* text_line_next = text_line->next;
+        ui_text_line_list_remove(&widget->text_line_list, text_line);
+
+        ui_text_line_t* next_free_text_line = global_ui->free_text_lines;
+        global_ui->free_text_lines = text_line;
+        global_ui->free_text_lines->next = next_free_text_line;
+
+        text_line = text_line_next;
+        --widget->text_line_count;
+    }
+
+    assert(widget->text_line_count == 0 && "[UI] Invalid text line count.");
+}
+
 static void ui_resolve_text_lines(ui_widget_t* root_widget, ui_axis_t axis)
 {
+    if (root_widget->prev_text_length > root_widget->text_length)
+    {
+        ui_clear_text_lines(root_widget);
+    }
+    
     if (root_widget->text)
     {
         graphics_2d_font_t font = *(graphics_2d_font_t*)root_widget->font;
@@ -657,7 +747,7 @@ static void ui_resolve_text_lines(ui_widget_t* root_widget, ui_axis_t axis)
         {
             i32 start_offset = 0;
             i32 end_offset = root_widget->text_length;
-            ui_text_line_t* tail_text_line = 0;
+            ui_text_line_t* text_line = 0;
             
             while (start_offset < end_offset)
             {
@@ -713,7 +803,7 @@ static void ui_resolve_text_lines(ui_widget_t* root_widget, ui_axis_t axis)
                     --fits_end_wo_trailing_spaces;
                 }
 
-                ui_text_line_t* text_line = ma_push_struct_zero(global_ui->frame_arena, ui_text_line_t);
+                text_line = ui_next_text_line(root_widget, text_line);
                 text_line->offset = start_offset;
                 text_line->length = fits_end_wo_trailing_spaces - start_offset;
                 text_line->size[UI_AXIS_X] = global_ui->graphics->measure_text_width(font, root_widget->text + start_offset,
@@ -721,19 +811,6 @@ static void ui_resolve_text_lines(ui_widget_t* root_widget, ui_axis_t axis)
                 text_line->size[UI_AXIS_Y] = root_widget->text_size[UI_AXIS_Y];
                 text_line->max_width = wrap_width;
                 text_line->max_end_offset = text_line->length;
-
-                ++root_widget->text_line_count;
-
-                if (!root_widget->text_line)
-                {
-                    root_widget->text_line = text_line;
-                }
-                else
-                {
-                    tail_text_line->next = text_line;
-                    text_line->prev = tail_text_line;
-                }
-                tail_text_line = text_line;
 
                 start_offset = fits_end;
             }
@@ -758,17 +835,17 @@ static void ui_resolve_text_lines(ui_widget_t* root_widget, ui_axis_t axis)
                 --end_offset;
             }
             
-            ui_text_line_t* text_line = ma_push_struct_zero(global_ui->frame_arena, ui_text_line_t);
+            ui_text_line_t* text_line = ui_next_text_line(root_widget, 0);
             text_line->offset = 0;
             text_line->length = root_widget->text_length;
             text_line->size[UI_AXIS_X] = global_ui->graphics->measure_text_width(font, root_widget->text, root_widget->text_length);
             text_line->size[UI_AXIS_Y] = root_widget->text_size[UI_AXIS_Y];
             text_line->max_width = wrap_width;
             text_line->max_end_offset = max_end_offset;
-            root_widget->text_line = text_line;
-            root_widget->text_line_count = 1;
         }
     }
+
+    root_widget->prev_text_length = root_widget->text_length;
 
     for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
     {
@@ -819,7 +896,7 @@ static void ui_resolve_text_alignment(ui_widget_t* widget, ui_axis_t axis)
     {
         if (axis == UI_AXIS_X)
         {
-            for (ui_text_line_t* text_line = widget->text_line; text_line; text_line = text_line->next)
+            for (ui_text_line_t* text_line = widget->text_line_list.first; text_line; text_line = text_line->next)
             {
                 text_line->position[axis] = ui_resolve_alignment(widget, text_line->size[axis], axis);
             }
@@ -831,7 +908,7 @@ static void ui_resolve_text_alignment(ui_widget_t* widget, ui_axis_t axis)
             f32 start_position = ui_resolve_alignment(widget, text_line_size, axis);
             i32 line_index = 0;
 
-            for (ui_text_line_t* text_line = widget->text_line; text_line; text_line = text_line->next)
+            for (ui_text_line_t* text_line = widget->text_line_list.first; text_line; text_line = text_line->next)
             {
                 text_line->position[axis] = start_position + (line_index * line_height);
                 ++line_index;
@@ -942,7 +1019,7 @@ static void ui_resolve_sizes(ui_widget_t* root_widget, ui_axis_t axis)
                 {
                     i32 line_count = 0;
 
-                    for (ui_text_line_t* text_line = child_widget->text_line; text_line; text_line = text_line->next)
+                    for (ui_text_line_t* text_line = child_widget->text_line_list.first; text_line; text_line = text_line->next)
                     {
                         ++line_count;
                     }
@@ -1086,19 +1163,17 @@ static void ui_print_info(ui_widget_t* root_widget)
             root_widget->text, root_widget->text_length,
             root_widget->text_size[UI_AXIS_X], root_widget->text_size[UI_AXIS_Y]);
 
-        fprintf(stderr, "   - text lines:\n");
+        fprintf(stderr, "   - text line count: %d\n", root_widget->text_line_count);
 
-        while (root_widget->text_line)
+        for (ui_text_line_t* text_line = root_widget->text_line_list.first; text_line; text_line = text_line->next)
         {
             fprintf(stderr,
                     "      - text line: %.*s\n"
-                    "      - length: %d\n"
-                    "      - width: %f\n"
-                    "      - height: %f\n",
-                    root_widget->text_line->length, root_widget->text + root_widget->text_line->offset,
-                    root_widget->text_line->length, root_widget->text_line->size[0], root_widget->text_line->size[1]);
-            
-            root_widget->text_line = root_widget->text_line->next;
+                        "      - length: %d\n"
+                        "      - width: %f\n"
+                        "      - height: %f\n",
+                    text_line->length, root_widget->text + text_line->offset,
+                    text_line->length, text_line->size[0], text_line->size[1]);
         }
     }
 
@@ -1220,7 +1295,7 @@ static void ui_emit_draw_commands(ui_widget_t* widget, ui_rect_t clip_rect)
 
     if (ui_is_flag_set(widget, UI_FLAG_TEXT))
     {
-        for (ui_text_line_t* text_line = widget->text_line; text_line; text_line = text_line->next)
+        for (ui_text_line_t* text_line = widget->text_line_list.first; text_line; text_line = text_line->next)
         {
             ui_rect_t line_rect = (ui_rect_t)
             {
@@ -1254,7 +1329,7 @@ static void ui_emit_draw_commands(ui_widget_t* widget, ui_rect_t clip_rect)
         i32 cursor_x = widget->text_edit->cursor;
         i32 cursor_y = 0;
         
-        for (ui_text_line_t* text_line = widget->text_line; text_line; text_line = text_line->next)
+        for (ui_text_line_t* text_line = widget->text_line_list.first; text_line; text_line = text_line->next)
         {
             ui_rect_t line_rect = (ui_rect_t)
             {

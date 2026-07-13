@@ -402,6 +402,61 @@ static void ui_text_edit_delete_all(ui_text_edit_t* text_edit)
     text_edit->text[text_edit->cursor] = '\0';
 }
 
+static inline void ui_text_edit_move_left(ui_text_edit_t* text_edit)
+{
+    text_edit->cursor = (i32)max(0, text_edit->cursor - 1);
+}
+
+static inline void ui_text_edit_move_right(ui_text_edit_t* text_edit)
+{
+    text_edit->cursor = (i32)min(text_edit->length, text_edit->cursor + 1);
+}
+
+static ui_text_line_t* ui_text_line_index_from_cursor(ui_text_edit_t* text_edit, ui_widget_t* widget)
+{
+    ui_text_line_t* result = 0;
+    i32 cursor = text_edit->cursor;
+
+    for (ui_text_line_t* text_line = widget->text_line_list.first; text_line; text_line = text_line->next)
+    {
+        if (cursor >= text_line->offset && cursor <= text_line->offset + text_line->length)
+        {
+            result = text_line;
+            break;
+        }
+    }
+
+    return result;
+}
+
+static void ui_text_edit_move_up(ui_text_edit_t* text_edit, ui_widget_t* widget)
+{
+    ui_text_line_t* current_line = ui_text_line_index_from_cursor(text_edit, widget);
+
+    if (!current_line || !current_line->prev)
+    {
+        return;
+    }
+
+    ui_text_line_t* target_line = current_line->prev;
+
+    text_edit->cursor = target_line->offset + target_line->length;
+}
+
+static void ui_text_edit_move_down(ui_text_edit_t* text_edit, ui_widget_t* widget)
+{
+    ui_text_line_t* current_line = ui_text_line_index_from_cursor(text_edit, widget);
+
+    if (!current_line || !current_line->next)
+    {
+        return;
+    }
+
+    ui_text_line_t* target_line = current_line->next;
+
+    text_edit->cursor = target_line->offset + target_line->length;
+}
+
 static ui_signal_t ui_widget_text_editable(const char* name, ui_text_edit_t* text_edit)
 {
     input_t* input = global_ui->input;
@@ -436,15 +491,25 @@ static ui_signal_t ui_widget_text_editable(const char* name, ui_text_edit_t* tex
             {
                 ui_text_edit_backspace_all(text_edit);
             }
-                                
+
+            if (key == KEY_UP)
+            {
+                ui_text_edit_move_up(text_edit, widget);
+            }
+
+            if (key == KEY_DOWN)
+            {
+                ui_text_edit_move_down(text_edit, widget);
+            }
+            
             if (key == KEY_LEFT)
             {
-                text_edit->cursor = (i32)max(0.0f, text_edit->cursor - 1);
+                ui_text_edit_move_left(text_edit);
             }
 
             if (key == KEY_RIGHT)
             {
-                text_edit->cursor = (i32)min(text_edit->length, text_edit->cursor + 1);
+                ui_text_edit_move_right(text_edit);
             }
 
             if (key == KEY_E && input->modifiers & KEY_MODIFIER_CTRL)

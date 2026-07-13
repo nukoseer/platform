@@ -124,11 +124,17 @@ typedef struct ui_draw_command_chunk_t
     struct ui_draw_command_chunk_t* next;
 } ui_draw_command_chunk_t;
 
-typedef struct ui_list_widget_t
+typedef struct ui_widget_list_t
 {
     struct ui_widget_t* first;
     struct ui_widget_t* last;
 } ui_widget_list_t;
+
+typedef struct ui_text_line_list_t
+{
+    struct ui_text_line_t* first;
+    struct ui_text_line_t* last;
+} ui_text_line_list_t;
 
 typedef struct ui_text_line_t
 {
@@ -171,6 +177,7 @@ typedef struct ui_text_edit_t
     char text[256];
     i32 length;
     i32 cursor;
+    f32 scroll_x;
 } ui_text_edit_t;
 
 typedef enum ui_flags_t
@@ -209,11 +216,12 @@ typedef struct ui_widget_t
     
     void* font;
     vec4 font_color;
-    ui_text_line_t* text_line;
+    ui_text_line_list_t text_line_list;
     u32 text_line_count;
     
     char* text;
-    u32 text_length;
+    i32 text_length;
+    i32 prev_text_length;
     f32 text_size[UI_AXIS_COUNT];
     ui_alignment_t text_alignment;
     ui_text_edit_t* text_edit;
