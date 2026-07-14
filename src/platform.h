@@ -617,6 +617,12 @@ typedef graphics_2d_draw_text_function(graphics_2d_draw_text_f);
 #define graphics_2d_draw_rect_function(name) void name(f32 x, f32 y, f32 width, f32 height, bool fill, f32 thickness, f32 r, f32 g, f32 b, f32 a)
 typedef graphics_2d_draw_rect_function(graphics_2d_draw_rect_f);
 
+#define graphics_2d_push_axis_aligned_clip_function(name) void name(f32 x, f32 y, f32 width, f32 height)
+typedef graphics_2d_push_axis_aligned_clip_function(graphics_2d_push_axis_aligned_clip_f);
+
+#define graphics_2d_pop_axis_aligned_clip_function(name) void name(void)
+typedef graphics_2d_pop_axis_aligned_clip_function(graphics_2d_pop_axis_aligned_clip_f);
+
 typedef struct graphics_t
 {
     union
@@ -676,6 +682,8 @@ typedef struct graphics_t
             graphics_2d_end_draw_f* end_draw;
             graphics_2d_draw_text_f* draw_text;
             graphics_2d_draw_rect_f* draw_rect;
+            graphics_2d_push_axis_aligned_clip_f* push_axis_aligned_clip;
+            graphics_2d_pop_axis_aligned_clip_f* pop_axis_aligned_clip;
         };
 
         void* functions_2d[sizeof(struct graphics_2d_functions) / sizeof(void*)];

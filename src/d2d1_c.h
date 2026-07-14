@@ -275,6 +275,16 @@ static inline void ID2D1RenderTarget_GetTextRenderingParams(ID2D1RenderTarget* s
     ((void (WINAPI*)(ID2D1RenderTarget*, IDWriteRenderingParams**))self->vtbl->table[37])(self, textRenderingParams);
 }
 
+static inline void ID2D1RenderTarget_PushAxisAlignedClip(ID2D1RenderTarget* self, CONST D2D1_RECT_F* clipRect, D2D1_ANTIALIAS_MODE antialiasMode)
+{
+    ((void (WINAPI*)(ID2D1RenderTarget*, CONST D2D1_RECT_F*, D2D1_ANTIALIAS_MODE))self->vtbl->table[45])(self, clipRect, antialiasMode);
+}
+
+static inline void ID2D1RenderTarget_PopAxisAlignedClip(ID2D1RenderTarget* self)
+{
+    ((void (WINAPI*)(ID2D1RenderTarget*))self->vtbl->table[46])(self);
+}
+
 static inline void ID2D1RenderTarget_BeginDraw(ID2D1RenderTarget* self)
 {
     ((void (WINAPI*)(ID2D1RenderTarget*))self->vtbl->table[48])(self);

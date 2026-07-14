@@ -681,6 +681,8 @@ static DWORD WINAPI main_thread(void* param)
         .end_draw = gfx_2d_end_draw,
         .draw_text = gfx_2d_draw_text,
         .draw_rect = gfx_2d_draw_rect,
+        .push_axis_aligned_clip = gfx_2d_push_axis_aligned_clip,
+        .pop_axis_aligned_clip = gfx_2d_pop_axis_aligned_clip,
     };
 
     io_t io =

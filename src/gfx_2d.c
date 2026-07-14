@@ -126,6 +126,106 @@ static graphics_2d_delete_font_function(gfx_2d_delete_font)
     free_font_index(font_index);
 }
 
+static graphics_2d_get_font_point_size_function(gfx_2d_get_font_point_size)
+{
+    u32 font_generation = get_generation(font.platform);
+    u32 font_index = get_index(font.platform);
+    gfx_2d_font_t* gfx_2d_font = global_fonts + font_index;
+
+    if (font_generation != gfx_2d_font->generation)
+    {
+        assert(!"[GFX2D] Font generation does not match.");
+        return 0.0f;
+    }
+
+    f32 point_size = gfx_2d_font->point_size;
+
+    return point_size;
+}
+
+static graphics_2d_get_font_pixel_size_function(gfx_2d_get_font_pixel_size)
+{
+    u32 font_generation = get_generation(font.platform);
+    u32 font_index = get_index(font.platform);
+    gfx_2d_font_t* gfx_2d_font = global_fonts + font_index;
+
+    if (font_generation != gfx_2d_font->generation)
+    {
+        assert(!"[GFX2D] Font generation does not match.");
+        return 0.0f;
+    }
+
+    f32 pixel_size = gfx_2d_font->pixel_size;
+
+    return pixel_size;
+}
+
+static graphics_2d_measure_text_width_function(gfx_2d_measure_text_width)
+{
+    u32 font_generation = get_generation(font.platform);
+    u32 font_index = get_index(font.platform);
+    gfx_2d_font_t* gfx_2d_font = global_fonts + font_index;
+
+    if (font_generation != gfx_2d_font->generation)
+    {
+        assert(!"[GFX2D] Font generation does not match.");
+        return 0.0f;
+    }
+
+    // TODO: This is really inefficient. For each text we create a new text layout,
+    // get text metrics and release the layout. We also convert from UTF-8 to
+    // UTF-16. Probably this is still okay if we only have small amount of texts with
+    // small text length. Ideally, we at least need some kind of LRU cache structure.
+    // I believe if we generate font atlas at some point we can calculate text width
+    // without creating text layout.
+
+    f32 text_width = 0.0f;
+    
+    if (text && text_length < (u32)-1)
+    {
+        IDWriteTextLayout* text_layout = 0;
+        const f32 max_width = 10000.0f;
+        const f32 max_height = 10000.0f;
+
+        wchar_t wchar_text[256];
+        i32 wchar_size = MultiByteToWideChar(CP_UTF8, 0, text, (int)text_length, NULL, 0);
+        assert(wchar_size + 1 < array_count(wchar_text) && "[GFX2D] Failed to convert from UTF-8 to UTF-16.");
+
+        MultiByteToWideChar(CP_UTF8, 0, text, (i32)text_length, wchar_text, wchar_size);
+        wchar_text[wchar_size] = '\0';
+
+        HRESULT result = IDWriteFactory_CreateTextLayout(global_d2d1.dwrite->factory, wchar_text, wchar_size,
+                                                         gfx_2d_font->text_format,
+                                                         max_width, max_height, &text_layout);
+        assert(SUCCEEDED(result) && text_layout && "[GFX2D] Failed to create text layout.");
+
+        DWRITE_TEXT_METRICS text_metrics = { 0 };
+        IDWriteTextLayout_GetMetrics(text_layout, &text_metrics);
+
+        f32 text_width_dip = text_metrics.widthIncludingTrailingWhitespace;
+        text_width = text_width_dip * (global_d2d1.dpi / 96.0f);
+
+        IDWriteTextLayout_Release(text_layout);
+    }
+
+    return text_width;
+}
+
+static graphics_2d_get_line_height_function(gfx_2d_get_line_height)
+{
+    u32 font_generation = get_generation(font.platform);
+    u32 font_index = get_index(font.platform);
+    gfx_2d_font_t* gfx_2d_font = global_fonts + font_index;
+
+    if (font_generation != gfx_2d_font->generation)
+    {
+        assert(!"[GFX2D] Font generation does not match.");
+        return 0.0f;
+    }
+
+    return gfx_2d_font->line_height;
+}
+
 static graphics_2d_begin_draw_function(gfx_2d_begin_draw)
 {
     ID2D1RenderTarget_BeginDraw(global_d2d1.render_target);
@@ -203,101 +303,21 @@ static graphics_2d_draw_rect_function(gfx_2d_draw_rect)
     }
 }
 
-static graphics_2d_get_font_point_size_function(gfx_2d_get_font_point_size)
+static graphics_2d_push_axis_aligned_clip_function(gfx_2d_push_axis_aligned_clip)
 {
-    u32 font_generation = get_generation(font.platform);
-    u32 font_index = get_index(font.platform);
-    gfx_2d_font_t* gfx_2d_font = global_fonts + font_index;
-
-    if (font_generation != gfx_2d_font->generation)
+    D2D1_RECT_F clip_rect =
     {
-        assert(!"[GFX2D] Font generation does not match.");
-        return 0.0f;
-    }
+        .left = x,
+        .top = y,
+        .right = x + width,
+        .bottom = y + height,
+    };
 
-    f32 point_size = gfx_2d_font->point_size;
-
-    return point_size;
+    ID2D1RenderTarget_PushAxisAlignedClip(global_d2d1.render_target, &clip_rect, D2D1_ANTIALIAS_MODE_ALIASED);
 }
 
-static graphics_2d_get_font_pixel_size_function(gfx_2d_get_font_pixel_size)
+static graphics_2d_pop_axis_aligned_clip_function(gfx_2d_pop_axis_aligned_clip)
 {
-    u32 font_generation = get_generation(font.platform);
-    u32 font_index = get_index(font.platform);
-    gfx_2d_font_t* gfx_2d_font = global_fonts + font_index;
-
-    if (font_generation != gfx_2d_font->generation)
-    {
-        assert(!"[GFX2D] Font generation does not match.");
-        return 0.0f;
-    }
-
-    f32 pixel_size = gfx_2d_font->pixel_size;
-
-    return pixel_size;
+    ID2D1RenderTarget_PopAxisAlignedClip(global_d2d1.render_target);
 }
-
-static graphics_2d_measure_text_width_function(gfx_2d_measure_text_width)
-{
-    u32 font_generation = get_generation(font.platform);
-    u32 font_index = get_index(font.platform);
-    gfx_2d_font_t* gfx_2d_font = global_fonts + font_index;
-
-    if (font_generation != gfx_2d_font->generation)
-    {
-        assert(!"[GFX2D] Font generation does not match.");
-        return 0.0f;
-    }
-
-    // TODO: This is really inefficient. For each text we create a new text layout,
-    // get text metrics and release the layout. We also convert from UTF-8 to
-    // UTF-16. Probably this is still okay if we only have small amount of texts with
-    // small text length. Ideally, we at least need some kind of LRU cache structure.
-    // I believe if we generate font atlas at some point we can calculate text width
-    // without creating text layout.
-    
-    IDWriteTextLayout* text_layout = 0;
-    const f32 max_width = 10000.0f;
-    const f32 max_height = 10000.0f;
-
-    assert(text && text_length < (u32)-1 && "[GFX2D] Invalid text or text length.");
-
-    wchar_t wchar_text[64];
-    i32 wchar_size = MultiByteToWideChar(CP_UTF8, 0, text, (int)text_length, NULL, 0);
-    assert(wchar_size + 1 < array_count(wchar_text) && "[GFX2D] Failed to convert from UTF-8 to UTF-16.");
-
-    MultiByteToWideChar(CP_UTF8, 0, text, (i32)text_length, wchar_text, wchar_size);
-    wchar_text[wchar_size] = '\0';
-
-    HRESULT result = IDWriteFactory_CreateTextLayout(global_d2d1.dwrite->factory, wchar_text, wchar_size,
-                                                     gfx_2d_font->text_format,
-                                                     max_width, max_height, &text_layout);
-    assert(SUCCEEDED(result) && text_layout && "[GFX2D] Failed to create text layout.");
-
-    DWRITE_TEXT_METRICS text_metrics = { 0 };
-    IDWriteTextLayout_GetMetrics(text_layout, &text_metrics);
-
-    f32 text_width_dip = text_metrics.widthIncludingTrailingWhitespace;
-    f32 text_width = text_width_dip * (global_d2d1.dpi / 96.0f);
-
-    IDWriteTextLayout_Release(text_layout);
-
-    return text_width;
-}
-
-static graphics_2d_get_line_height_function(gfx_2d_get_line_height)
-{
-    u32 font_generation = get_generation(font.platform);
-    u32 font_index = get_index(font.platform);
-    gfx_2d_font_t* gfx_2d_font = global_fonts + font_index;
-
-    if (font_generation != gfx_2d_font->generation)
-    {
-        assert(!"[GFX2D] Font generation does not match.");
-        return 0.0f;
-    }
-
-    return gfx_2d_font->line_height;
-}
-
 
