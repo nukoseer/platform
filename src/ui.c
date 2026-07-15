@@ -731,24 +731,27 @@ static void ui_resolve_text_lines(ui_widget_t* root_widget, ui_axis_t axis)
         {
             i32 start_offset = 0;
             i32 end_offset = root_widget->text_length;
-            ui_text_line_t* text_line = 0;
             
             while (start_offset < end_offset)
             {
+                f32 line_width = 0.0f;
                 i32 fits_end = start_offset;
+                i32 word_start = start_offset;
                 i32 space = string_find_leading_char(root_widget->text, start_offset, end_offset - start_offset, ' ');
                 i32 word_end = space == -1 ? end_offset : space + 1;
 
-                while (word_end != -1 && word_end <= end_offset)
+                while (word_end != -1 && word_start < end_offset)
                 {
-                    f32 width = global_ui->graphics->measure_text_width(font, root_widget->text + start_offset, word_end - start_offset);
+                    f32 word_width = global_ui->graphics->measure_text_width(font, root_widget->text + word_start, word_end - word_start);
 
-                    if (width > wrap_width)
+                    if (line_width + word_width > wrap_width)
                     {
                         break;
                     }
 
+                    line_width += word_width;
                     fits_end = word_end;
+                    word_start = word_end;
 
                     if (word_end == end_offset)
                     {
@@ -761,36 +764,34 @@ static void ui_resolve_text_lines(ui_widget_t* root_widget, ui_axis_t axis)
 
                 if (fits_end == start_offset)
                 {
-                    for (i32 i = start_offset + 1; i <= end_offset; ++i)
+                    i32 begin = start_offset;
+                    i32 end = end_offset;
+                    i32 best = start_offset;
+                    
+                    while (begin <= end)
                     {
-                        if (global_ui->graphics->measure_text_width(font, root_widget->text + start_offset, i - start_offset) > wrap_width)
+                        i32 mid = begin + (end - begin) / 2;
+                        f32 width = global_ui->graphics->measure_text_width(font, root_widget->text + start_offset, mid - start_offset);
+
+                        if (width <= wrap_width)
                         {
-                            fits_end = max(i - 1, start_offset + 1);
-                            break;
+                            line_width = width;
+                            best = mid;
+                            begin = mid + 1;
                         }
-
-                        fits_end = i;
+                        else
+                        {
+                            end = mid - 1;
+                        }
                     }
+
+                    fits_end = max(best, start_offset + 1);
                 }
 
-                //NOTE: Remove leading spaces from the line.
-                while (start_offset < fits_end && root_widget->text[start_offset] == ' ')
-                {
-                    ++start_offset;
-                }
-                
-                // NOTE: Remove trailing spaces from the line.
-                i32 fits_end_wo_trailing_spaces = fits_end;
-                while (fits_end_wo_trailing_spaces > start_offset && root_widget->text[fits_end_wo_trailing_spaces - 1] == ' ')
-                {
-                    --fits_end_wo_trailing_spaces;
-                }
-
-                text_line = ui_push_text_line(root_widget);
+                ui_text_line_t* text_line = ui_push_text_line(root_widget);
                 text_line->offset = start_offset;
-                text_line->length = fits_end_wo_trailing_spaces - start_offset;
-                text_line->size[UI_AXIS_X] = global_ui->graphics->measure_text_width(font, root_widget->text + start_offset,
-                                                                                     fits_end_wo_trailing_spaces - start_offset);
+                text_line->length = fits_end - start_offset;
+                text_line->size[UI_AXIS_X] = line_width;
                 text_line->size[UI_AXIS_Y] = root_widget->text_size[UI_AXIS_Y];
 
                 start_offset = fits_end;
