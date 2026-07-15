@@ -508,11 +508,8 @@ static ui_widget_t* ui_widget_build_from_key(ui_key_t key)
     widget->position = (ui_position_t){ 0 };
     widget->text = 0;
     widget->text_length = 0;
-    // widget->text_line = 0;
-    // widget->text_line_count = 0;
     widget->fixed_size[UI_AXIS_X] = 0.0f;
     widget->fixed_size[UI_AXIS_Y] = 0.0f;
-    widget->rect = (ui_rect_t){ 0 };
     
     // NOTE: The root widget does not have parent.
     ui_widget_t* parent_widget = ui_top_parent();
@@ -523,8 +520,6 @@ static ui_widget_t* ui_widget_build_from_key(ui_key_t key)
         ui_widget_list_child_insert_back(&parent_widget->child_list, widget);
     }
 
-    widget->position.x = 0.0f;
-    widget->position.y = 0.0f;
     widget->size[UI_AXIS_X] = ui_top_size_x();
     widget->size[UI_AXIS_Y] = ui_top_size_y();
     widget->layout_axis = ui_top_axis();
@@ -631,13 +626,13 @@ static ui_widget_t* ui_widget(const char* widget_name)
     return widget;
 }
 
-static void ui_equip_text(ui_widget_t* widget, const char* text, u32 text_length)
+static void ui_equip_text(ui_widget_t* widget, const char* text, i32 text_length)
 {
-    widget->font = ui_top_font().font;
+    widget->font = ui_top_font();
     widget->font_color = ui_top_font_color();
     widget->text_alignment = ui_top_text_alignment();
 
-    graphics_2d_font_t font = *(graphics_2d_font_t*)widget->font;
+    graphics_2d_font_t font = *(graphics_2d_font_t*)widget->font.font;
         
     if (text && text_length)
     {
@@ -657,37 +652,28 @@ static void ui_equip_text(ui_widget_t* widget, const char* text, u32 text_length
     ui_stack_auto_pop(&global_ui->stacks.text_alignment);
 }
 
-static void ui_equip_text_edit(ui_widget_t* widget, ui_text_edit_t* text_edit)
-{
-    if (text_edit)
-    {
-        ui_equip_text(widget, text_edit->text, text_edit->length);
-        widget->text_edit = text_edit;
-    }
-}
-
 static ui_widget_t* ui_widget_text(const char* widget_name, const char* text)
 {
     ui_next_flags(UI_FLAG_TEXT);
     ui_widget_t* widget = ui_widget_build_from_string(widget_name);
-    ui_equip_text(widget, text, (u32)strlen(text));
+    ui_equip_text(widget, text, (i32)strlen(text));
 
     return widget;
 }
 
-static ui_widget_t* ui_widget_text_edit(const char* widget_name, ui_text_edit_t* text_edit)
+static ui_widget_t* ui_widget_text_with_length(const char* widget_name, const char* text, i32 text_length)
 {
-    ui_next_flags(UI_FLAG_TEXT_EDIT);
+    ui_next_flags(UI_FLAG_TEXT);
     ui_widget_t* widget = ui_widget_build_from_string(widget_name);
-    ui_equip_text_edit(widget, text_edit);
+    ui_equip_text(widget, text, text_length);
 
     return widget;
 }
 
-static ui_text_line_t* ui_next_text_line(ui_widget_t* widget, ui_text_line_t* current_text_line)
+static ui_text_line_t* ui_push_text_line(ui_widget_t* widget)
 {
-    ui_text_line_t* text_line = current_text_line ? current_text_line->next : widget->text_line_list.first;
-
+    ui_text_line_t* text_line = 0;
+    
     if (!text_line)
     {
         if (!global_ui->free_text_lines)
@@ -699,11 +685,11 @@ static ui_text_line_t* ui_next_text_line(ui_widget_t* widget, ui_text_line_t* cu
             text_line = global_ui->free_text_lines;
             global_ui->free_text_lines = global_ui->free_text_lines->next;
         }
-
-        memset(text_line, 0, sizeof(ui_text_line_t));
-        ui_text_line_list_insert_back(&widget->text_line_list, text_line);
-        widget->text_line_count++;
     }
+
+    memset(text_line, 0, sizeof(ui_text_line_t));
+    ui_text_line_list_insert_back(&widget->text_line_list, text_line);
+    widget->text_line_count++;
 
     return text_line;
 }
@@ -720,6 +706,7 @@ static void ui_clear_text_lines(ui_widget_t* widget)
         global_ui->free_text_lines->next = next_free_text_line;
 
         text_line = text_line_next;
+
         --widget->text_line_count;
     }
 
@@ -728,14 +715,11 @@ static void ui_clear_text_lines(ui_widget_t* widget)
 
 static void ui_resolve_text_lines(ui_widget_t* root_widget, ui_axis_t axis)
 {
-    if (root_widget->prev_text_length > root_widget->text_length)
-    {
-        ui_clear_text_lines(root_widget);
-    }
+    ui_clear_text_lines(root_widget);
     
     if (root_widget->text)
     {
-        graphics_2d_font_t font = *(graphics_2d_font_t*)root_widget->font;
+        graphics_2d_font_t font = *(graphics_2d_font_t*)root_widget->font.font;
         f32 wrap_width = root_widget->fixed_size[UI_AXIS_X] - root_widget->padding * 2.0f;
 
         if (wrap_width < 0.0f)
@@ -787,7 +771,6 @@ static void ui_resolve_text_lines(ui_widget_t* root_widget, ui_axis_t axis)
 
                         fits_end = i;
                     }
-                    // break;
                 }
 
                 //NOTE: Remove leading spaces from the line.
@@ -803,49 +786,25 @@ static void ui_resolve_text_lines(ui_widget_t* root_widget, ui_axis_t axis)
                     --fits_end_wo_trailing_spaces;
                 }
 
-                text_line = ui_next_text_line(root_widget, text_line);
+                text_line = ui_push_text_line(root_widget);
                 text_line->offset = start_offset;
                 text_line->length = fits_end_wo_trailing_spaces - start_offset;
                 text_line->size[UI_AXIS_X] = global_ui->graphics->measure_text_width(font, root_widget->text + start_offset,
                                                                                      fits_end_wo_trailing_spaces - start_offset);
                 text_line->size[UI_AXIS_Y] = root_widget->text_size[UI_AXIS_Y];
-                text_line->max_width = wrap_width;
-                text_line->max_end_offset = text_line->length;
 
                 start_offset = fits_end;
             }
         }
         else
         {
-            i32 start_offset = 0;
-            i32 end_offset = root_widget->text_length;
-            i32 max_end_offset = 0;
-            f32 max_width = 0.0f;
-
-            while (start_offset < end_offset)
-            {
-                f32 width = global_ui->graphics->measure_text_width(font, root_widget->text + start_offset, end_offset - start_offset);
-                
-                if (width < wrap_width)
-                {
-                    max_end_offset = end_offset;
-                    break;
-                }
-                
-                --end_offset;
-            }
-            
-            ui_text_line_t* text_line = ui_next_text_line(root_widget, 0);
+            ui_text_line_t* text_line = ui_push_text_line(root_widget);
             text_line->offset = 0;
             text_line->length = root_widget->text_length;
             text_line->size[UI_AXIS_X] = global_ui->graphics->measure_text_width(font, root_widget->text, root_widget->text_length);
             text_line->size[UI_AXIS_Y] = root_widget->text_size[UI_AXIS_Y];
-            text_line->max_width = wrap_width;
-            text_line->max_end_offset = max_end_offset;
         }
     }
-
-    root_widget->prev_text_length = root_widget->text_length;
 
     for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
     {
@@ -1011,7 +970,7 @@ static void ui_resolve_sizes(ui_widget_t* root_widget, ui_axis_t axis)
             {
                 if (axis == UI_AXIS_X)
                 {
-                    graphics_2d_font_t font = *(graphics_2d_font_t*)child_widget->font;
+                    graphics_2d_font_t font = *(graphics_2d_font_t*)child_widget->font.font;
                     f32 width = global_ui->graphics->measure_text_width(font, child_widget->text, child_widget->text_length);
                     child_widget->fixed_size[axis] = width + child_widget->padding * 2.0f;
                 }
@@ -1127,12 +1086,20 @@ static void ui_resolve_layout(ui_widget_t* root_widget, ui_axis_t axis)
             continue;
         }
 
-        ui_rect_t child_rect = { 0.0f, 0.0f, child_widget->fixed_size[0], child_widget->fixed_size[1] };
-        f32 root_anchor = ui_resolve_anchor_position(root_widget->rect, child_widget->anchor.parent, axis);
-        f32 child_anchor = ui_resolve_anchor_position(child_rect, child_widget->anchor.self, axis);
+        if (ui_is_flag_set(child_widget, UI_FLAG_ANCHORED))
+        {
+            ui_rect_t child_rect = { 0.0f, 0.0f, child_widget->fixed_size[0], child_widget->fixed_size[1] };
+            f32 root_anchor = ui_resolve_anchor_position(root_widget->rect, child_widget->anchor.parent, axis);
+            f32 child_anchor = ui_resolve_anchor_position(child_rect, child_widget->anchor.self, axis);
 
-        child_widget->rect.xy[axis] = root_anchor - child_anchor + child_widget->anchor_offset[axis];
-        child_widget->rect.size[axis] = child_widget->fixed_size[axis];
+            child_widget->rect.xy[axis] = root_anchor - child_anchor + child_widget->anchor_offset[axis];
+            child_widget->rect.size[axis] = child_widget->fixed_size[axis];
+        }
+        else
+        {
+            child_widget->rect.xy[axis] = child_widget->position.xy[axis];
+            child_widget->rect.size[axis] = child_widget->fixed_size[axis];
+        }
         
         ui_resolve_text_alignment(child_widget, axis);
     }
@@ -1238,7 +1205,7 @@ static inline ui_draw_command_t* ui_push_draw_command(void)
 
 static void ui_emit_draw_commands(ui_widget_t* widget, ui_rect_t clip_rect)
 {
-    ui_rect_t draw_rect = ui_is_flag_set(widget, UI_FLAG_FLOATING) ?
+    ui_rect_t draw_rect = ui_is_flag_set(widget, UI_FLAG_ESCAPE_CLIP) ?
         widget->rect : ui_rect_intersect(clip_rect, widget->rect);
 
     if (draw_rect.width <= 0.0f || draw_rect.height <= 0.0f)
@@ -1295,139 +1262,44 @@ static void ui_emit_draw_commands(ui_widget_t* widget, ui_rect_t clip_rect)
 
     if (ui_is_flag_set(widget, UI_FLAG_TEXT))
     {
+        ui_rect_t content_rect =
+        {
+            ui_content_position(widget, UI_AXIS_X), ui_content_position(widget, UI_AXIS_Y),
+            ui_content_size(widget, UI_AXIS_X), ui_content_size(widget, UI_AXIS_Y),
+        };
+        
+        ui_rect_t text_clip = ui_is_flag_set(widget, UI_FLAG_FLOATING) ?
+            content_rect : ui_rect_intersect(clip_rect, content_rect);
+        
         for (ui_text_line_t* text_line = widget->text_line_list.first; text_line; text_line = text_line->next)
         {
+            f32 text_x = text_line->position[0] - widget->scroll[0];
+            f32 text_y = text_line->position[1] - widget->scroll[1];
+            
             ui_rect_t line_rect = (ui_rect_t)
             {
-                text_line->position[0], text_line->position[1],
+                text_x, text_y,
                 text_line->size[0], text_line->size[1]
             };
-            ui_rect_t draw_line_rect = ui_is_flag_set(widget, UI_FLAG_FLOATING) ?
+            ui_rect_t line_clip = ui_is_flag_set(widget, UI_FLAG_FLOATING) ?
                 line_rect : ui_rect_intersect(clip_rect, line_rect);
 
-            if (draw_line_rect.width <= 0.0f || draw_line_rect.height <= 0.0f)
+            if (line_clip.width <= 0.0f || line_clip.height <= 0.0f)
             {
                 continue;
             }
 
             ui_draw_command_t* draw_command = ui_push_draw_command();
             draw_command->kind = UI_DRAW_TEXT;
-            draw_command->x = draw_line_rect.x;
-            draw_command->y = draw_line_rect.y;
-            draw_command->width = draw_line_rect.width;
-            draw_command->height = draw_line_rect.height;
+            draw_command->x = text_x;
+            draw_command->y = text_y;
+            draw_command->width = text_line->size[0];
+            draw_command->height = text_line->size[1];
             draw_command->color = widget->font_color;
-            draw_command->font = widget->font;
+            draw_command->clip = text_clip;
+            draw_command->font = widget->font.font;
             draw_command->text = widget->text + text_line->offset;
             draw_command->length = text_line->length;
-        }
-    }
-    else if (ui_is_flag_set(widget, UI_FLAG_TEXT_EDIT))
-    {
-        i32 text_overflow_offset = 0;
-        ui_text_line_t* cursor_line = 0;
-        i32 cursor_x = widget->text_edit->cursor;
-        i32 cursor_y = 0;
-        
-        for (ui_text_line_t* text_line = widget->text_line_list.first; text_line; text_line = text_line->next)
-        {
-            ui_rect_t line_rect = (ui_rect_t)
-            {
-                text_line->position[0], text_line->position[1],
-                text_line->size[0], text_line->size[1]
-            };
-            ui_rect_t draw_line_rect = ui_is_flag_set(widget, UI_FLAG_FLOATING) ?
-                line_rect : ui_rect_intersect(clip_rect, line_rect);
-
-            if (draw_line_rect.width > 0.0f && draw_line_rect.height > 0.0f)
-            {
-                f32 text_width = draw_line_rect.width;
-                i32 text_length = text_line->length;
-
-                // NOTE: Text is longer than total widget width.
-                if (text_line->size[UI_AXIS_X] >= text_width)
-                {
-                    text_width = text_line->max_width;
-                    text_length = text_line->max_end_offset;
-                    text_overflow_offset = text_line->length - text_line->max_end_offset;
-                }
-
-                // NOTE: If we have text overflow and cursor is behind the overflow offset,
-                // we should clip the overflow offset to cursor to be able to see correct
-                // part of the text.
-                if (cursor_x < text_overflow_offset)
-                {
-                    text_overflow_offset = cursor_x;
-                }
-
-                // TODO: What should we do when there is a wrapped text but not enough size to display it correctly?
-                // It should be similar to how unwrapped version slides according or cursor.
-                // Right now we just draw the part that fits and if we type more nothing changes.
-                // It is just clipped and cursor is not visible.
-                if (ui_is_flag_set(widget, UI_FLAG_WRAP_TEXT))
-                {
-                    if (!cursor_line)
-                    {
-                        if (cursor_x > text_line->length)
-                        {
-                            cursor_x -= text_line->length;
-                            ++cursor_y;
-                        }
-                        else
-                        {
-                            cursor_line = text_line;
-                        }
-                    }
-                }
-                else
-                {
-                    cursor_line = text_line;
-                }
-
-                ui_draw_command_t* draw_command = ui_push_draw_command();
-                draw_command->kind = UI_DRAW_TEXT;
-                draw_command->x = draw_line_rect.x;
-                draw_command->y = draw_line_rect.y;
-                draw_command->width = draw_line_rect.width;
-                draw_command->height = draw_line_rect.height;
-                draw_command->color = widget->font_color;
-                draw_command->font = widget->font;
-                draw_command->text = widget->text + text_line->offset + text_overflow_offset;
-                draw_command->length = text_length;
-            }
-        }
-
-        if (ui_keys_equal(widget->key, global_ui->focus_key))
-        {
-            u32 text_line_count = max(1, widget->text_line_count);
-            
-            ui_rect_t cursor_rect = (ui_rect_t)
-            {
-                ui_resolve_alignment(widget, 1.0f, UI_AXIS_X),
-                ui_resolve_alignment(widget, text_line_count * widget->text_size[UI_AXIS_Y], UI_AXIS_Y) + (cursor_y * widget->text_size[UI_AXIS_Y]),
-                1.0f, widget->text_size[UI_AXIS_Y]
-            };
-            ui_rect_t draw_cursor_rect = ui_is_flag_set(widget, UI_FLAG_FLOATING) ?
-                cursor_rect : ui_rect_intersect(clip_rect, cursor_rect);
-
-            if (draw_cursor_rect.width > 0.0f && draw_cursor_rect.height > 0)
-            {
-                f32 cursor_offset = 0.0f;
-
-                if (cursor_line)
-                {
-                    graphics_2d_font_t font = *(graphics_2d_font_t*)widget->font;
-                    cursor_offset = global_ui->graphics->measure_text_width(font, widget->text + text_overflow_offset + cursor_line->offset, cursor_x - text_overflow_offset);
-                }
-                
-                ui_draw_command_t* draw_command = ui_push_draw_command();
-                draw_command->kind = UI_DRAW_RECT;
-                draw_command->x = draw_cursor_rect.x + cursor_offset;
-                draw_command->y = draw_cursor_rect.y;
-                draw_command->width = draw_cursor_rect.width;
-                draw_command->height = draw_cursor_rect.height;
-                draw_command->color = widget->font_color;
-            }
         }
     }
 }
@@ -1465,13 +1337,18 @@ static void ui_emit_floating_pass(ui_widget_t* root_widget, ui_rect_t clip_rect)
 {
     if (ui_is_flag_set(root_widget, UI_FLAG_FLOATING))
     {
-        ui_emit_subtree(root_widget, clip_rect);
+        ui_rect_t subtree_clip = ui_is_flag_set(root_widget, UI_FLAG_ESCAPE_CLIP)
+            ? global_ui->root_widget->rect
+            : clip_rect;
+        ui_emit_subtree(root_widget, subtree_clip);
         return;
     }
 
+    ui_rect_t child_clip_rect = ui_rect_intersect(clip_rect, root_widget->rect);
+    
     for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
     {
-        ui_emit_floating_pass(child_widget, clip_rect);
+        ui_emit_floating_pass(child_widget, child_clip_rect);
     }
 }
 

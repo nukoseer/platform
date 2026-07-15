@@ -1660,7 +1660,7 @@ update_function(update)
                 ui_next_flags(UI_FLAG_CLICKABLE);
                 // ui_next_clear_flags(UI_FLAG_WRAP_TEXT);
                 ui_next_text_alignment((ui_alignment_t){ UI_ALIGNMENT_LEADING, UI_ALIGNMENT_CENTER });
-                ui_widget_text_editable("search-bar", &search_text_edit);
+                ui_widget_text_edit("search-bar", &search_text_edit);
                 
                 ui_next_size(ui_em(1.5f, 1.0f), ui_percent(1.0f, 1.0f));
                 ui_next_flags(UI_FLAG_CLICKABLE);
@@ -1975,9 +1975,12 @@ render_function(render)
                     graphics_2d_font_t font = *(graphics_2d_font_t*)command->font;
                     const char* text = command->text;
                     u32 length = command->length;
-                
+                    ui_rect_t clip = command->clip;
+                    
+                    graphics->push_axis_aligned_clip(clip.x, clip.y, clip.width, clip.height);
                     graphics->draw_text(font, text, length, color.r, color.g, color.b, color.a,
                                         TEXT_ALIGNMENT_LEADING, x, y, width, height);
+                    graphics->pop_axis_aligned_clip();
                 } break;
                 
                 case UI_DRAW_CUSTOM:

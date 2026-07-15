@@ -168,6 +168,22 @@ static inline u32 clamp_u32(u32 min, u32 v, u32 max)
     return result;
 }
 
+static inline i32 clamp_i32(i32 min, i32 v, i32 max)
+{
+    i32 result = v;
+
+    if (result < min)
+    {
+        result = min;
+    }
+    else if (result > max)
+    {
+        result = max;
+    }
+
+    return result;
+}
+
 static inline f32 lerp(f32 a, f32 t, f32 b)
 {
     f32 result = a * (1.0f - t) + b * t;

@@ -111,6 +111,7 @@ typedef struct ui_draw_command_t
     f32 x, y;
     f32 width, height;
     vec4 color;
+    ui_rect_t clip;
     f32 thickness;
     void* font;
     const char* text;
@@ -142,8 +143,6 @@ typedef struct ui_text_line_t
     i32 length;
     f32 position[UI_AXIS_COUNT];
     f32 size[UI_AXIS_COUNT];
-    f32 max_width;
-    i32 max_end_offset;
     struct ui_text_line_t* prev;
     struct ui_text_line_t* next;
 } ui_text_line_t;
@@ -189,14 +188,17 @@ typedef enum ui_flags_t
     UI_FLAG_DROP_SHADOW      = (1 << 4),
     UI_FLAG_CUSTOM           = (1 << 5),
     UI_FLAG_FLOATING         = (1 << 6),
-    UI_FLAG_CLICKABLE        = (1 << 7),
-    UI_FLAG_FOCUSABLE        = (1 << 8),
-    UI_FLAG_WRAP_TEXT        = (1 << 9),
-    UI_FLAG_SCROLLABLE_X     = (1 << 10),
-    UI_FLAG_SCROLLABLE_Y     = (1 << 11),
-    UI_FLAG_CLIP             = (1 << 12),
-    UI_FLAG_HOT_ANIMATION    = (1 << 13),
-    UI_FLAG_ACTIVE_ANIMATION = (1 << 14),
+    UI_FLAG_ESCAPE_CLIP      = (1 << 7),
+    UI_FLAG_ANCHORED         = (1 << 8),
+    UI_FLAG_CLICKABLE        = (1 << 9),
+    UI_FLAG_FOCUSABLE        = (1 << 10),
+    UI_FLAG_WRAP_TEXT        = (1 << 11),
+    UI_FLAG_SCROLLABLE_X     = (1 << 12),
+    UI_FLAG_SCROLLABLE_Y     = (1 << 13),
+    UI_FLAG_CLIP             = (1 << 14),
+    UI_FLAG_HOT_ANIMATION    = (1 << 15),
+    UI_FLAG_ACTIVE_ANIMATION = (1 << 16),
+
 } ui_flags_t;
 
 typedef struct ui_widget_t
@@ -214,17 +216,17 @@ typedef struct ui_widget_t
     ui_anchor_t anchor;
     f32 anchor_offset[UI_AXIS_COUNT];
     
-    void* font;
+    ui_font_t font;
     vec4 font_color;
     ui_text_line_list_t text_line_list;
     u32 text_line_count;
     
     char* text;
     i32 text_length;
-    i32 prev_text_length;
     f32 text_size[UI_AXIS_COUNT];
     ui_alignment_t text_alignment;
-    ui_text_edit_t* text_edit;
+
+    f32 scroll[UI_AXIS_COUNT];
 
     struct ui_widget_t* parent;
     struct ui_widget_t* hash_next;
@@ -273,13 +275,18 @@ static inline void ui_set_focus(ui_key_t key);
 static inline void ui_clear_focus(ui_key_t key);
 static inline bool ui_is_focused(ui_key_t key);
 
+static inline ui_is_flag_set(ui_widget_t* widget, ui_flags_t flag);
+
 static ui_widget_t* ui_widget_group_begin(const char* widget_name, f32 x, f32 y);
 static inline void ui_widget_group_end(void);
 static ui_widget_t* ui_widget(const char* widget_name);
 static ui_widget_t* ui_widget_text(const char* widget_name, const char* text);
-static ui_widget_t* ui_widget_text_edit(const char* widget_name, ui_text_edit_t* text_edit);
-static void ui_equip_text(ui_widget_t* widget, const char* text, u32 text_length);
-static void ui_equip_text_edit(ui_widget_t* widget, ui_text_edit_t* text_edit);
+static ui_widget_t* ui_widget_text_with_length(const char* widget_name, const char* text, i32 text_length);
+static void ui_equip_text(ui_widget_t* widget, const char* text, i32 text_length);
+
+static inline f32 ui_content_position(ui_widget_t* widget, ui_axis_t axis);
+static inline f32 ui_content_size(ui_widget_t* widget, ui_axis_t axis);
+static inline f32 ui_resolve_alignment(ui_widget_t* widget, f32 size, ui_axis_t axis);
 
 static void ui_init(memory_arena_t* memory_arena);
 static void ui_begin(graphics_t* graphics, input_t* input, f32 width, f32 height);
