@@ -84,6 +84,26 @@ typedef enum DWRITE_FACTORY_TYPE
     DWRITE_FACTORY_TYPE_ISOLATED
 } DWRITE_FACTORY_TYPE;
 
+typedef enum DWRITE_FONT_FACE_TYPE
+{
+    DWRITE_FONT_FACE_TYPE_CFF,
+    DWRITE_FONT_FACE_TYPE_TRUETYPE,
+    DWRITE_FONT_FACE_TYPE_OPENTYPE_COLLECTION,
+    DWRITE_FONT_FACE_TYPE_TYPE1,
+    DWRITE_FONT_FACE_TYPE_VECTOR,
+    DWRITE_FONT_FACE_TYPE_BITMAP,
+    DWRITE_FONT_FACE_TYPE_UNKNOWN,
+    DWRITE_FONT_FACE_TYPE_RAW_CFF,
+    DWRITE_FONT_FACE_TYPE_TRUETYPE_COLLECTION = DWRITE_FONT_FACE_TYPE_OPENTYPE_COLLECTION,
+} DWRITE_FONT_FACE_TYPE;
+
+typedef enum DWRITE_FONT_SIMULATIONS
+{
+    DWRITE_FONT_SIMULATIONS_NONE    = 0x0000,
+    DWRITE_FONT_SIMULATIONS_BOLD    = 0x0001,
+    DWRITE_FONT_SIMULATIONS_OBLIQUE = 0x0002
+} DWRITE_FONT_SIMULATIONS;
+
 // NOTE: Types.
 
 typedef struct DWRITE_TEXT_METRICS
@@ -99,11 +119,46 @@ typedef struct DWRITE_TEXT_METRICS
     UINT32 lineCount;
 } DWRITE_TEXT_METRICS;
 
+typedef struct DWRITE_FONT_METRICS
+{
+    UINT16 designUnitsPerEm;
+    UINT16 ascent;
+    UINT16 descent;
+    INT16 lineGap;
+    UINT16 capHeight;
+    UINT16 xHeight;
+    INT16 underlinePosition;
+    UINT16 underlineThickness;
+    INT16 strikethroughPosition;
+    UINT16 strikethroughThickness;
+} DWRITE_FONT_METRICS;
+
+typedef struct DWRITE_GLYPH_METRICS
+{
+    INT32 leftSideBearing;
+    UINT32 advanceWidth;
+    INT32 rightSideBearing;
+    INT32 topSideBearing;
+    UINT32 advanceHeight;
+    INT32 bottomSideBearing;
+    INT32 verticalOriginY;
+} DWRITE_GLYPH_METRICS;
+
+typedef struct IDWriteFontVtbl { void* table[]; } IDWriteFontVtbl;
+typedef struct IDWriteFontFamilyVtbl { void* table[]; } IDWriteFontFamilyVtbl;
+typedef struct IDWriteFontCollectionVtbl { void* table[]; } IDWriteFontCollectionVtbl;
+typedef struct IDWriteFontFileVtbl { void* table[]; } IDWriteFontFileVtbl;
+typedef struct IDWriteFontFaceVtbl { void* table[]; } IDWriteFontFaceVtbl;
 typedef struct IDWriteFactoryVtbl { void* table[]; } IDWriteFactoryVtbl;
 typedef struct IDWriteTextFormatVtbl { void* table[]; } IDWriteTextFormatVtbl;
 typedef struct IDWriteTextLayoutVtbl { void* table[]; } IDWriteTextLayoutVtbl;
 typedef struct IDWriteRenderingParamsVtbl { void* table[]; } IDWriteRenderingParamsVtbl;
 
+typedef struct IDWriteFont { IDWriteFontVtbl* vtbl; } IDWriteFont;
+typedef struct IDWriteFontFamily { IDWriteFontFamilyVtbl* vtbl; } IDWriteFontFamily;
+typedef struct IDWriteFontCollection { IDWriteFontCollectionVtbl* vtbl; } IDWriteFontCollection;
+typedef struct IDWriteFontFile { IDWriteFontFileVtbl* vtbl; } IDWriteFontFile;
+typedef struct IDWriteFontFace { IDWriteFontFaceVtbl* vtbl; } IDWriteFontFace;
 typedef struct IDWriteFactory { IDWriteFactoryVtbl* vtbl; } IDWriteFactory;
 typedef struct IDWriteTextFormat { IDWriteTextFormatVtbl* vtbl; } IDWriteTextFormat;
 typedef struct IDWriteTextLayout { IDWriteTextLayoutVtbl* vtbl; } IDWriteTextLayout;
@@ -141,6 +196,21 @@ static inline HRESULT IDWriteFactory_CreateTextLayout(IDWriteFactory* self,
                                                       IDWriteTextLayout** textLayout)
 {
     return ((HRESULT (WINAPI*)(IDWriteFactory*, WCHAR const*, UINT32, IDWriteTextFormat*, FLOAT,  FLOAT, IDWriteTextLayout**))self->vtbl->table[18])(self, string, stringLength, textFormat, maxWidth, maxHeight, textLayout);
+}
+
+static inline HRESULT IDWriteFactory_CreateFontFileReference(IDWriteFactory* self, WCHAR const* filePath, void* lastWriteTime, IDWriteFontFile** fontFile)
+{
+    return ((HRESULT (WINAPI*)(IDWriteFactory*, WCHAR const*, void*, IDWriteFontFile**))self->vtbl->table[7])(self, filePath, lastWriteTime, fontFile);
+}
+
+static inline HRESULT IDWriteFactory_CreateFontFace(IDWriteFactory* self, DWRITE_FONT_FACE_TYPE fontFaceType, UINT32 numberOfFiles, IDWriteFontFile* const* fontFiles, UINT32 faceIndex, DWRITE_FONT_SIMULATIONS fontFaceSimulationFlags, IDWriteFontFace** fontFace)
+{
+    return ((HRESULT (WINAPI*)(IDWriteFactory*, DWRITE_FONT_FACE_TYPE, UINT32, IDWriteFontFile* const*, UINT32, DWRITE_FONT_SIMULATIONS, IDWriteFontFace**))self->vtbl->table[9])(self, fontFaceType, numberOfFiles, fontFiles, faceIndex, fontFaceSimulationFlags, fontFace);
+}
+
+static inline HRESULT IDWriteFactory_GetSystemFontCollection(IDWriteFactory* self, IDWriteFontCollection** fontCollection, BOOL checkForUpdates)
+{
+    return ((HRESULT (WINAPI*)(IDWriteFactory*, IDWriteFontCollection**, BOOL))self->vtbl->table[3])(self, fontCollection, checkForUpdates);
 }
 
 static inline ULONG IDWriteTextLayout_Release(IDWriteTextLayout* self)
@@ -181,6 +251,46 @@ static inline FLOAT IDWriteRenderingParams_GetClearTypeLevel(IDWriteRenderingPar
 static inline ULONG IDWriteRenderingParams_Release(IDWriteRenderingParams* self)
 {
     return ((ULONG (WINAPI*)(IDWriteRenderingParams*))self->vtbl->table[2])(self);
+}
+
+static inline HRESULT IDWriteFont_CreateFontFace(IDWriteFont* self, IDWriteFontFace** fontFace)
+{
+    return ((HRESULT (WINAPI*)(IDWriteFont*, IDWriteFontFace**))self->vtbl->table[13])(self, fontFace);
+}
+
+static inline HRESULT IDWriteFont_GetFontFamily(IDWriteFont* self, IDWriteFontFamily** fontFamily)
+{
+    return ((HRESULT (WINAPI*)(IDWriteFont*, IDWriteFontFamily**))self->vtbl->table[3])(self, fontFamily);
+}
+
+static inline HRESULT IDWriteFontFamily_GetFirstMatchingFont(IDWriteFontFamily* self, DWRITE_FONT_WEIGHT weight, DWRITE_FONT_STRETCH stretch, DWRITE_FONT_STYLE style, IDWriteFont** matchingFont)
+{
+    return ((HRESULT (WINAPI*)(IDWriteFontFamily*, DWRITE_FONT_WEIGHT, DWRITE_FONT_STRETCH, DWRITE_FONT_STYLE, IDWriteFont**))self->vtbl->table[7])(self, weight, stretch, style, matchingFont);
+}
+
+static inline HRESULT IDWriteFontCollection_GetFontFamily(IDWriteFontCollection* self, UINT32 index, IDWriteFontFamily** fontFamily)
+{
+    return ((HRESULT (WINAPI*)(IDWriteFontCollection*, UINT32, IDWriteFontFamily**))self->vtbl->table[4])(self, index, fontFamily);
+}
+
+static inline HRESULT IDWriteFontCollection_FindFamilyName(IDWriteFontCollection* self, WCHAR const* familyName, UINT32* index, BOOL* exists)
+{
+    return ((HRESULT (WINAPI*)(IDWriteFontCollection*, WCHAR const*, UINT32*, BOOL*))self->vtbl->table[5])(self, familyName, index, exists);
+}
+
+static inline void IDWriteFontFace_GetMetrics(IDWriteFontFace* self, DWRITE_FONT_METRICS* fontMetrics)
+{
+    ((void (WINAPI*)(IDWriteFontFace*, DWRITE_FONT_METRICS*))self->vtbl->table[8])(self, fontMetrics);
+}
+
+static inline HRESULT IDWriteFontFace_GetDesignGlyphMetrics(IDWriteFontFace* self, const UINT16* glyphIndices, UINT32 glyphCount, DWRITE_GLYPH_METRICS* glyphMetrics, BOOL isSideways)
+{
+    return ((HRESULT (WINAPI*)(IDWriteFontFace*, UINT16 const*, UINT32, DWRITE_GLYPH_METRICS*, BOOL))self->vtbl->table[10])(self, glyphIndices, glyphCount, glyphMetrics, isSideways);
+}
+
+static inline HRESULT IDWriteFontFace_GetGlyphIndices(IDWriteFontFace* self, const UINT32* codePoints, UINT32 codePointCount, UINT16* glyphIndices)
+{
+    return ((HRESULT (WINAPI*)(IDWriteFontFace*, const UINT32*, UINT32, UINT16*))self->vtbl->table[11])(self, codePoints, codePointCount, glyphIndices);
 }
 
 EXTERN_C HRESULT DECLSPEC_IMPORT DWriteCreateFactory(DWRITE_FACTORY_TYPE factoryType, REFIID iid, IUnknown** factory);
