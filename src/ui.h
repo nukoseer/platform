@@ -64,7 +64,7 @@ typedef struct ui_alignment_t
 
 typedef struct ui_font_t
 {
-    void* font;
+    graphics_2d_font_t font;
     f32 pixel_size;
 } ui_font_t;
 
@@ -113,7 +113,7 @@ typedef struct ui_draw_command_t
     vec4 color;
     ui_rect_t clip;
     f32 thickness;
-    void* font;
+    graphics_2d_font_t font;
     const char* text;
     u32 length;
 } ui_draw_command_t;
@@ -179,6 +179,13 @@ typedef struct ui_text_edit_t
     f32 scroll_x;
 } ui_text_edit_t;
 
+typedef enum ui_text_wrap_t
+{
+    UI_TEXT_WRAP_NONE,
+    UI_TEXT_WRAP_CHAR,
+    UI_TEXT_WRAP_WORD,
+} ui_text_wrap_t;
+
 typedef enum ui_flags_t
 {
     UI_FLAG_BACKGROUND       = (1 << 0),
@@ -192,12 +199,11 @@ typedef enum ui_flags_t
     UI_FLAG_ANCHORED         = (1 << 8),
     UI_FLAG_CLICKABLE        = (1 << 9),
     UI_FLAG_FOCUSABLE        = (1 << 10),
-    UI_FLAG_WRAP_TEXT        = (1 << 11),
-    UI_FLAG_SCROLLABLE_X     = (1 << 12),
-    UI_FLAG_SCROLLABLE_Y     = (1 << 13),
-    UI_FLAG_CLIP             = (1 << 14),
-    UI_FLAG_HOT_ANIMATION    = (1 << 15),
-    UI_FLAG_ACTIVE_ANIMATION = (1 << 16),
+    UI_FLAG_SCROLLABLE_X     = (1 << 11),
+    UI_FLAG_SCROLLABLE_Y     = (1 << 12),
+    UI_FLAG_CLIP             = (1 << 13),
+    UI_FLAG_HOT_ANIMATION    = (1 << 14),
+    UI_FLAG_ACTIVE_ANIMATION = (1 << 15),
 
 } ui_flags_t;
 
@@ -225,6 +231,7 @@ typedef struct ui_widget_t
     i32 text_length;
     f32 text_size[UI_AXIS_COUNT];
     ui_alignment_t text_alignment;
+    ui_text_wrap_t text_wrap;
 
     f32 scroll[UI_AXIS_COUNT];
 

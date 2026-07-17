@@ -1463,9 +1463,9 @@ update_function(update)
 #if FONT_ENABLE
     ui_begin(graphics, input, (f32)platform->width, (f32)platform->height);
     ui_push_color(theme->bg_color);
-    ui_push_font(&game->font_12, graphics->get_font_pixel_size(game->font_12));
+    ui_push_font(game->font_12, graphics->get_font_pixel_size(game->font_12));
     ui_push_font_color(theme->font_color);
-    ui_push_flags(UI_FLAG_WRAP_TEXT);
+    ui_push_text_wrap(UI_TEXT_WRAP_WORD);
 
     ui_next_size(ui_pixel(430.0f, 1.0f), ui_children(1.0f));
     ui_next_padding(4.0f); ui_next_axis(ui_axis_y());
@@ -1658,7 +1658,7 @@ update_function(update)
                 
                 ui_next_size(ui_percent(1.0f, 0.0f), ui_percent(1.0f, 1.0f));
                 ui_next_flags(UI_FLAG_CLICKABLE);
-                // ui_next_clear_flags(UI_FLAG_WRAP_TEXT);
+                ui_next_text_wrap(UI_TEXT_WRAP_NONE);
                 ui_next_text_alignment((ui_alignment_t){ UI_ALIGNMENT_LEADING, UI_ALIGNMENT_CENTER });
                 ui_widget_text_edit("search-bar", &search_text_edit);
                 
@@ -1672,7 +1672,7 @@ update_function(update)
         }
     }
 
-    ui_pop_flags();
+    ui_pop_text_wrap();
     ui_pop_font_color();
     ui_pop_font();
     ui_pop_color();
@@ -1972,7 +1972,7 @@ render_function(render)
                 
                 case UI_DRAW_TEXT:
                 {
-                    graphics_2d_font_t font = *(graphics_2d_font_t*)command->font;
+                    graphics_2d_font_t font = command->font;
                     const char* text = command->text;
                     u32 length = command->length;
                     ui_rect_t clip = command->clip;

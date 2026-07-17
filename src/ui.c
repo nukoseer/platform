@@ -28,6 +28,7 @@ typedef struct ui_stacks_t
     ui_stack_t font;
     ui_stack_t font_color;
     ui_stack_t text_alignment;
+    ui_stack_t text_wrap;
 } ui_stacks_t;
 
 typedef struct ui_t
@@ -631,9 +632,8 @@ static void ui_equip_text(ui_widget_t* widget, const char* text, i32 text_length
     widget->font = ui_top_font();
     widget->font_color = ui_top_font_color();
     widget->text_alignment = ui_top_text_alignment();
+    widget->text_wrap = ui_top_text_wrap();
 
-    graphics_2d_font_t font = *(graphics_2d_font_t*)widget->font.font;
-        
     if (text && text_length)
     {
         widget->text = ma_push_size(global_ui->frame_arena, text_length + 1);
@@ -641,15 +641,15 @@ static void ui_equip_text(ui_widget_t* widget, const char* text, i32 text_length
         memcpy(widget->text, text, text_length);
         widget->text[text_length] = '\0';
         widget->text_length = text_length;
-
-        widget->text_size[UI_AXIS_X] = global_ui->graphics->measure_text_width(font, widget->text, widget->text_length);
+        widget->text_size[UI_AXIS_X] = global_ui->graphics->measure_text_width(widget->font.font, widget->text, widget->text_length);
     }
 
-    widget->text_size[UI_AXIS_Y] = global_ui->graphics->get_line_height(font);
+    widget->text_size[UI_AXIS_Y] = global_ui->graphics->get_line_height(widget->font.font);
 
     ui_stack_auto_pop(&global_ui->stacks.font);
     ui_stack_auto_pop(&global_ui->stacks.font_color);
     ui_stack_auto_pop(&global_ui->stacks.text_alignment);
+    ui_stack_auto_pop(&global_ui->stacks.text_wrap);
 }
 
 static ui_widget_t* ui_widget_text(const char* widget_name, const char* text)
@@ -719,7 +719,6 @@ static void ui_resolve_text_lines(ui_widget_t* root_widget, ui_axis_t axis)
     
     if (root_widget->text)
     {
-        graphics_2d_font_t font = *(graphics_2d_font_t*)root_widget->font.font;
         f32 wrap_width = root_widget->fixed_size[UI_AXIS_X] - root_widget->padding * 2.0f;
 
         if (wrap_width < 0.0f)
@@ -727,83 +726,130 @@ static void ui_resolve_text_lines(ui_widget_t* root_widget, ui_axis_t axis)
             wrap_width = 0.0f;
         }
 
-        if (ui_is_flag_set(root_widget, UI_FLAG_WRAP_TEXT))
+        switch (root_widget->text_wrap)
         {
-            i32 start_offset = 0;
-            i32 end_offset = root_widget->text_length;
-            
-            while (start_offset < end_offset)
+            default:
             {
-                f32 line_width = 0.0f;
-                i32 fits_end = start_offset;
-                i32 word_start = start_offset;
-                i32 space = string_find_leading_char(root_widget->text, start_offset, end_offset - start_offset, ' ');
-                i32 word_end = space == -1 ? end_offset : space + 1;
-
-                while (word_end != -1 && word_start < end_offset)
-                {
-                    f32 word_width = global_ui->graphics->measure_text_width(font, root_widget->text + word_start, word_end - word_start);
-
-                    if (line_width + word_width > wrap_width)
-                    {
-                        break;
-                    }
-
-                    line_width += word_width;
-                    fits_end = word_end;
-                    word_start = word_end;
-
-                    if (word_end == end_offset)
-                    {
-                        break;
-                    }
-
-                    space = string_find_leading_char(root_widget->text, word_end, end_offset - word_end, ' ');
-                    word_end = space == -1 ? end_offset : space + 1;
-                }
-
-                if (fits_end == start_offset)
-                {
-                    i32 begin = start_offset;
-                    i32 end = end_offset;
-                    i32 best = start_offset;
-                    
-                    while (begin <= end)
-                    {
-                        i32 mid = begin + (end - begin) / 2;
-                        f32 width = global_ui->graphics->measure_text_width(font, root_widget->text + start_offset, mid - start_offset);
-
-                        if (width <= wrap_width)
-                        {
-                            line_width = width;
-                            best = mid;
-                            begin = mid + 1;
-                        }
-                        else
-                        {
-                            end = mid - 1;
-                        }
-                    }
-
-                    fits_end = max(best, start_offset + 1);
-                }
-
+                assert(!"[UI] Invalid text wrap.");
+            } break;
+            
+            case UI_TEXT_WRAP_NONE:
+            {
                 ui_text_line_t* text_line = ui_push_text_line(root_widget);
-                text_line->offset = start_offset;
-                text_line->length = fits_end - start_offset;
-                text_line->size[UI_AXIS_X] = line_width;
+                text_line->offset = 0;
+                text_line->length = root_widget->text_length;
+                text_line->size[UI_AXIS_X] = global_ui->graphics->measure_text_width(root_widget->font.font, root_widget->text, root_widget->text_length);
                 text_line->size[UI_AXIS_Y] = root_widget->text_size[UI_AXIS_Y];
+            } break;
 
-                start_offset = fits_end;
-            }
-        }
-        else
-        {
-            ui_text_line_t* text_line = ui_push_text_line(root_widget);
-            text_line->offset = 0;
-            text_line->length = root_widget->text_length;
-            text_line->size[UI_AXIS_X] = global_ui->graphics->measure_text_width(font, root_widget->text, root_widget->text_length);
-            text_line->size[UI_AXIS_Y] = root_widget->text_size[UI_AXIS_Y];
+            case UI_TEXT_WRAP_CHAR:
+            {
+                i32 start_offset = 0;
+                i32 end_offset = root_widget->text_length;
+
+                while (start_offset < end_offset)
+                {
+                    i32 fits_end = start_offset;
+                    f32 width = 0.0f;
+                    
+                    for (i32 i = start_offset; i < end_offset; ++i)
+                    {
+                        f32 char_width = global_ui->graphics->measure_text_width(root_widget->font.font, root_widget->text + i, 1);
+
+                        if (width + char_width > wrap_width)
+                        {
+                            break;
+                        }
+
+                        width += char_width;
+                        fits_end = i + 1;
+                    }
+
+                    if (fits_end == start_offset)
+                    {
+                        fits_end = start_offset + 1;
+                    }
+
+                    ui_text_line_t* text_line = ui_push_text_line(root_widget);
+                    text_line->offset = start_offset;
+                    text_line->length = fits_end - start_offset;
+                    text_line->size[UI_AXIS_X] = width;
+                    text_line->size[UI_AXIS_Y] = root_widget->text_size[UI_AXIS_Y];
+
+                    start_offset = fits_end;
+                }
+            } break;
+
+            case UI_TEXT_WRAP_WORD:
+            {
+                i32 start_offset = 0;
+                i32 end_offset = root_widget->text_length;
+            
+                while (start_offset < end_offset)
+                {
+                    f32 line_width = 0.0f;
+                    i32 fits_end = start_offset;
+                    i32 word_start = start_offset;
+                    i32 space = string_find_leading_char(root_widget->text, start_offset, end_offset - start_offset, ' ');
+                    i32 word_end = space == -1 ? end_offset : space + 1;
+
+                    while (word_end != -1 && word_start < end_offset)
+                    {
+                        f32 word_width = global_ui->graphics->measure_text_width(root_widget->font.font, root_widget->text + word_start, word_end - word_start);
+
+                        if (line_width + word_width > wrap_width)
+                        {
+                            break;
+                        }
+
+                        line_width += word_width;
+                        fits_end = word_end;
+                        word_start = word_end;
+
+                        if (word_end == end_offset)
+                        {
+                            break;
+                        }
+
+                        space = string_find_leading_char(root_widget->text, word_end, end_offset - word_end, ' ');
+                        word_end = space == -1 ? end_offset : space + 1;
+                    }
+
+                    if (fits_end == start_offset)
+                    {
+                        i32 begin = start_offset;
+                        i32 end = end_offset;
+                        i32 best = start_offset;
+                    
+                        while (begin <= end)
+                        {
+                            i32 mid = begin + (end - begin) / 2;
+                            f32 width = global_ui->graphics->measure_text_width(root_widget->font.font, root_widget->text + start_offset, mid - start_offset);
+
+                            if (width <= wrap_width)
+                            {
+                                line_width = width;
+                                best = mid;
+                                begin = mid + 1;
+                            }
+                            else
+                            {
+                                end = mid - 1;
+                            }
+                        }
+
+                        fits_end = max(best, start_offset + 1);
+                    }
+
+                    ui_text_line_t* text_line = ui_push_text_line(root_widget);
+                    text_line->offset = start_offset;
+                    text_line->length = fits_end - start_offset;
+                    text_line->size[UI_AXIS_X] = line_width;
+                    text_line->size[UI_AXIS_Y] = root_widget->text_size[UI_AXIS_Y];
+
+                    start_offset = fits_end;
+                }
+            } break;
         }
     }
 
@@ -971,8 +1017,7 @@ static void ui_resolve_sizes(ui_widget_t* root_widget, ui_axis_t axis)
             {
                 if (axis == UI_AXIS_X)
                 {
-                    graphics_2d_font_t font = *(graphics_2d_font_t*)child_widget->font.font;
-                    f32 width = global_ui->graphics->measure_text_width(font, child_widget->text, child_widget->text_length);
+                    f32 width = global_ui->graphics->measure_text_width(child_widget->font.font, child_widget->text, child_widget->text_length);
                     child_widget->fixed_size[axis] = width + child_widget->padding * 2.0f;
                 }
                 else if (axis == UI_AXIS_Y)
@@ -1385,7 +1430,7 @@ static void ui_init(memory_arena_t* memory_arena)
     ui_stack_init(global_ui->arena, &global_ui->stacks.font, sizeof(ui_font_t), UI_STACK_SIZE);
     ui_stack_init(global_ui->arena, &global_ui->stacks.font_color, sizeof(vec4), UI_STACK_SIZE);
     ui_stack_init(global_ui->arena, &global_ui->stacks.text_alignment, sizeof(ui_alignment_t), UI_STACK_SIZE);
-
+    ui_stack_init(global_ui->arena, &global_ui->stacks.text_wrap, sizeof(ui_text_wrap_t), UI_STACK_SIZE);
 }
 
 static ui_widget_t* ui_hit_test(ui_widget_t* root_widget, vec2 mouse_position)
@@ -1562,6 +1607,7 @@ static void ui_begin(graphics_t* graphics, input_t* input, f32 width, f32 height
     ui_stack_push(&global_ui->stacks.font, &(ui_font_t){ 0 });
     ui_stack_push(&global_ui->stacks.font_color, &(vec4){ 0 });
     ui_stack_push(&global_ui->stacks.text_alignment, &(ui_alignment_t){ 0 });
+    ui_stack_push(&global_ui->stacks.text_wrap, &(ui_text_wrap_t){ 0 });
 
     global_ui->root_widget = ui_widget_group_begin("root_widget", 0.0f, 0.0f);
     global_ui->root_widget->fixed_size[UI_AXIS_X] = width;
@@ -1602,6 +1648,7 @@ static void ui_end(void)
     ui_pop_font();
     ui_pop_font_color();
     ui_pop_text_alignment();
+    ui_pop_text_wrap();
 
     global_ui->root_widget = 0;
 
@@ -1618,6 +1665,7 @@ static void ui_end(void)
     assert(global_ui->stacks.font.count == 0 && "[UI] Invalid font stack count.");
     assert(global_ui->stacks.font_color.count == 0 && "[UI] Invalid font_color stack count.");
     assert(global_ui->stacks.text_alignment.count == 0 && "[UI] Invalid text_alignment stack count.");
+    assert(global_ui->stacks.text_wrap.count == 0 && "[UI] Invalid text_wrap stack count.");
 }
 
 static ui_draw_command_iter_t ui_draw_command_iter(void)

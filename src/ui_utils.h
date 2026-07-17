@@ -157,6 +157,11 @@ static void ui_stack_set_flags(ui_flags_t flags)
 #define ui_top_text_alignment() ui_top(&global_ui->stacks.text_alignment, ui_alignment_t)
 #define ui_pop_text_alignment() ui_pop(&global_ui->stacks.text_alignment)
 
+#define ui_push_text_wrap(...) ui_push(&global_ui->stacks.text_wrap, ui_text_wrap_t, __VA_ARGS__)
+#define ui_next_text_wrap(...) ui_next(&global_ui->stacks.text_wrap, ui_text_wrap_t, __VA_ARGS__)
+#define ui_top_text_wrap() ui_top(&global_ui->stacks.text_wrap, ui_text_wrap_t)
+#define ui_pop_text_wrap() ui_pop(&global_ui->stacks.text_wrap)
+
 static void ui_push_size_axis(ui_axis_t axis, ui_size_t size)
 {
     switch (axis)
@@ -464,15 +469,14 @@ static void ui_text_edit_move_down(ui_widget_t* widget, ui_text_edit_t* text_edi
 
 static void ui_text_edit_update_scroll(ui_widget_t* widget, ui_text_edit_t* text_edit)
 {
-    if (ui_is_flag_set(widget, UI_FLAG_WRAP_TEXT))
+    if (widget->text_wrap != UI_TEXT_WRAP_NONE)
     {
         text_edit->scroll_x = 0.0f;
         widget->scroll[UI_AXIS_X] = 0.0f;
         return;
     }
     
-    graphics_2d_font_t font = *(graphics_2d_font_t*)widget->font.font;
-    f32 cursor_offset = global_ui->graphics->measure_text_width(font, text_edit->text, text_edit->cursor);
+    f32 cursor_offset = global_ui->graphics->measure_text_width(widget->font.font, text_edit->text, text_edit->cursor);
     f32 view_width = ui_content_size(widget, UI_AXIS_X);
     f32 cursor_width = 1.0f;
 
@@ -511,8 +515,7 @@ static void ui_widget_text_edit_cursor(ui_widget_t* widget, ui_text_edit_t* text
         
         if (current_line)
         {
-            graphics_2d_font_t font = *(graphics_2d_font_t*)widget->font.font;
-            cursor_x = current_line->position[UI_AXIS_X] + global_ui->graphics->measure_text_width(font, text_edit->text + current_line->offset, text_edit->cursor - current_line->offset) - widget->scroll[UI_AXIS_X];
+            cursor_x = current_line->position[UI_AXIS_X] + global_ui->graphics->measure_text_width(widget->font.font, text_edit->text + current_line->offset, text_edit->cursor - current_line->offset) - widget->scroll[UI_AXIS_X];
             cursor_y = current_line->position[UI_AXIS_Y];
         }
         else
