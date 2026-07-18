@@ -467,6 +467,93 @@ static void ui_text_edit_move_down(ui_widget_t* widget, ui_text_edit_t* text_edi
                                   target_line->offset + target_line->length);
 }
 
+static void ui_text_edit_selection(ui_widget_t* widget, ui_text_edit_t* text_edit)
+{
+    ui_signal_t signal = ui_signal_for(widget);
+
+    if (signal.pressed)
+    {
+        vec2 mouse_position =
+        {
+            global_ui->input->mouse_position.x,
+            global_ui->input->mouse_position.y,
+        };
+
+        if (!text_edit->selecting)
+        {
+            text_edit->selecting = true;
+            text_edit->selection_mouse_start = mouse_position;
+            text_edit->selection_mouse_end = mouse_position;
+        }
+        else
+        {
+            text_edit->selection_mouse_end = mouse_position;
+        }
+    }
+
+    if (text_edit->selecting && signal.released)
+    {
+        text_edit->selecting = false;
+        text_edit->selection_mouse_start = v2(0.0f, 0.0f);
+        text_edit->selection_mouse_end = v2(0.0f, 0.0f);
+        text_edit->selection_x = 0.0f;
+    }
+
+    if (text_edit->selecting)
+    {
+        vec2 mouse_start = v2_min(text_edit->selection_mouse_start, text_edit->selection_mouse_end);
+        vec2 mouse_end = v2_max(text_edit->selection_mouse_start, text_edit->selection_mouse_end);
+        ui_text_line_t* selection_line = widget->text_line_list.first;
+
+        if (selection_line)
+        {
+            f32 selection_line_size_x = fminf(selection_line->size[0], widget->rect.width);
+            vec2 selection_start_offset =
+            {
+                clamp(0.0f, mouse_start.x - selection_line->position[0], selection_line_size_x),
+                clamp(0.0f, mouse_start.y - selection_line->position[1], selection_line->size[1]),
+            };
+            vec2 selection_end_offset =
+            {
+                clamp(0.0f, mouse_end.x - selection_line->position[0], selection_line_size_x),
+                clamp(0.0f, mouse_end.y - selection_line->position[1], selection_line->size[1]),
+            };
+            vec2 selection_size =
+            {
+                clamp(0.0f, selection_end_offset.x - selection_start_offset.x, selection_line_size_x),
+                selection_line->size[1],
+            };
+
+            f32 rem = (selection_line->position[0] + selection_line->size[0]) - (widget->rect.x + widget->rect.width);
+            fprintf(stderr, "line end: %f, end: %f, rem: %f\n", selection_line->position[0] + selection_start_offset.x + selection_end_offset.x - selection_start_offset.x, widget->rect.x + widget->rect.width, rem);
+
+            if (selection_line->position[0] + selection_start_offset.x + selection_end_offset.x - selection_start_offset.x >= widget->rect.x + widget->rect.width)
+            {
+                if (rem > text_edit->selection_x)
+                {
+                    text_edit->selection_x += 3.0f;
+                }
+                widget->scroll[UI_AXIS_X] = text_edit->selection_x;
+            }
+            // else
+            // {
+            //     text_edit->selection_x = 0.0f;
+            //     widget->scroll[UI_AXIS_X] = 0.0f;
+            // }
+            
+            ui_next_size(ui_pixel(selection_size.x + widget->scroll[UI_AXIS_X], 1.0f), ui_pixel(selection_size.y, 1.0f));
+            ui_next_flags(UI_FLAG_FLOATING | UI_FLAG_BACKGROUND);
+            ui_next_color(v4v(widget->font_color.rgb, 0.2f));
+            ui_widget_t* selection_widget = ui_widget_build_from_key((ui_key_t){ 0 });
+            selection_widget->position.x = selection_line->position[0] + selection_start_offset.x - widget->scroll[UI_AXIS_X];
+            selection_widget->position.y = selection_line->position[1];
+
+            fprintf(stderr, "selection_line->position[0]: %f, selection_line->size[0]: %f, text_edit->selection_x: %f\n", selection_line->position[0], selection_line->size[0], text_edit->selection_x);
+            fprintf(stderr, "text_edit->selecting: %d, start: (%f, %f), end: (%f, %f), selection size: (%f, %f)\n", text_edit->selecting, selection_start_offset.x, selection_start_offset.y, selection_end_offset.x, selection_end_offset.y, selection_size.x, selection_size.y);
+        }
+    }
+}
+
 static void ui_text_edit_update_scroll(ui_widget_t* widget, ui_text_edit_t* text_edit)
 {
     if (widget->text_wrap != UI_TEXT_WRAP_NONE)
@@ -611,6 +698,7 @@ static ui_signal_t ui_widget_text_edit(const char* name, ui_text_edit_t* text_ed
 
         ui_text_edit_update_scroll(widget, text_edit);
         ui_widget_text_edit_cursor(widget, text_edit);
+        ui_text_edit_selection(widget, text_edit);
     }
 
     ui_equip_text(widget, text_edit->text, text_edit->length);

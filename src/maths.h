@@ -536,6 +536,40 @@ static inline vec3 v3_cross(vec3 left, vec3 right)
     return result;
 }
 
+static inline vec2 v2_min(vec2 left, vec2 right)
+{
+    vec2 result = left;
+
+    if (left.x > right.x)
+    {
+        result.x = right.x;
+    }
+
+    if (left.y > right.y)
+    {
+        result.y = right.y;
+    }
+
+    return result;
+}
+
+static inline vec2 v2_max(vec2 left, vec2 right)
+{
+    vec2 result = left;
+
+    if (left.x < right.x)
+    {
+        result.x = right.x;
+    }
+
+    if (left.y < right.y)
+    {
+        result.y = right.y;
+    }
+
+    return result;
+}
+
 // NOTE: Vector unary operations.
 
 static inline f32 v2_length_squared(vec2 v)

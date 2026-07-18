@@ -511,6 +511,8 @@ static ui_widget_t* ui_widget_build_from_key(ui_key_t key)
     widget->text_length = 0;
     widget->fixed_size[UI_AXIS_X] = 0.0f;
     widget->fixed_size[UI_AXIS_Y] = 0.0f;
+    widget->scroll[UI_AXIS_X] = 0.0f;
+    widget->scroll[UI_AXIS_Y] = 0.0f;
     
     // NOTE: The root widget does not have parent.
     ui_widget_t* parent_widget = ui_top_parent();

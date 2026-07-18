@@ -177,6 +177,10 @@ typedef struct ui_text_edit_t
     i32 length;
     i32 cursor;
     f32 scroll_x;
+    bool selecting;
+    f32 selection_x;
+    vec2 selection_mouse_start;
+    vec2 selection_mouse_end;
 } ui_text_edit_t;
 
 typedef enum ui_text_wrap_t
