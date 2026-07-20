@@ -112,6 +112,7 @@ typedef struct input_event_t
 {
     input_event_kind_t kind;
     bool consumed;
+    bool is_repeat;
     u32 value;
 } input_event_t;
 
@@ -135,7 +136,7 @@ static inline bool input_is_key_down(const input_t* input, key_t key)
     return result;
 }
 
-static inline input_event_t* input_find_event(const input_t* input, input_event_kind_t kind, u32 value)
+static inline input_event_t* input_find_event(const input_t* input, input_event_kind_t kind, u32 value, bool skip_repeat)
 {
     input_event_t* result = 0;
     
@@ -149,6 +150,11 @@ static inline input_event_t* input_find_event(const input_t* input, input_event_
         }
 
         if (event->kind != kind)
+        {
+            continue;
+        }
+
+        if (skip_repeat && event->is_repeat)
         {
             continue;
         }
@@ -167,28 +173,28 @@ static inline input_event_t* input_find_event(const input_t* input, input_event_
 
 static inline bool input_is_key_pressed(const input_t* input, key_t key)
 {
-    bool result = input_find_event(input, INPUT_EVENT_KEY_PRESS, key) != 0;
+    bool result = input_find_event(input, INPUT_EVENT_KEY_PRESS, key, true) != 0;
 
     return result;
 }
 
 static inline bool input_is_key_released(const input_t* input, key_t key)
 {
-    bool result = input_find_event(input, INPUT_EVENT_KEY_RELEASE, key) != 0;
+    bool result = input_find_event(input, INPUT_EVENT_KEY_RELEASE, key, true) != 0;
 
     return result;
 }
 
 static inline bool input_is_mouse_pressed(const input_t* input, key_t key)
 {
-    bool result = input_find_event(input, INPUT_EVENT_MOUSE_PRESS, key) != 0;
+    bool result = input_find_event(input, INPUT_EVENT_MOUSE_PRESS, key, true) != 0;
 
     return result;
 }
 
 static inline bool input_is_mouse_released(const input_t* input, key_t key)
 {
-    bool result = input_find_event(input, INPUT_EVENT_MOUSE_RELEASE, key) != 0;
+    bool result = input_find_event(input, INPUT_EVENT_MOUSE_RELEASE, key, true) != 0;
 
     return result;
 }
@@ -196,7 +202,7 @@ static inline bool input_is_mouse_released(const input_t* input, key_t key)
 static inline bool input_consume_event(input_t* input, input_event_kind_t kind, key_t key)
 {
     bool result = false;
-    input_event_t* event = input_find_event(input, kind, key);
+    input_event_t* event = input_find_event(input, kind, key, false);
 
     if (event)
     {
@@ -204,6 +210,34 @@ static inline bool input_consume_event(input_t* input, input_event_kind_t kind, 
         result = true;
     }
 
+    return result;
+}
+
+static inline bool input_consume_event_all(input_t* input, input_event_kind_t kind, key_t key)
+{
+    bool result = false;
+    input_event_t* event = input_find_event(input, kind, key, true);
+
+    if (event)
+    {
+        event->consumed = true;
+        result = true;
+    }
+
+    return result;
+}
+
+static inline bool input_consume_key_press(input_t* input, key_t key)
+{
+    bool result = input_consume_event(input, INPUT_EVENT_KEY_PRESS, key);
+    
+    return result;
+}
+
+static inline bool input_consume_key_press_all(input_t* input, key_t key)
+{
+    bool result = input_consume_event_all(input, INPUT_EVENT_KEY_PRESS, key);
+    
     return result;
 }
 

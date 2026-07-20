@@ -405,13 +405,20 @@ static bool resize_back_buffer(window_t* window)
 
 static inline void input_event_push(input_t* input, input_event_kind_t kind, u32 value)
 {
+    if (input->event_count >= array_count(input->events))
+    {
+        assert("Input event array is full.");
+    }
+    
     input_event_t* event = input->events + input->event_count++;
     event->kind = kind;
     event->consumed = false;
+    event->is_repeat = false;
     event->value = value;
 
     if (kind == INPUT_EVENT_KEY_PRESS || kind == INPUT_EVENT_MOUSE_PRESS)
     {
+        event->is_repeat = input->key_down[value];
         input->key_down[value] = true;
     }
     else if (kind == INPUT_EVENT_KEY_RELEASE || kind == INPUT_EVENT_MOUSE_RELEASE)
