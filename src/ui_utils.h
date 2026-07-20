@@ -431,7 +431,7 @@ static inline void ui_text_edit_move_right(ui_text_edit_t* text_edit, i32 offset
     ui_text_edit_collapse(text_edit);
 }
 
-static ui_text_line_t* ui_text_line_index_from_cursor(ui_widget_t* widget, i32 cursor)
+static ui_text_line_t* ui_text_line_from_cursor(ui_widget_t* widget, i32 cursor)
 {
     ui_text_line_t* result = 0;
 
@@ -451,15 +451,15 @@ static ui_text_line_t* ui_text_line_index_from_cursor(ui_widget_t* widget, i32 c
 
 static void ui_text_edit_move_up(ui_widget_t* widget, ui_text_edit_t* text_edit)
 {
-    ui_text_line_t* current_line = ui_text_line_index_from_cursor(widget, text_edit->cursor);
+    ui_text_line_t* text_line = ui_text_line_from_cursor(widget, text_edit->cursor);
 
-    if (!current_line || !current_line->prev)
+    if (!text_line || !text_line->prev)
     {
         return;
     }
 
-    ui_text_line_t* target_line = current_line->prev;
-    i32 cursor_offset = text_edit->cursor - current_line->offset;
+    ui_text_line_t* target_line = text_line->prev;
+    i32 cursor_offset = text_edit->cursor - text_line->offset;
     text_edit->cursor = clamp_i32(target_line->offset,
                                   target_line->offset + cursor_offset,
                                   target_line->offset + target_line->length);
@@ -468,15 +468,15 @@ static void ui_text_edit_move_up(ui_widget_t* widget, ui_text_edit_t* text_edit)
 
 static void ui_text_edit_move_down(ui_widget_t* widget, ui_text_edit_t* text_edit)
 {
-    ui_text_line_t* current_line = ui_text_line_index_from_cursor(widget, text_edit->cursor);
+    ui_text_line_t* text_line = ui_text_line_from_cursor(widget, text_edit->cursor);
 
-    if (!current_line || !current_line->next)
+    if (!text_line || !text_line->next)
     {
         return;
     }
 
-    ui_text_line_t* target_line = current_line->next;
-    i32 cursor_offset = text_edit->cursor - current_line->offset;
+    ui_text_line_t* target_line = text_line->next;
+    i32 cursor_offset = text_edit->cursor - text_line->offset;
     text_edit->cursor = clamp_i32(target_line->offset,
                                   target_line->offset + cursor_offset,
                                   target_line->offset + target_line->length);
@@ -519,14 +519,20 @@ static i32 ui_text_index_from_screen_x(ui_widget_t* widget, ui_text_edit_t* text
 static ui_text_line_t* ui_text_line_from_screen_y(ui_widget_t* widget, f32 screen_y)
 {
     ui_text_line_t* result = 0;
-    
+
     for (ui_text_line_t* text_line = widget->text_line_list.first; text_line; text_line = text_line->next)
     {
-        result = text_line;
-
         f32 local_y = screen_y - text_line->position[UI_AXIS_Y] + widget->scroll[UI_AXIS_Y];
 
-        if (local_y >= 0.0f && local_y <= text_line->size[UI_AXIS_Y])
+        if (local_y < 0.0f)
+        {
+            result = widget->text_line_list.first;
+        }
+        else if (local_y > text_line->size[UI_AXIS_Y])
+        {
+            result = widget->text_line_list.last;
+        }
+        else
         {
             result = text_line;
             break;
@@ -555,16 +561,18 @@ static void ui_text_edit_selection(ui_widget_t* widget, ui_text_edit_t* text_edi
     if (text_edit->selecting)
     {
         ui_text_line_t* text_line = ui_text_line_from_screen_y(widget, mouse_y);
-        f32 widget_left = widget->rect.x + widget->padding;
-        f32 widget_right = widget->rect.x + widget->rect.width - widget->padding;
+        f32 widget_left = ui_content_position(widget, UI_AXIS_X);
+        f32 widget_right = ui_content_position(widget, UI_AXIS_X) + ui_content_size(widget, UI_AXIS_X);
 
         if (mouse_x > widget_right && text_edit->cursor < text_edit->length)
         {
-            ++text_edit->cursor;
+            text_edit->cursor = widget->text_wrap == UI_TEXT_WRAP_NONE ?
+                text_edit->cursor + 1 : text_line-> offset + text_line->length;
         }
         else if (mouse_x < widget_left && text_edit->cursor > 0)
         {
-            --text_edit->cursor;
+            text_edit->cursor = widget->text_wrap == UI_TEXT_WRAP_NONE ?
+                text_edit->cursor - 1 : text_line->offset;
         }
         else
         {
@@ -585,10 +593,13 @@ static void ui_widget_text_edit_selection(ui_widget_t* widget, ui_text_edit_t* t
         i32 selection_start = min(text_edit->selection, text_edit->cursor);
         i32 selection_end = max(text_edit->selection, text_edit->cursor);
 
-        ui_text_line_t* text_line = widget->text_line_list.first;
-
-        if (text_line)
+        for (ui_text_line_t* text_line = widget->text_line_list.first; text_line; text_line = text_line->next)
         {
+            if (selection_start >= text_line->offset + text_line->length || selection_end <= text_line->offset)
+            {
+                continue;
+            }
+
             f32 start_measure_x = global_ui->graphics->measure_text_width(widget->font.font, text_edit->text + text_line->offset, selection_start - text_line->offset);
             f32 end_measure_x = global_ui->graphics->measure_text_width(widget->font.font, text_edit->text + text_line->offset, selection_end - text_line->offset);
             f32 start_x = text_line->position[UI_AXIS_X] + start_measure_x - widget->scroll[UI_AXIS_X];
@@ -616,19 +627,19 @@ static void ui_text_edit_update_scroll(ui_widget_t* widget, ui_text_edit_t* text
         widget->scroll[UI_AXIS_X] = 0.0f;
         return;
     }
-    
-    f32 cursor_offset = global_ui->graphics->measure_text_width(widget->font.font, text_edit->text, text_edit->cursor);
+
+    f32 cursor_x = global_ui->graphics->measure_text_width(widget->font.font, text_edit->text, text_edit->cursor);
     f32 view_width = ui_content_size(widget, UI_AXIS_X);
     f32 cursor_width = 1.0f;
 
-    if (cursor_offset - text_edit->scroll_x > view_width - cursor_width)
+    if (cursor_x - text_edit->scroll_x > view_width - cursor_width)
     {
-        text_edit->scroll_x = cursor_offset - view_width + cursor_width;
+        text_edit->scroll_x = cursor_x - view_width + cursor_width;
     }
         
-    if (cursor_offset - text_edit->scroll_x < 0.0f)
+    if (cursor_x - text_edit->scroll_x < 0.0f)
     {
-        text_edit->scroll_x = cursor_offset;
+        text_edit->scroll_x = cursor_x;
     }
 
     if (text_edit->scroll_x < 0.0f)
@@ -652,12 +663,12 @@ static void ui_widget_text_edit_cursor(ui_widget_t* widget, ui_text_edit_t* text
         ui_next_flags(UI_FLAG_FLOATING | UI_FLAG_BACKGROUND);
         ui_next_color(widget->font_color);
         ui_widget_t* cursor_widget = ui_widget_build_from_key((ui_key_t){ 0 });
-        ui_text_line_t* current_line = ui_text_line_index_from_cursor(widget, text_edit->cursor);
+        ui_text_line_t* text_line = ui_text_line_from_cursor(widget, text_edit->cursor);
         
-        if (current_line)
+        if (text_line)
         {
-            cursor_x = current_line->position[UI_AXIS_X] + global_ui->graphics->measure_text_width(widget->font.font, text_edit->text + current_line->offset, text_edit->cursor - current_line->offset) - widget->scroll[UI_AXIS_X];
-            cursor_y = current_line->position[UI_AXIS_Y];
+            cursor_x = text_line->position[UI_AXIS_X] + global_ui->graphics->measure_text_width(widget->font.font, text_edit->text + text_line->offset, text_edit->cursor - text_line->offset) - widget->scroll[UI_AXIS_X];
+            cursor_y = text_line->position[UI_AXIS_Y];
         }
         else
         {
@@ -680,7 +691,7 @@ static ui_signal_t ui_widget_text_edit(const char* name, ui_text_edit_t* text_ed
     ui_widget_t* widget = ui_widget(name);
     ui_signal_t signal = ui_signal_for(widget);
 
-    if (signal.clicked)
+    if (signal.pressed)
     {
         ui_set_focus(widget->key);
     }
