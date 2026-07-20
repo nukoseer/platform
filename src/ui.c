@@ -51,6 +51,7 @@ typedef struct ui_t
 
     ui_key_t hot_key;
     ui_key_t active_key;
+    ui_key_t pressed_key;
     ui_key_t clicked_key;
     ui_key_t released_key;
     ui_key_t focus_key;
@@ -511,9 +512,7 @@ static ui_widget_t* ui_widget_build_from_key(ui_key_t key)
     widget->text_length = 0;
     widget->fixed_size[UI_AXIS_X] = 0.0f;
     widget->fixed_size[UI_AXIS_Y] = 0.0f;
-    widget->scroll[UI_AXIS_X] = 0.0f;
-    widget->scroll[UI_AXIS_Y] = 0.0f;
-    
+
     // NOTE: The root widget does not have parent.
     ui_widget_t* parent_widget = ui_top_parent();
     widget->parent = parent_widget;
@@ -588,7 +587,8 @@ static inline ui_signal_t ui_signal_for(ui_widget_t* widget)
     {
         .widget = widget,
         .hovering = widget->hot,
-        .pressed = widget->active,
+        .pressed = widget->pressed,
+        .held = widget->active,
         .clicked = widget->clicked,
         .released = widget->released,
     };
@@ -1494,7 +1494,13 @@ static void ui_resolve_active(void)
 
     if (pressed)
     {
-        global_ui->active_key = global_ui->hot_key;
+        ui_widget_t* widget = ui_widget_from_key(global_ui->hot_key);
+        if (widget)
+        {
+            global_ui->active_key = global_ui->hot_key;
+            global_ui->pressed_key = global_ui->active_key;
+            widget->pressed = true;
+        }
     }
 
     if (released)
@@ -1526,7 +1532,7 @@ static void ui_resolve_active(void)
 
 static void ui_resolve_focus(void)
 {
-    bool pressed = input_is_key_pressed(global_ui->input, KEY_MOUSE_LEFT);
+    bool pressed = input_is_mouse_pressed(global_ui->input, KEY_MOUSE_LEFT);
 
     if (pressed)
     {
@@ -1561,6 +1567,11 @@ static void ui_resolve_interaction(void)
         widget->active = false;
     }
 
+    if ((widget = ui_widget_from_key(global_ui->pressed_key)))
+    {
+        widget->pressed = false;
+    }
+    
     if ((widget = ui_widget_from_key(global_ui->clicked_key)))
     {
         widget->clicked = false;

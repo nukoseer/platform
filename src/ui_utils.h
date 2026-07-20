@@ -344,6 +344,11 @@ static void ui_widget_column_end(void)
     ui_widget_named_column_end();
 }
 
+static inline void ui_text_edit_collapse(ui_text_edit_t* text_edit)
+{
+    text_edit->selection = text_edit->cursor;
+}
+
 static void ui_text_edit_insert(ui_text_edit_t* text_edit, key_t key)
 {
     if (text_edit->length >= array_count(text_edit->text) - 1)
@@ -356,65 +361,74 @@ static void ui_text_edit_insert(ui_text_edit_t* text_edit, key_t key)
     text_edit->cursor++;
     text_edit->length++;
     text_edit->text[text_edit->length] = '\0';
+
+    ui_text_edit_collapse(text_edit);
+}
+
+static void ui_text_edit_delete_range(ui_text_edit_t* text_edit, i32 start, i32 end)
+{
+    start = clamp_i32(0, start, text_edit->length);
+    end = clamp_i32(0, end, text_edit->length);
+
+    if (start < end)
+    {
+        memmove(text_edit->text + start, text_edit->text + end, text_edit->length - end);
+        text_edit->length -= (end - start);
+        text_edit->text[text_edit->length] = '\0';
+        text_edit->cursor = clamp_i32(0, start, text_edit->length);
+        text_edit->selection = clamp_i32(0, start, text_edit->length);
+    }
+}
+
+static bool ui_text_edit_delete_selection(ui_text_edit_t* text_edit)
+{
+    bool result = false;
+    
+    if (text_edit->selection != text_edit->cursor)
+    {
+        result = true;
+        ui_text_edit_delete_range(text_edit, min(text_edit->selection, text_edit->cursor), max(text_edit->selection, text_edit->cursor));
+    }
+
+    return result;
 }
 
 static void ui_text_edit_backspace(ui_text_edit_t* text_edit)
 {
-    if (text_edit->cursor == 0)
+    if (!ui_text_edit_delete_selection(text_edit))
     {
-        return;
+        ui_text_edit_delete_range(text_edit, text_edit->cursor - 1, text_edit->cursor);
     }
-
-    memmove(text_edit->text + text_edit->cursor - 1, text_edit->text + text_edit->cursor, text_edit->length - text_edit->cursor);
-    text_edit->cursor--;
-    text_edit->length--;
-    text_edit->text[text_edit->length] = '\0';
 }
 
 static void ui_text_edit_backspace_all(ui_text_edit_t* text_edit)
 {
-    if (text_edit->cursor == 0)
-    {
-        return;
-    }
-
-    memmove(text_edit->text, text_edit->text + text_edit->cursor, text_edit->length - text_edit->cursor);
-    text_edit->length = text_edit->length - text_edit->cursor;
-    text_edit->cursor = 0;
-    text_edit->text[text_edit->length] = '\0';
+    ui_text_edit_delete_range(text_edit, 0, text_edit->cursor);
 }
 
 static void ui_text_edit_delete(ui_text_edit_t* text_edit)
 {
-    if (text_edit->cursor == text_edit->length)
+    if (!ui_text_edit_delete_selection(text_edit))
     {
-        return;
+        ui_text_edit_delete_range(text_edit, text_edit->cursor, text_edit->cursor + 1);
     }
-
-    memmove(text_edit->text + text_edit->cursor, text_edit->text + text_edit->cursor + 1, text_edit->length - text_edit->cursor - 1);
-    text_edit->length--;
-    text_edit->text[text_edit->length] = '\0';
 }
 
 static void ui_text_edit_delete_all(ui_text_edit_t* text_edit)
 {
-    if (text_edit->cursor == text_edit->length)
-    {
-        return;
-    }
-
-    text_edit->length = text_edit->cursor;
-    text_edit->text[text_edit->cursor] = '\0';
+    ui_text_edit_delete_range(text_edit, text_edit->cursor, text_edit->length);
 }
 
-static inline void ui_text_edit_move_left(ui_text_edit_t* text_edit)
+static inline void ui_text_edit_move_left(ui_text_edit_t* text_edit, i32 offset)
 {
-    text_edit->cursor = (i32)max(0, text_edit->cursor - 1);
+    text_edit->cursor = max(0, text_edit->cursor - offset);
+    ui_text_edit_collapse(text_edit);
 }
 
-static inline void ui_text_edit_move_right(ui_text_edit_t* text_edit)
+static inline void ui_text_edit_move_right(ui_text_edit_t* text_edit, i32 offset)
 {
-    text_edit->cursor = (i32)min(text_edit->length, text_edit->cursor + 1);
+    text_edit->cursor = (i32)min(text_edit->length, text_edit->cursor + offset);
+    ui_text_edit_collapse(text_edit);
 }
 
 static ui_text_line_t* ui_text_line_index_from_cursor(ui_widget_t* widget, i32 cursor)
@@ -449,6 +463,7 @@ static void ui_text_edit_move_up(ui_widget_t* widget, ui_text_edit_t* text_edit)
     text_edit->cursor = clamp_i32(target_line->offset,
                                   target_line->offset + cursor_offset,
                                   target_line->offset + target_line->length);
+    ui_text_edit_collapse(text_edit);
 }
 
 static void ui_text_edit_move_down(ui_widget_t* widget, ui_text_edit_t* text_edit)
@@ -465,91 +480,130 @@ static void ui_text_edit_move_down(ui_widget_t* widget, ui_text_edit_t* text_edi
     text_edit->cursor = clamp_i32(target_line->offset,
                                   target_line->offset + cursor_offset,
                                   target_line->offset + target_line->length);
+    ui_text_edit_collapse(text_edit);
+}
+
+static i32 ui_text_index_from_screen_x(ui_widget_t* widget, ui_text_edit_t* text_edit, ui_text_line_t* text_line, f32 screen_x)
+{
+    f32 origin_x = text_line ? text_line->position[UI_AXIS_X] : ui_resolve_alignment(widget, 0.0f, UI_AXIS_X);
+    i32 line_start = text_line ? text_line->offset : 0;
+    i32 line_end = text_edit->length;
+    f32 local_x = screen_x - origin_x + widget->scroll[UI_AXIS_X];
+    i32 result = line_end;
+
+    if (local_x <= 0.0f)
+    {
+        result = line_start;
+    }
+    else
+    {
+        f32 total_width = 0.0f;
+
+        for (i32 i = line_start; i < line_end; ++i)
+        {
+            f32 char_width = global_ui->graphics->measure_text_width(widget->font.font, text_edit->text + i, 1);
+
+            if (local_x < total_width + char_width * 0.5f)
+            {
+                result = i;
+                break;
+            }
+
+            total_width += char_width;
+        }
+    }
+
+    return result;
+}
+
+static ui_text_line_t* ui_text_line_from_screen_y(ui_widget_t* widget, f32 screen_y)
+{
+    ui_text_line_t* result = 0;
+    
+    for (ui_text_line_t* text_line = widget->text_line_list.first; text_line; text_line = text_line->next)
+    {
+        result = text_line;
+
+        f32 local_y = screen_y - text_line->position[UI_AXIS_Y] + widget->scroll[UI_AXIS_Y];
+
+        if (local_y >= 0.0f && local_y <= text_line->size[UI_AXIS_Y])
+        {
+            result = text_line;
+            break;
+        }
+    }
+
+    return result;
 }
 
 static void ui_text_edit_selection(ui_widget_t* widget, ui_text_edit_t* text_edit)
 {
     ui_signal_t signal = ui_signal_for(widget);
+    f32 mouse_x = global_ui->input->mouse_position.x;
+    f32 mouse_y = global_ui->input->mouse_position.y;
 
     if (signal.pressed)
     {
-        vec2 mouse_position =
-        {
-            global_ui->input->mouse_position.x,
-            global_ui->input->mouse_position.y,
-        };
+        ui_text_line_t* text_line = ui_text_line_from_screen_y(widget, mouse_y);
+        i32 text_index = ui_text_index_from_screen_x(widget, text_edit, text_line, mouse_x);
 
-        if (!text_edit->selecting)
+        text_edit->selecting = true;
+        text_edit->cursor = text_index;
+        text_edit->selection = text_index;
+    }
+    
+    if (text_edit->selecting)
+    {
+        ui_text_line_t* text_line = ui_text_line_from_screen_y(widget, mouse_y);
+        f32 widget_left = widget->rect.x + widget->padding;
+        f32 widget_right = widget->rect.x + widget->rect.width - widget->padding;
+
+        if (mouse_x > widget_right && text_edit->cursor < text_edit->length)
         {
-            text_edit->selecting = true;
-            text_edit->selection_mouse_start = mouse_position;
-            text_edit->selection_mouse_end = mouse_position;
+            ++text_edit->cursor;
+        }
+        else if (mouse_x < widget_left && text_edit->cursor > 0)
+        {
+            --text_edit->cursor;
         }
         else
         {
-            text_edit->selection_mouse_end = mouse_position;
+            text_edit->cursor = ui_text_index_from_screen_x(widget, text_edit, text_line, mouse_x);
         }
     }
 
-    if (text_edit->selecting && signal.released)
+    if (signal.released)
     {
         text_edit->selecting = false;
-        text_edit->selection_mouse_start = v2(0.0f, 0.0f);
-        text_edit->selection_mouse_end = v2(0.0f, 0.0f);
-        text_edit->selection_x = 0.0f;
     }
+}
 
-    if (text_edit->selecting)
+static void ui_widget_text_edit_selection(ui_widget_t* widget, ui_text_edit_t* text_edit)
+{
+    if (text_edit->selection != text_edit->cursor)
     {
-        vec2 mouse_start = v2_min(text_edit->selection_mouse_start, text_edit->selection_mouse_end);
-        vec2 mouse_end = v2_max(text_edit->selection_mouse_start, text_edit->selection_mouse_end);
-        ui_text_line_t* selection_line = widget->text_line_list.first;
+        i32 selection_start = min(text_edit->selection, text_edit->cursor);
+        i32 selection_end = max(text_edit->selection, text_edit->cursor);
 
-        if (selection_line)
+        ui_text_line_t* text_line = widget->text_line_list.first;
+
+        if (text_line)
         {
-            f32 selection_line_size_x = fminf(selection_line->size[0], widget->rect.width);
-            vec2 selection_start_offset =
-            {
-                clamp(0.0f, mouse_start.x - selection_line->position[0], selection_line_size_x),
-                clamp(0.0f, mouse_start.y - selection_line->position[1], selection_line->size[1]),
-            };
-            vec2 selection_end_offset =
-            {
-                clamp(0.0f, mouse_end.x - selection_line->position[0], selection_line_size_x),
-                clamp(0.0f, mouse_end.y - selection_line->position[1], selection_line->size[1]),
-            };
-            vec2 selection_size =
-            {
-                clamp(0.0f, selection_end_offset.x - selection_start_offset.x, selection_line_size_x),
-                selection_line->size[1],
-            };
+            f32 start_measure_x = global_ui->graphics->measure_text_width(widget->font.font, text_edit->text + text_line->offset, selection_start - text_line->offset);
+            f32 end_measure_x = global_ui->graphics->measure_text_width(widget->font.font, text_edit->text + text_line->offset, selection_end - text_line->offset);
+            f32 start_x = text_line->position[UI_AXIS_X] + start_measure_x - widget->scroll[UI_AXIS_X];
+            f32 size_x = end_measure_x - start_measure_x;
 
-            f32 rem = (selection_line->position[0] + selection_line->size[0]) - (widget->rect.x + widget->rect.width);
-            fprintf(stderr, "line end: %f, end: %f, rem: %f\n", selection_line->position[0] + selection_start_offset.x + selection_end_offset.x - selection_start_offset.x, widget->rect.x + widget->rect.width, rem);
-
-            if (selection_line->position[0] + selection_start_offset.x + selection_end_offset.x - selection_start_offset.x >= widget->rect.x + widget->rect.width)
+            ui_push_parent(widget);
             {
-                if (rem > text_edit->selection_x)
-                {
-                    text_edit->selection_x += 3.0f;
-                }
-                widget->scroll[UI_AXIS_X] = text_edit->selection_x;
+                ui_next_size(ui_pixel(size_x, 1.0f), ui_pixel(text_line->size[UI_AXIS_Y], 1.0f));
+                ui_next_flags(UI_FLAG_FLOATING | UI_FLAG_BACKGROUND);
+                ui_next_color(v4v(widget->font_color.rgb, 0.2f));
+                ui_widget_t* selection_widget = ui_widget_build_from_key((ui_key_t){ 0 });
+                selection_widget->position.x = start_x;
+                selection_widget->position.y = text_line->position[UI_AXIS_Y];
             }
-            // else
-            // {
-            //     text_edit->selection_x = 0.0f;
-            //     widget->scroll[UI_AXIS_X] = 0.0f;
-            // }
-            
-            ui_next_size(ui_pixel(selection_size.x + widget->scroll[UI_AXIS_X], 1.0f), ui_pixel(selection_size.y, 1.0f));
-            ui_next_flags(UI_FLAG_FLOATING | UI_FLAG_BACKGROUND);
-            ui_next_color(v4v(widget->font_color.rgb, 0.2f));
-            ui_widget_t* selection_widget = ui_widget_build_from_key((ui_key_t){ 0 });
-            selection_widget->position.x = selection_line->position[0] + selection_start_offset.x - widget->scroll[UI_AXIS_X];
-            selection_widget->position.y = selection_line->position[1];
-
-            fprintf(stderr, "selection_line->position[0]: %f, selection_line->size[0]: %f, text_edit->selection_x: %f\n", selection_line->position[0], selection_line->size[0], text_edit->selection_x);
-            fprintf(stderr, "text_edit->selecting: %d, start: (%f, %f), end: (%f, %f), selection size: (%f, %f)\n", text_edit->selecting, selection_start_offset.x, selection_start_offset.y, selection_end_offset.x, selection_end_offset.y, selection_size.x, selection_size.y);
+            ui_pop_parent();
         }
     }
 }
@@ -581,7 +635,7 @@ static void ui_text_edit_update_scroll(ui_widget_t* widget, ui_text_edit_t* text
     {
         text_edit->scroll_x = 0.0f;
     }
-        
+
     widget->scroll[UI_AXIS_X] = text_edit->scroll_x;
 }
 
@@ -667,22 +721,22 @@ static ui_signal_t ui_widget_text_edit(const char* name, ui_text_edit_t* text_ed
             
             if (key == KEY_LEFT)
             {
-                ui_text_edit_move_left(text_edit);
+                ui_text_edit_move_left(text_edit, 1);
             }
 
             if (key == KEY_RIGHT)
             {
-                ui_text_edit_move_right(text_edit);
+                ui_text_edit_move_right(text_edit, 1);
             }
 
             if (key == KEY_E && input->modifiers & KEY_MODIFIER_CTRL)
             {
-                text_edit->cursor = text_edit->length;
+                 ui_text_edit_move_right(text_edit, text_edit->length - text_edit->cursor);
             }
 
             if (key == KEY_A && input->modifiers & KEY_MODIFIER_CTRL)
             {
-                text_edit->cursor = 0;
+                 ui_text_edit_move_left(text_edit, text_edit->cursor);
             }
 
             if (key == KEY_D && input->modifiers & KEY_MODIFIER_CTRL)
@@ -696,9 +750,10 @@ static ui_signal_t ui_widget_text_edit(const char* name, ui_text_edit_t* text_ed
             }
         }
 
-        ui_text_edit_update_scroll(widget, text_edit);
-        ui_widget_text_edit_cursor(widget, text_edit);
         ui_text_edit_selection(widget, text_edit);
+        ui_text_edit_update_scroll(widget, text_edit);
+        ui_widget_text_edit_selection(widget, text_edit);
+        ui_widget_text_edit_cursor(widget, text_edit);
     }
 
     ui_equip_text(widget, text_edit->text, text_edit->length);

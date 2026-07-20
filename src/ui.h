@@ -176,11 +176,9 @@ typedef struct ui_text_edit_t
     char text[256];
     i32 length;
     i32 cursor;
-    f32 scroll_x;
+    i32 selection;
     bool selecting;
-    f32 selection_x;
-    vec2 selection_mouse_start;
-    vec2 selection_mouse_end;
+    f32 scroll_x;    
 } ui_text_edit_t;
 
 typedef enum ui_text_wrap_t
@@ -252,6 +250,7 @@ typedef struct ui_widget_t
 
     bool hot;
     bool active;
+    bool pressed;
     bool clicked;
     bool released;
 } ui_widget_t;
@@ -261,6 +260,7 @@ typedef struct ui_signal_t
     ui_widget_t* widget;
     bool hovering;
     bool pressed;
+    bool held;
     bool clicked;
     bool released;
 } ui_signal_t;
