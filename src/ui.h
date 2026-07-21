@@ -139,6 +139,7 @@ typedef struct ui_text_line_list_t
 
 typedef struct ui_text_line_t
 {
+    i32 index;
     i32 offset;
     i32 length;
     f32 position[UI_AXIS_COUNT];
@@ -170,16 +171,6 @@ typedef struct ui_anchor_offset_t
 {
     f32 x, y;
 } ui_anchor_offset_t;
-
-typedef struct ui_text_edit_t
-{
-    char text[256];
-    i32 length;
-    i32 cursor;
-    i32 selection;
-    bool selecting;
-    f32 scroll_x;    
-} ui_text_edit_t;
 
 typedef enum ui_text_wrap_t
 {

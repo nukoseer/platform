@@ -691,7 +691,7 @@ static ui_text_line_t* ui_push_text_line(ui_widget_t* widget)
 
     memset(text_line, 0, sizeof(ui_text_line_t));
     ui_text_line_list_insert_back(&widget->text_line_list, text_line);
-    widget->text_line_count++;
+    text_line->index = widget->text_line_count++;
 
     return text_line;
 }
