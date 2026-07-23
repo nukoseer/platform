@@ -1402,6 +1402,73 @@ static void update_theme(game_t* game, theme_type_t theme_type)
     game->current_theme_type = new_theme_type;
 }
 
+typedef struct country_search_result_t
+{
+    u32 index;
+    u32 match_count;
+} country_search_result_t;
+
+static void country_search(country_search_result_t* country_search_results, const char* search_text, u32 search_text_length)
+{
+    for (u32 i = 0; i < array_count(global_shape_country_names); ++i)
+    {
+        const char* country_name = global_shape_country_names[i].name;
+        u8 country_name_length = global_shape_country_names[i].length;
+        u8 total_match = 0;
+
+        for (u32 j = 0; j < search_text_length; ++j)
+        {
+            if (j >= country_name_length)
+            {
+                break; // Stop if search text is longer than country name.
+            }
+            
+            u8 lower_search_char = search_text[j];
+            
+            if (lower_search_char >= 'A' && lower_search_char <= 'Z')
+            {
+                lower_search_char += 32; // Convert to lowercase.
+            }
+
+            u8 lower_country_char = country_name[j];
+            
+            if (lower_country_char >= 'A' && lower_country_char <= 'Z')
+            {
+                lower_country_char += 32; // Convert to lowercase.
+            }
+
+            if (lower_search_char == ' ' || lower_country_char == ' ')
+            {
+                continue; // Skip spaces in search text.
+            }
+            
+            if (lower_search_char == lower_country_char)
+            {
+                ++total_match;
+            }
+            else
+            {
+                break;
+            }
+            
+        }
+        
+        country_search_results[i].index = i;
+        country_search_results[i].match_count = total_match;
+    }
+}
+
+static i32 compare_country_search_result(const void* a, const void* b)
+{
+    country_search_result_t value_a = *(const country_search_result_t*)a;
+    country_search_result_t value_b = *(const country_search_result_t*)b;
+
+    if (value_a.match_count < value_b.match_count) return 1;
+    if (value_a.match_count > value_b.match_count) return -1;
+
+    return 0;
+}
+
 update_function(update)
 {
     memory_t* memory = platform->memory;
@@ -1614,10 +1681,11 @@ update_function(update)
         ui_next_flags(UI_FLAG_BACKGROUND); ui_next_text_alignment(ui_align_center());
         ui_widget_text("number-code", "0x7F.A1.42");
     }
-
+    
+    static ui_text_edit_t search_text_edit = { 0 };
     f32 search_container_width = platform->width * 0.25f;
     bool show_icon = search_container_width >= 200.0f;
-    ui_next_size(ui_pixel(search_container_width, 1.0f), ui_em(3.5f, 1.0f));
+    ui_next_size(ui_pixel(search_container_width, 1.0f), ui_children(1.0f));
     ui_next_axis(ui_axis_x());
     ui_next_border(1.0f, theme->fg_color);
     ui_next_flags(UI_FLAG_BACKGROUND);
@@ -1630,12 +1698,12 @@ update_function(update)
         ui_next_anchored(UI_ANCHOR_TOP_LEFT, UI_ANCHOR_CENTER_LEFT, 16.0f, 2.0f);
         ui_widget_text("search-header", "SEARCH");
     
-        ui_next_size(ui_percent(1.0f, 1.0f), ui_percent(1.0f, 1.0f));
+        ui_next_size(ui_percent(1.0f, 1.0f), ui_children(1.0f));
         ui_next_border(1.0f, theme->fg_color);
         ui_next_padding(4.0f);
         ui_widget_named_column("search-bar-column")
         {
-            ui_next_size(ui_percent(1.0f, 1.0f), ui_percent(1.0f, 1.0f));
+            ui_next_size(ui_percent(1.0f, 1.0f), ui_em(2.0f, 1.0f));
             ui_widget_named_row("search-bar-row")
             {
                 if (show_icon)
@@ -1646,7 +1714,6 @@ update_function(update)
                     ui_widget_text("icon-field", ">");
                 }
 
-                static ui_text_edit_t search_text_edit = { 0 };
                 ui_signal_t cancel_last_signal = ui_widget_last_signal("cancel-field");
                 
                 if (cancel_last_signal.clicked)
@@ -1661,13 +1728,48 @@ update_function(update)
                 ui_next_text_wrap(UI_TEXT_WRAP_NONE);
                 ui_next_text_alignment((ui_alignment_t){ UI_ALIGNMENT_LEADING, UI_ALIGNMENT_CENTER });
                 ui_widget_text_edit("search-bar", &search_text_edit);
-                
+
                 ui_next_size(ui_em(1.5f, 1.0f), ui_percent(1.0f, 1.0f));
                 ui_next_flags(UI_FLAG_CLICKABLE);
                 ui_next_border(1.0f, theme->fg_color);
                 ui_next_show_border(cancel_last_signal.hovering);
                 ui_next_text_alignment(ui_align_center());
                 ui_widget_text("cancel-field", "-");
+            }
+
+            if (search_text_edit.length > 0)
+            {
+                country_search_result_t country_search_results[array_count(global_shape_country_names)] = { 0 };
+                country_search(country_search_results, search_text_edit.text, search_text_edit.length);
+                qsort(country_search_results, array_count(country_search_results), sizeof(country_search_result_t), compare_country_search_result);
+
+                ui_next_size(ui_percent(1.0f, 1.0f), ui_em(20.0f, 1.0f));
+                ui_next_flags(UI_FLAG_BACKGROUND | UI_FLAG_SCROLLABLE_Y);
+                ui_next_border(1.0f, theme->fg_color);
+                ui_widget_named_column("search-results-column")
+                {
+                    for (u32 i = 0; i < 20; ++i)
+                    {
+                        // if (country_search_results[i].match_count == 0)
+                        // {
+                        //     break; // Stop if no more matches.
+                        // }
+                    
+                        country_name_t country_name = global_shape_country_names[country_search_results[i].index];
+
+                        ui_signal_t last_signal = ui_widget_last_signal(country_name.name);
+                        ui_next_border(1.0f, theme->fg_color);
+                        ui_next_show_border(last_signal.hovering);
+                        ui_next_color(last_signal.hovering ? v4v(theme->font_color.rgb, 0.1f) : theme->bg_color);
+                        ui_next_size(ui_percent(1.0f, 1.0f), ui_em(2.0f, 1.0f));
+                        ui_next_flags(UI_FLAG_CLICKABLE | UI_FLAG_BACKGROUND);
+                        ui_next_text_alignment((ui_alignment_t){ UI_ALIGNMENT_LEADING, UI_ALIGNMENT_CENTER });
+                        ui_next_padding(4.0f);
+                        ui_widget_text(country_name.name, country_name.name);
+
+                        ui_widget_spacer(ui_pixel(2.0f, 1.0f));
+                    }   
+                }
             }
         }
     }

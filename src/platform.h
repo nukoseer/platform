@@ -241,6 +241,13 @@ static inline bool input_consume_key_press_all(input_t* input, key_t key)
     return result;
 }
 
+static inline bool input_consume_key_release(input_t* input, key_t key)
+{
+    bool result = input_consume_event(input, INPUT_EVENT_KEY_RELEASE, key);
+    
+    return result;
+}
+
 static inline key_t input_consume_next_event(input_t* input, input_event_kind_t kind, u32* index)
 {
     key_t result = KEY_NULL;

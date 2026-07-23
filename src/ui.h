@@ -236,6 +236,7 @@ typedef struct ui_widget_t
     struct ui_widget_t* child_next;
     struct ui_widget_t* child_prev;
 
+    f32 viewport[UI_AXIS_COUNT];
     f32 fixed_size[UI_AXIS_COUNT];
     ui_rect_t rect;
 

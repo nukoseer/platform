@@ -1106,6 +1106,7 @@ static void ui_resolve_layout(ui_widget_t* root_widget, ui_axis_t axis)
 {
     bool is_root = root_widget == global_ui->root_widget;
     f32 layout_at = root_widget->padding;
+    f32 cross_axis_size = 0.0f;
 
     // NOTE: Normal pass.
     for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
@@ -1120,10 +1121,26 @@ static void ui_resolve_layout(ui_widget_t* root_widget, ui_axis_t axis)
 
         ui_resolve_text_alignment(child_widget, axis);
 
-        if (!is_root && root_widget->layout_axis == axis)
+        if (!is_root)
         {
-            layout_at += child_widget->fixed_size[axis];
+            if (root_widget->layout_axis == axis)
+            {
+                layout_at += child_widget->fixed_size[axis];
+            }
+            else
+            {
+                cross_axis_size = max(cross_axis_size, child_widget->fixed_size[axis]);
+            }
         }
+    }
+
+    if (ui_is_flag_set(root_widget, UI_FLAG_SCROLLABLE_X) || ui_is_flag_set(root_widget, UI_FLAG_SCROLLABLE_Y))
+    {
+        root_widget->viewport[axis] = (root_widget->layout_axis == axis ?
+                                       layout_at + root_widget->padding :
+                                       cross_axis_size + root_widget->padding * 2.0f);
+        // f32 max_scroll = max(0.0f, root_widget->viewport[axis] - ui_content_size(root_widget, axis));
+        // root_widget->scroll[axis] = clamp(0.0f, root_widget->scroll[axis], max_scroll);
     }
 
     // NOTE: Floating pass.
@@ -1251,10 +1268,17 @@ static inline ui_draw_command_t* ui_push_draw_command(void)
     return draw_command;
 }
 
-static void ui_emit_draw_commands(ui_widget_t* widget, ui_rect_t clip_rect)
+static void ui_emit_draw_commands(ui_widget_t* widget, ui_rect_t clip_rect, vec2 scroll_offset)
 {
+    ui_rect_t rect =
+    {
+        widget->rect.x - scroll_offset.x,
+        widget->rect.y - scroll_offset.y,
+        widget->rect.width,
+        widget->rect.height
+    };
     ui_rect_t draw_rect = ui_is_flag_set(widget, UI_FLAG_ESCAPE_CLIP) ?
-        widget->rect : ui_rect_intersect(clip_rect, widget->rect);
+        rect : ui_rect_intersect(clip_rect, rect);
 
     if (draw_rect.width <= 0.0f || draw_rect.height <= 0.0f)
     {
@@ -1276,13 +1300,13 @@ static void ui_emit_draw_commands(ui_widget_t* widget, ui_rect_t clip_rect)
     {
         ui_rect_t border_rect =
         {
-            widget->rect.x - widget->border.thickness * 0.5f,
-            widget->rect.y - widget->border.thickness * 0.5f,
-            widget->rect.width + widget->border.thickness,
-            widget->rect.height + widget->border.thickness,
+            draw_rect.x - widget->border.thickness * 0.5f,
+            draw_rect.y - widget->border.thickness * 0.5f,
+            draw_rect.width + widget->border.thickness,
+            draw_rect.height + widget->border.thickness,
         };
 
-        ui_rect_t draw_border_rect = ui_is_flag_set(widget, UI_FLAG_FLOATING) ?
+        ui_rect_t draw_border_rect = ui_is_flag_set(widget, UI_FLAG_ESCAPE_CLIP) ?
             border_rect : ui_rect_intersect(clip_rect, border_rect);
 
         if (draw_border_rect.width > 0.0f && draw_border_rect.height > 0.0f)
@@ -1312,24 +1336,28 @@ static void ui_emit_draw_commands(ui_widget_t* widget, ui_rect_t clip_rect)
     {
         ui_rect_t content_rect =
         {
-            ui_content_position(widget, UI_AXIS_X), ui_content_position(widget, UI_AXIS_Y),
-            ui_content_size(widget, UI_AXIS_X), ui_content_size(widget, UI_AXIS_Y),
+            rect.x + widget->padding,
+            rect.y + widget->padding,
+            rect.width - widget->padding * 2.0f,
+            rect.height - widget->padding * 2.0f
         };
         
-        ui_rect_t text_clip = ui_is_flag_set(widget, UI_FLAG_FLOATING) ?
+        ui_rect_t text_clip = ui_is_flag_set(widget, UI_FLAG_ESCAPE_CLIP) ?
             content_rect : ui_rect_intersect(clip_rect, content_rect);
         
         for (ui_text_line_t* text_line = widget->text_line_list.first; text_line; text_line = text_line->next)
         {
-            f32 text_x = text_line->position[0] - widget->scroll[0];
-            f32 text_y = text_line->position[1] - widget->scroll[1];
+            f32 text_x = text_line->position[0] - (scroll_offset.x + widget->scroll[UI_AXIS_X]);
+            f32 text_y = text_line->position[1] - (scroll_offset.y + widget->scroll[UI_AXIS_Y]);
+
+            // fprintf(stderr, "\n[UI] widget->name: %s, scroll_offset: (%f, %f)\n", widget->name, scroll_offset.x, scroll_offset.y);
             
             ui_rect_t line_rect = (ui_rect_t)
             {
                 text_x, text_y,
                 text_line->size[0], text_line->size[1]
             };
-            ui_rect_t line_clip = ui_is_flag_set(widget, UI_FLAG_FLOATING) ?
+            ui_rect_t line_clip = ui_is_flag_set(widget, UI_FLAG_ESCAPE_CLIP) ?
                 line_rect : ui_rect_intersect(clip_rect, line_rect);
 
             if (line_clip.width <= 0.0f || line_clip.height <= 0.0f)
@@ -1352,59 +1380,74 @@ static void ui_emit_draw_commands(ui_widget_t* widget, ui_rect_t clip_rect)
     }
 }
 
-static void ui_emit_subtree(ui_widget_t* root_widget, ui_rect_t clip_rect)
+static void ui_emit_subtree(ui_widget_t* root_widget, ui_rect_t clip_rect, vec2 scroll_offset)
 {
-    ui_emit_draw_commands(root_widget, clip_rect);
+    ui_emit_draw_commands(root_widget, clip_rect, scroll_offset);
 
     ui_rect_t child_clip_rect = ui_rect_intersect(clip_rect, root_widget->rect);
-
+    vec2 child_scroll_offset =
+    {
+        scroll_offset.x + root_widget->scroll[UI_AXIS_X],
+        scroll_offset.y + root_widget->scroll[UI_AXIS_Y]
+    };
+    
     for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
     {
-        ui_emit_subtree(child_widget, child_clip_rect);
+        ui_emit_subtree(child_widget, child_clip_rect, child_scroll_offset);
     }
 }
 
-static void ui_emit_normal_pass(ui_widget_t* root_widget, ui_rect_t clip_rect)
+static void ui_emit_normal_pass(ui_widget_t* root_widget, ui_rect_t clip_rect, vec2 scroll_offset)
 {
     if (ui_is_flag_set(root_widget, UI_FLAG_FLOATING))
     {
         return;
     }
 
-    ui_emit_draw_commands(root_widget, clip_rect);
+    ui_emit_draw_commands(root_widget, clip_rect, scroll_offset);
 
     ui_rect_t child_clip_rect = ui_rect_intersect(clip_rect, root_widget->rect);
+    vec2 child_scroll_offset =
+    {
+        scroll_offset.x + root_widget->scroll[UI_AXIS_X],
+        scroll_offset.y + root_widget->scroll[UI_AXIS_Y]
+    };
 
     for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
     {
-        ui_emit_normal_pass(child_widget, child_clip_rect);
+        ui_emit_normal_pass(child_widget, child_clip_rect, child_scroll_offset);
     }
 }
 
-static void ui_emit_floating_pass(ui_widget_t* root_widget, ui_rect_t clip_rect)
+static void ui_emit_floating_pass(ui_widget_t* root_widget, ui_rect_t clip_rect, vec2 scroll_offset)
 {
     if (ui_is_flag_set(root_widget, UI_FLAG_FLOATING))
     {
         ui_rect_t subtree_clip = ui_is_flag_set(root_widget, UI_FLAG_ESCAPE_CLIP)
             ? global_ui->root_widget->rect
             : clip_rect;
-        ui_emit_subtree(root_widget, subtree_clip);
+        ui_emit_subtree(root_widget, subtree_clip, scroll_offset);
         return;
     }
 
     ui_rect_t child_clip_rect = ui_rect_intersect(clip_rect, root_widget->rect);
+    vec2 child_scroll_offset =
+    {
+        scroll_offset.x + root_widget->scroll[UI_AXIS_X],
+        scroll_offset.y + root_widget->scroll[UI_AXIS_Y]
+    };
     
     for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
     {
-        ui_emit_floating_pass(child_widget, child_clip_rect);
+        ui_emit_floating_pass(child_widget, child_clip_rect, child_scroll_offset);
     }
 }
 
 static void ui_emit_all_draw_commands(ui_widget_t* root_widget)
 {
     ui_rect_t clip_rect = global_ui->root_widget->rect;
-    ui_emit_normal_pass(root_widget, clip_rect);
-    ui_emit_floating_pass(root_widget, clip_rect);
+    ui_emit_normal_pass(root_widget, clip_rect, v2(0.0f, 0.0f));
+    ui_emit_floating_pass(root_widget, clip_rect, v2(0.0f, 0.0f));
 }
 
 static void ui_init(memory_arena_t* memory_arena)
@@ -1435,8 +1478,90 @@ static void ui_init(memory_arena_t* memory_arena)
     ui_stack_init(global_ui->arena, &global_ui->stacks.text_wrap, sizeof(ui_text_wrap_t), UI_STACK_SIZE);
 }
 
-static ui_widget_t* ui_hit_test(ui_widget_t* root_widget, vec2 mouse_position)
+static ui_widget_t* ui_hit_test_scrollable(ui_widget_t* root_widget, vec2 mouse_position, vec2 scroll_offset, ui_axis_t axis)
 {
+    ui_rect_t rect_with_scroll =
+    {
+        root_widget->rect.x - scroll_offset.x,
+        root_widget->rect.y - scroll_offset.y,
+        root_widget->rect.width,
+        root_widget->rect.height
+    };
+
+    if (!ui_rect_contains_point(rect_with_scroll, mouse_position))
+    {
+        return 0;
+    }
+
+    vec2 child_scroll_offset =
+    {
+        scroll_offset.x + root_widget->scroll[UI_AXIS_X],
+        scroll_offset.y + root_widget->scroll[UI_AXIS_Y]
+    };
+
+    for (ui_widget_t* child_widget = root_widget->child_list.last; child_widget; child_widget = child_widget->child_prev)
+    {
+        ui_widget_t* hit_widget = 0;
+        
+        if (ui_is_flag_set(child_widget, UI_FLAG_FLOATING))
+        {
+             hit_widget = ui_hit_test_scrollable(child_widget, mouse_position, scroll_offset, axis);
+        }
+        else
+        {
+            hit_widget = ui_hit_test_scrollable(child_widget, mouse_position, child_scroll_offset, axis);
+        }
+
+        if (hit_widget)
+        {
+            return hit_widget;
+        }
+    }
+
+    if (axis == UI_AXIS_X && ui_is_flag_set(root_widget, UI_FLAG_SCROLLABLE_X))
+    {
+        f32 max_scroll = max(0.0f, root_widget->viewport[UI_AXIS_X] - ui_content_size(root_widget, UI_AXIS_X));
+
+        if (max_scroll > 0.0f)
+        {
+            return root_widget;
+        }
+    }
+
+    if (axis == UI_AXIS_Y && ui_is_flag_set(root_widget, UI_FLAG_SCROLLABLE_Y))
+    {
+        f32 max_scroll = max(0.0f, root_widget->viewport[UI_AXIS_Y] - ui_content_size(root_widget, UI_AXIS_Y));
+
+        if (max_scroll > 0.0f)
+        {
+            return root_widget;
+        }
+    }
+
+    return 0;
+}
+
+static ui_widget_t* ui_hit_test(ui_widget_t* root_widget, vec2 mouse_position, vec2 scroll_offset)
+{
+    ui_rect_t rect_with_scroll =
+    {
+        root_widget->rect.x - scroll_offset.x,
+        root_widget->rect.y - scroll_offset.y,
+        root_widget->rect.width,
+        root_widget->rect.height
+    };
+
+    if (!ui_rect_contains_point(rect_with_scroll, mouse_position))
+    {
+        return 0;
+    }
+
+    vec2 child_scroll_offset =
+    {
+        scroll_offset.x + root_widget->scroll[UI_AXIS_X],
+        scroll_offset.y + root_widget->scroll[UI_AXIS_Y]
+    };
+    
     for (ui_widget_t* child_widget = root_widget->child_list.last; child_widget; child_widget = child_widget->child_prev)
     {
         if (!ui_is_flag_set(child_widget, UI_FLAG_FLOATING))
@@ -1444,7 +1569,7 @@ static ui_widget_t* ui_hit_test(ui_widget_t* root_widget, vec2 mouse_position)
             continue;
         }
 
-        ui_widget_t* hit_widget = ui_hit_test(child_widget, mouse_position);
+        ui_widget_t* hit_widget = ui_hit_test(child_widget, mouse_position, scroll_offset);
 
         if (hit_widget)
         {
@@ -1459,7 +1584,7 @@ static ui_widget_t* ui_hit_test(ui_widget_t* root_widget, vec2 mouse_position)
             continue;
         }
 
-        ui_widget_t* hit_widget = ui_hit_test(child_widget, mouse_position);
+        ui_widget_t* hit_widget = ui_hit_test(child_widget, mouse_position, child_scroll_offset);
 
         if (hit_widget)
         {
@@ -1467,7 +1592,7 @@ static ui_widget_t* ui_hit_test(ui_widget_t* root_widget, vec2 mouse_position)
         }
     }
 
-    if (ui_is_flag_set(root_widget, UI_FLAG_CLICKABLE) && ui_rect_contains_point(root_widget->rect, mouse_position))
+    if (ui_is_flag_set(root_widget, UI_FLAG_CLICKABLE) && ui_rect_contains_point(rect_with_scroll, mouse_position))
     {
         return root_widget;
     }
@@ -1478,7 +1603,7 @@ static ui_widget_t* ui_hit_test(ui_widget_t* root_widget, vec2 mouse_position)
 static void ui_resolve_hot(void)
 {
     global_ui->hot_key = (ui_key_t){ 0 };
-    ui_widget_t* widget = ui_hit_test(global_ui->root_widget, global_ui->input->mouse_position);
+    ui_widget_t* widget = ui_hit_test(global_ui->root_widget, global_ui->input->mouse_position, v2(0.0f, 0.0f));
 
     if (widget)
     {
@@ -1553,6 +1678,23 @@ static void ui_resolve_focus(void)
     }
 }
 
+static void ui_resolve_scrollable(void)
+{
+    f32 mouse_wheel = global_ui->input->wheel;
+    if (mouse_wheel != 0.0f)
+    {
+        ui_widget_t* scrollable_widget = ui_hit_test_scrollable(global_ui->root_widget,
+                                                                global_ui->input->mouse_position,
+                                                                v2(0.0f, 0.0f), UI_AXIS_Y);
+        
+        if (scrollable_widget)
+        {
+            f32 max_scroll = max(0.0f, scrollable_widget->viewport[UI_AXIS_Y] - ui_content_size(scrollable_widget, UI_AXIS_Y));
+            // scrollable_widget->scroll[UI_AXIS_Y] = clamp(0.0f, scrollable_widget->scroll[UI_AXIS_Y] - mouse_wheel * 20.0f, max_scroll);
+        }
+    }
+}
+
 static void ui_resolve_interaction(void)
 {
     ui_widget_t* widget = 0;
@@ -1588,6 +1730,7 @@ static void ui_resolve_interaction(void)
     ui_resolve_hot();
     ui_resolve_active();
     ui_resolve_focus();
+    // ui_resolve_scrollable();
 }
 
 static void ui_begin(graphics_t* graphics, input_t* input, f32 width, f32 height)
@@ -1644,7 +1787,7 @@ static void ui_end(void)
 
     ui_resolve_interaction();
     ui_emit_all_draw_commands(global_ui->root_widget);
-    ui_print_info(global_ui->root_widget);
+    // ui_print_info(global_ui->root_widget);
     
     ui_widget_group_end();
 
