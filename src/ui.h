@@ -227,6 +227,7 @@ typedef struct ui_widget_t
     ui_text_wrap_t text_wrap;
 
     f32 scroll[UI_AXIS_COUNT];
+    f32 scroll_target[UI_AXIS_COUNT];
 
     struct ui_widget_t* parent;
     struct ui_widget_t* hash_next;
@@ -236,7 +237,7 @@ typedef struct ui_widget_t
     struct ui_widget_t* child_next;
     struct ui_widget_t* child_prev;
 
-    f32 viewport[UI_AXIS_COUNT];
+    f32 content_size[UI_AXIS_COUNT];
     f32 fixed_size[UI_AXIS_COUNT];
     ui_rect_t rect;
 
@@ -268,11 +269,17 @@ static inline ui_alignment_t ui_align_center(void);
 static inline ui_alignment_t ui_align_leading(void);
 static inline ui_alignment_t ui_align_trailing(void);
 
+static inline ui_key_t ui_key_zero(void);
 static ui_widget_t* ui_widget_build_from_key(ui_key_t key);
 static ui_widget_t* ui_widget_build_from_string(const char* widget_name);
 static ui_key_t ui_get_key_from_string(ui_key_t key, const char* string);
 static ui_widget_t* ui_widget_from_key(ui_key_t key);
 static ui_signal_t ui_signal_for(ui_widget_t* widget);
+
+static inline f32 ui_widget_max_scroll(ui_widget_t* widget, ui_axis_t axis);
+static inline f32 ui_widget_scroll(ui_widget_t* widget, ui_axis_t axis);
+static inline void ui_widget_scroll_set(ui_widget_t* widget, ui_axis_t axis, f32 value);
+static inline void ui_widget_scroll_to(ui_widget_t* widget, ui_axis_t axis, f32 value);
 
 static inline void ui_set_focus(ui_key_t key);
 static inline void ui_clear_focus(ui_key_t key);
@@ -287,12 +294,12 @@ static ui_widget_t* ui_widget_text(const char* widget_name, const char* text);
 static ui_widget_t* ui_widget_text_with_length(const char* widget_name, const char* text, i32 text_length);
 static void ui_equip_text(ui_widget_t* widget, const char* text, i32 text_length);
 
-static inline f32 ui_content_position(ui_widget_t* widget, ui_axis_t axis);
-static inline f32 ui_content_size(ui_widget_t* widget, ui_axis_t axis);
+static inline f32 ui_widget_rect_position(ui_widget_t* widget, ui_axis_t axis);
+static inline f32 ui_widget_rect_size(ui_widget_t* widget, ui_axis_t axis);
 static inline f32 ui_resolve_alignment(ui_widget_t* widget, f32 size, ui_axis_t axis);
 
 static void ui_init(memory_arena_t* memory_arena);
-static void ui_begin(graphics_t* graphics, input_t* input, f32 width, f32 height);
+static void ui_begin(graphics_t* graphics, input_t* input, f32 delta_time, f32 width, f32 height);
 static void ui_end(void);
 
 static ui_draw_command_iter_t ui_draw_command_iter(void);

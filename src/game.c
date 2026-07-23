@@ -1528,7 +1528,7 @@ update_function(update)
     theme_t* theme = get_current_theme(game);
     
 #if FONT_ENABLE
-    ui_begin(graphics, input, (f32)platform->width, (f32)platform->height);
+    ui_begin(graphics, input, platform->delta_time, (f32)platform->width, (f32)platform->height);
     ui_push_color(theme->bg_color);
     ui_push_font(game->font_12, graphics->get_font_pixel_size(game->font_12));
     ui_push_font_color(theme->font_color);
@@ -1744,16 +1744,17 @@ update_function(update)
                 qsort(country_search_results, array_count(country_search_results), sizeof(country_search_result_t), compare_country_search_result);
 
                 ui_next_size(ui_percent(1.0f, 1.0f), ui_em(20.0f, 1.0f));
-                ui_next_flags(UI_FLAG_BACKGROUND | UI_FLAG_SCROLLABLE_Y);
-                ui_next_border(1.0f, theme->fg_color);
-                ui_widget_named_column("search-results-column")
+                ui_next_axis(ui_axis_y());
+                ui_next_padding(4.0f);
+                ui_next_flags(UI_FLAG_BACKGROUND);
+                ui_widget_scrollable("search-results-column", false, true)
                 {
                     for (u32 i = 0; i < 20; ++i)
                     {
-                        // if (country_search_results[i].match_count == 0)
-                        // {
-                        //     break; // Stop if no more matches.
-                        // }
+                        if (country_search_results[i].match_count == 0)
+                        {
+                            break;
+                        }
                     
                         country_name_t country_name = global_shape_country_names[country_search_results[i].index];
 
@@ -1761,7 +1762,7 @@ update_function(update)
                         ui_next_border(1.0f, theme->fg_color);
                         ui_next_show_border(last_signal.hovering);
                         ui_next_color(last_signal.hovering ? v4v(theme->font_color.rgb, 0.1f) : theme->bg_color);
-                        ui_next_size(ui_percent(1.0f, 1.0f), ui_em(2.0f, 1.0f));
+                        ui_next_size(ui_percent(0.99f, 1.0f), ui_em(2.0f, 1.0f));
                         ui_next_flags(UI_FLAG_CLICKABLE | UI_FLAG_BACKGROUND);
                         ui_next_text_alignment((ui_alignment_t){ UI_ALIGNMENT_LEADING, UI_ALIGNMENT_CENTER });
                         ui_next_padding(4.0f);

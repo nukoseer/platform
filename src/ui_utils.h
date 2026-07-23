@@ -169,8 +169,6 @@ typedef struct ui_text_edit_t
     i32 cursor;
     i32 selection;
     bool selecting;
-    f32 scroll_x;    
-    f32 scroll_y;
 } ui_text_edit_t;
 
 static void ui_push_size_axis(ui_axis_t axis, ui_size_t size)
@@ -411,7 +409,10 @@ static void ui_text_edit_delete(ui_text_edit_t* text_edit)
 
 static void ui_text_edit_delete_all(ui_text_edit_t* text_edit)
 {
-    ui_text_edit_delete_range(text_edit, text_edit->cursor, text_edit->length);
+    if (!ui_text_edit_delete_selection(text_edit))
+    {
+        ui_text_edit_delete_range(text_edit, text_edit->cursor, text_edit->length);
+    }
 }
 
 static inline void ui_text_edit_move_left(ui_text_edit_t* text_edit, i32 offset, bool selection)
@@ -588,8 +589,8 @@ static void ui_text_edit_selection(ui_widget_t* widget, ui_text_edit_t* text_edi
     if (text_edit->selecting)
     {
         ui_text_line_t* text_line = ui_text_line_from_screen_y(widget, mouse_y);
-        f32 widget_left = ui_content_position(widget, UI_AXIS_X);
-        f32 widget_right = ui_content_position(widget, UI_AXIS_X) + ui_content_size(widget, UI_AXIS_X);
+        f32 widget_left = ui_widget_rect_position(widget, UI_AXIS_X);
+        f32 widget_right = ui_widget_rect_position(widget, UI_AXIS_X) + ui_widget_rect_size(widget, UI_AXIS_X);
 
         if (mouse_x > widget_right && text_edit->cursor < text_edit->length)
         {
@@ -629,7 +630,7 @@ static void ui_widget_text_edit_selection(ui_widget_t* widget, ui_text_edit_t* t
 
             f32 start_measure_x = global_ui->graphics->measure_text_width(widget->font.font, text_edit->text + text_line->offset, selection_start - text_line->offset);
             f32 end_measure_x = global_ui->graphics->measure_text_width(widget->font.font, text_edit->text + text_line->offset, selection_end - text_line->offset);
-            f32 start_x = text_line->position[UI_AXIS_X] + start_measure_x;
+            f32 start_x = text_line->position[UI_AXIS_X] + start_measure_x - ui_widget_scroll(widget, UI_AXIS_X);
             f32 size_x = end_measure_x - start_measure_x;
 
             ui_push_parent(widget);
@@ -639,7 +640,7 @@ static void ui_widget_text_edit_selection(ui_widget_t* widget, ui_text_edit_t* t
                 ui_next_color(v4v(widget->font_color.rgb, 0.2f));
                 ui_widget_t* selection_widget = ui_widget_build_from_key((ui_key_t){ 0 });
                 selection_widget->position.x = start_x;
-                selection_widget->position.y = text_line->position[UI_AXIS_Y];
+                selection_widget->position.y = text_line->position[UI_AXIS_Y] - ui_widget_scroll(widget, UI_AXIS_Y);
             }
             ui_pop_parent();
         }
@@ -651,32 +652,36 @@ static void ui_text_edit_update_scroll(ui_widget_t* widget, ui_text_edit_t* text
     if (widget->text_wrap == UI_TEXT_WRAP_NONE)
     {
         f32 cursor_x = global_ui->graphics->measure_text_width(widget->font.font, text_edit->text, text_edit->cursor);
-        f32 view_width = ui_content_size(widget, UI_AXIS_X);
+        f32 view_width = ui_widget_rect_size(widget, UI_AXIS_X);
         f32 cursor_width = 1.0f;
+        f32 scroll_x = ui_widget_scroll(widget, UI_AXIS_X);
 
-        if (cursor_x - widget->scroll[UI_AXIS_X] > view_width - cursor_width)
+        if (cursor_x - scroll_x > view_width - cursor_width)
         {
-            text_edit->scroll_x = cursor_x - view_width + cursor_width;
+            scroll_x = cursor_x - view_width + cursor_width;
         }
         
-        if (cursor_x - widget->scroll[UI_AXIS_X] < 0.0f)
+        if (cursor_x - scroll_x < 0.0f)
         {
-            text_edit->scroll_x = cursor_x;
+            scroll_x = cursor_x;
         }
 
-        if (text_edit->scroll_x < 0.0f)
+        if (scroll_x < 0.0f)
         {
-            text_edit->scroll_x = 0.0f;
+            scroll_x = 0.0f;
         }
+        
+        widget->scroll[UI_AXIS_X] = widget->scroll_target[UI_AXIS_X] = scroll_x;
     }
     else
     {
         f32 total_line_height = widget->text_line_count * widget->text_size[UI_AXIS_Y];
-        f32 view_height = ui_content_size(widget, UI_AXIS_Y);
-
+        f32 view_height = ui_widget_rect_size(widget, UI_AXIS_Y);
+        f32 scroll_y = ui_widget_scroll(widget, UI_AXIS_Y);
+        
         if (total_line_height <= view_height)
         {
-            text_edit->scroll_y = 0.0f;
+            scroll_y = 0.0f;
         }
         else
         {
@@ -685,22 +690,22 @@ static void ui_text_edit_update_scroll(ui_widget_t* widget, ui_text_edit_t* text
             f32 cursor_top = cursor_line_index * widget->text_size[UI_AXIS_Y];
             f32 cursor_bottom = cursor_top + widget->text_size[UI_AXIS_Y];
 
-            if (cursor_bottom - widget->scroll[UI_AXIS_Y] > view_height)
+
+            if (cursor_bottom - scroll_y > view_height)
             {
-                text_edit->scroll_y = cursor_bottom - view_height;
+                scroll_y = cursor_bottom - view_height;
             }
 
-            if (cursor_top - widget->scroll[UI_AXIS_Y] < 0.0f)
+            if (cursor_top - scroll_y < 0.0f)
             {
-                text_edit->scroll_y = cursor_top;
+                scroll_y = cursor_top;
             }
 
-            text_edit->scroll_y = clamp(0.0f, text_edit->scroll_y, total_line_height);
+            scroll_y = clamp(0.0f, scroll_y, total_line_height - view_height);
+
+            widget->scroll[UI_AXIS_Y] = widget->scroll_target[UI_AXIS_Y] = scroll_y;
         }
     }
-
-    widget->scroll[UI_AXIS_X] = text_edit->scroll_x;   
-    widget->scroll[UI_AXIS_Y] = text_edit->scroll_y;   
 }
 
 static void ui_widget_text_edit_cursor(ui_widget_t* widget, ui_text_edit_t* text_edit)
@@ -713,15 +718,15 @@ static void ui_widget_text_edit_cursor(ui_widget_t* widget, ui_text_edit_t* text
     ui_push_parent(widget);
     {
         ui_next_size(ui_pixel(cursor_width, 1.0f), ui_pixel(cursor_height, 1.0f));
-        ui_next_flags(UI_FLAG_FLOATING | UI_FLAG_BACKGROUND);
+        ui_next_flags(UI_FLAG_BACKGROUND | UI_FLAG_FLOATING);
         ui_next_color(widget->font_color);
-        ui_widget_t* cursor_widget = ui_widget_build_from_key((ui_key_t){ 0 });
+        ui_widget_t* cursor_widget = ui_widget_build_from_key(ui_key_zero());
         ui_text_line_t* text_line = ui_text_line_from_cursor(widget, text_edit->cursor);
         
         if (text_line)
         {
-            cursor_x = text_line->position[UI_AXIS_X] + global_ui->graphics->measure_text_width(widget->font.font, text_edit->text + text_line->offset, text_edit->cursor - text_line->offset);
-            cursor_y = text_line->position[UI_AXIS_Y];
+            cursor_x = text_line->position[UI_AXIS_X] + global_ui->graphics->measure_text_width(widget->font.font, text_edit->text + text_line->offset, text_edit->cursor - text_line->offset) - ui_widget_scroll(widget, UI_AXIS_X);
+            cursor_y = text_line->position[UI_AXIS_Y] - ui_widget_scroll(widget, UI_AXIS_Y);
         }
         else
         {
@@ -824,6 +829,56 @@ static ui_signal_t ui_widget_text_edit(const char* name, ui_text_edit_t* text_ed
     ui_equip_text(widget, text_edit->text, text_edit->length);
 
     return signal;
+}
+
+#define ui_widget_scrollable(name, scroll_x, scroll_y) defer_loop(ui_widget_scrollable_begin(name, scroll_x, scroll_y), ui_widget_scrollable_end())
+
+static void ui_widget_scrollable_begin(const char* name, bool scroll_x, bool scroll_y)
+{
+    if (scroll_x) ui_next_flags(UI_FLAG_SCROLLABLE_X);
+    if (scroll_y) ui_next_flags(UI_FLAG_SCROLLABLE_Y);
+    ui_widget_t* widget = ui_widget_build_from_string(name);
+    
+    ui_push_parent(widget);
+
+    if (scroll_y)
+    {
+        f32 viewport = ui_widget_rect_size(widget, UI_AXIS_Y);
+        f32 content = widget->content_size[UI_AXIS_Y];
+
+        if (content > viewport)
+        {
+            f32 max_scroll = content - viewport;
+            f32 thumb_width = 6.0f;
+            f32 thumb_height = max(viewport * (viewport / content), 20.0f);
+            f32 track = viewport - thumb_height;
+            f32 fraction = ui_widget_scroll(widget, UI_AXIS_Y) / max_scroll;
+            f32 thumb_x = widget->rect.x + widget->rect.width - thumb_width;
+            f32 thumb_y = ui_widget_rect_position(widget, UI_AXIS_Y) + fraction * track;
+
+            ui_next_flags(UI_FLAG_BACKGROUND | UI_FLAG_FLOATING | UI_FLAG_CLICKABLE);
+            ui_next_color(v4(0.0f, 0.0f, 0.0f, 0.3f));
+            ui_next_size(ui_pixel(thumb_width, 1.0f), ui_pixel(thumb_height, 1.0f));
+            ui_widget_t* thumb_widget = ui_widget_build_from_string("scroll");
+            thumb_widget->position.x = thumb_x;
+            thumb_widget->position.y = thumb_y;
+
+            ui_signal_t thumb_signal = ui_signal_for(thumb_widget);
+
+            if (thumb_signal.held)
+            {
+                f32 delta = global_ui->input->mouse_delta.y;
+                f32 track = viewport - thumb_height;
+                f32 scroll_per_pixel = max_scroll / track;
+                ui_widget_scroll_set(widget, UI_AXIS_Y, widget->scroll[UI_AXIS_Y] + delta * scroll_per_pixel);
+            }
+        }
+    }
+}
+
+static void ui_widget_scrollable_end(void)
+{
+    ui_pop_parent();
 }
 
 #define H_UI_UTILS_H

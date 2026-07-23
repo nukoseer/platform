@@ -36,6 +36,8 @@ typedef struct ui_t
     // NOTE: These are from platform layer.
     graphics_t* graphics;
     input_t* input;
+
+    f32 delta_time;
     
     memory_arena_t* arena;
     memory_arena_t* frame_arena;
@@ -215,14 +217,14 @@ static inline ui_alignment_t ui_align_trailing(void)
     return widget_alignment;
 }
 
-static inline f32 ui_content_position(ui_widget_t* widget, ui_axis_t axis)
+static inline f32 ui_widget_rect_position(ui_widget_t* widget, ui_axis_t axis)
 {
     f32 content_position = widget->rect.xy[axis] + widget->padding;
 
     return content_position;
 }
 
-static inline f32 ui_content_size(ui_widget_t* widget, ui_axis_t axis)
+static inline f32 ui_widget_rect_size(ui_widget_t* widget, ui_axis_t axis)
 {
     f32 content_size = widget->rect.size[axis] - widget->padding * 2.0f;
 
@@ -450,6 +452,13 @@ static void ui_text_line_list_remove(ui_text_line_list_t* text_line_list, ui_tex
     
     text_line->next = 0;
     text_line->prev = 0;
+}
+
+static inline ui_key_t ui_key_zero(void)
+{
+    ui_key_t result = (ui_key_t){ 0 };
+
+    return result;
 }
 
 static ui_widget_t* ui_widget_from_key(ui_key_t key)
@@ -864,8 +873,8 @@ static void ui_resolve_text_lines(ui_widget_t* root_widget, ui_axis_t axis)
 static inline f32 ui_resolve_alignment(ui_widget_t* widget, f32 size, ui_axis_t axis)
 {
     f32 position = 0.0f;
-    f32 content_position = ui_content_position(widget, axis);
-    f32 content_size = ui_content_size(widget, axis);
+    f32 content_position = ui_widget_rect_position(widget, axis);
+    f32 content_size = ui_widget_rect_size(widget, axis);
         
     switch (widget->text_alignment.value[axis])
     {
@@ -1136,11 +1145,20 @@ static void ui_resolve_layout(ui_widget_t* root_widget, ui_axis_t axis)
 
     if (ui_is_flag_set(root_widget, UI_FLAG_SCROLLABLE_X) || ui_is_flag_set(root_widget, UI_FLAG_SCROLLABLE_Y))
     {
-        root_widget->viewport[axis] = (root_widget->layout_axis == axis ?
+        root_widget->content_size[axis] = (root_widget->layout_axis == axis ?
                                        layout_at + root_widget->padding :
                                        cross_axis_size + root_widget->padding * 2.0f);
-        // f32 max_scroll = max(0.0f, root_widget->viewport[axis] - ui_content_size(root_widget, axis));
-        // root_widget->scroll[axis] = clamp(0.0f, root_widget->scroll[axis], max_scroll);
+        ui_widget_scroll_to(root_widget, axis, root_widget->scroll_target[axis]);
+
+        f32 difference = root_widget->scroll_target[axis] - root_widget->scroll[axis];
+        if (fabsf(difference) < 0.5f)
+        {
+            root_widget->scroll[axis] = root_widget->scroll_target[axis];
+        }
+        else
+        {
+            root_widget->scroll[axis] += difference * (1.0f - powf(0.0001f, global_ui->delta_time));
+        }
     }
 
     // NOTE: Floating pass.
@@ -1350,8 +1368,6 @@ static void ui_emit_draw_commands(ui_widget_t* widget, ui_rect_t clip_rect, vec2
             f32 text_x = text_line->position[0] - (scroll_offset.x + widget->scroll[UI_AXIS_X]);
             f32 text_y = text_line->position[1] - (scroll_offset.y + widget->scroll[UI_AXIS_Y]);
 
-            // fprintf(stderr, "\n[UI] widget->name: %s, scroll_offset: (%f, %f)\n", widget->name, scroll_offset.x, scroll_offset.y);
-            
             ui_rect_t line_rect = (ui_rect_t)
             {
                 text_x, text_y,
@@ -1439,7 +1455,7 @@ static void ui_emit_floating_pass(ui_widget_t* root_widget, ui_rect_t clip_rect,
     
     for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
     {
-        ui_emit_floating_pass(child_widget, child_clip_rect, child_scroll_offset);
+        ui_emit_floating_pass(child_widget, child_clip_rect, scroll_offset);
     }
 }
 
@@ -1476,6 +1492,33 @@ static void ui_init(memory_arena_t* memory_arena)
     ui_stack_init(global_ui->arena, &global_ui->stacks.font_color, sizeof(vec4), UI_STACK_SIZE);
     ui_stack_init(global_ui->arena, &global_ui->stacks.text_alignment, sizeof(ui_alignment_t), UI_STACK_SIZE);
     ui_stack_init(global_ui->arena, &global_ui->stacks.text_wrap, sizeof(ui_text_wrap_t), UI_STACK_SIZE);
+}
+
+static inline f32 ui_widget_max_scroll(ui_widget_t* widget, ui_axis_t axis)
+{
+    f32 result = max(0.0f, widget->content_size[axis] - ui_widget_rect_size(widget, axis));
+
+    return result;
+}
+
+static inline f32 ui_widget_scroll(ui_widget_t* widget, ui_axis_t axis)
+{
+    return widget->scroll[axis];
+}
+
+static inline void ui_widget_scroll_set(ui_widget_t* widget, ui_axis_t axis, f32 value)
+{
+    f32 max_scroll = ui_widget_max_scroll(widget, axis);
+    f32 clamped_value = clamp(0.0f, value, max_scroll);
+    widget->scroll[axis] = clamped_value;
+    widget->scroll_target[axis] = clamped_value;
+}
+
+static inline void ui_widget_scroll_to(ui_widget_t* widget, ui_axis_t axis, f32 value)
+{
+    f32 max_scroll = ui_widget_max_scroll(widget, axis);
+    f32 clamped_value = clamp(0.0f, value, max_scroll);
+    widget->scroll_target[axis] = clamped_value;
 }
 
 static ui_widget_t* ui_hit_test_scrollable(ui_widget_t* root_widget, vec2 mouse_position, vec2 scroll_offset, ui_axis_t axis)
@@ -1520,7 +1563,7 @@ static ui_widget_t* ui_hit_test_scrollable(ui_widget_t* root_widget, vec2 mouse_
 
     if (axis == UI_AXIS_X && ui_is_flag_set(root_widget, UI_FLAG_SCROLLABLE_X))
     {
-        f32 max_scroll = max(0.0f, root_widget->viewport[UI_AXIS_X] - ui_content_size(root_widget, UI_AXIS_X));
+        f32 max_scroll = ui_widget_max_scroll(root_widget, axis);
 
         if (max_scroll > 0.0f)
         {
@@ -1530,7 +1573,7 @@ static ui_widget_t* ui_hit_test_scrollable(ui_widget_t* root_widget, vec2 mouse_
 
     if (axis == UI_AXIS_Y && ui_is_flag_set(root_widget, UI_FLAG_SCROLLABLE_Y))
     {
-        f32 max_scroll = max(0.0f, root_widget->viewport[UI_AXIS_Y] - ui_content_size(root_widget, UI_AXIS_Y));
+        f32 max_scroll = ui_widget_max_scroll(root_widget, axis);
 
         if (max_scroll > 0.0f)
         {
@@ -1681,16 +1724,16 @@ static void ui_resolve_focus(void)
 static void ui_resolve_scrollable(void)
 {
     f32 mouse_wheel = global_ui->input->wheel;
+    
     if (mouse_wheel != 0.0f)
     {
-        ui_widget_t* scrollable_widget = ui_hit_test_scrollable(global_ui->root_widget,
-                                                                global_ui->input->mouse_position,
-                                                                v2(0.0f, 0.0f), UI_AXIS_Y);
+        ui_widget_t* widget = ui_hit_test_scrollable(global_ui->root_widget,
+                                                     global_ui->input->mouse_position,
+                                                     v2(0.0f, 0.0f), UI_AXIS_Y);
         
-        if (scrollable_widget)
+        if (widget)
         {
-            f32 max_scroll = max(0.0f, scrollable_widget->viewport[UI_AXIS_Y] - ui_content_size(scrollable_widget, UI_AXIS_Y));
-            // scrollable_widget->scroll[UI_AXIS_Y] = clamp(0.0f, scrollable_widget->scroll[UI_AXIS_Y] - mouse_wheel * 20.0f, max_scroll);
+            ui_widget_scroll_to(widget, UI_AXIS_Y, widget->scroll_target[UI_AXIS_Y] - mouse_wheel * 60.0f);
         }
     }
 }
@@ -1730,10 +1773,10 @@ static void ui_resolve_interaction(void)
     ui_resolve_hot();
     ui_resolve_active();
     ui_resolve_focus();
-    // ui_resolve_scrollable();
+    ui_resolve_scrollable();
 }
 
-static void ui_begin(graphics_t* graphics, input_t* input, f32 width, f32 height)
+static void ui_begin(graphics_t* graphics, input_t* input, f32 delta_time, f32 width, f32 height)
 {
     assert(global_ui && "[UI] Not initialized.");
     assert(input && "[UI] Input is required.");
@@ -1741,6 +1784,7 @@ static void ui_begin(graphics_t* graphics, input_t* input, f32 width, f32 height
 
     global_ui->graphics = graphics;
     global_ui->input = input;
+    global_ui->delta_time = delta_time;
     
     ma_reset(global_ui->frame_arena);
     global_ui->draw_commands_first = 0;
