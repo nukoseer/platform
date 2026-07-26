@@ -353,6 +353,97 @@ static void ui_widget_column_end(void)
     ui_widget_named_column_end();
 }
 
+static void ui_widget_scrollbar(ui_widget_t* parent_widget)
+{
+    ui_widget_t* widget = 0;
+
+    if (parent_widget)
+    {
+        ui_push_parent(parent_widget);
+        widget = parent_widget;
+    }
+    else
+    {
+        widget = ui_top_parent();
+    }
+
+    if (widget)
+    {
+        if (ui_is_flag_set(widget, UI_FLAG_SCROLLABLE_Y))
+        {
+            f32 viewport = ui_widget_rect_size(widget, UI_AXIS_Y);
+            f32 content = widget->content_size[UI_AXIS_Y];
+
+            if (content > viewport)
+            {
+                f32 max_scroll = content - viewport;
+                f32 thumb_width = 6.0f;
+                f32 thumb_height = max(viewport * (viewport / content), 20.0f);
+                f32 track = viewport - thumb_height;
+                f32 fraction = ui_widget_scroll(widget, UI_AXIS_Y) / max_scroll;
+                f32 thumb_x = widget->rect.x + widget->rect.width - thumb_width;
+                f32 thumb_y = ui_widget_rect_position(widget, UI_AXIS_Y) + fraction * track;
+
+                ui_next_flags(UI_FLAG_BACKGROUND | UI_FLAG_FLOATING | UI_FLAG_CLICKABLE);
+                ui_next_color(v4(0.5f, 0.5f, 0.5f, 0.5f));
+                ui_next_size(ui_pixel(thumb_width, 1.0f), ui_pixel(thumb_height, 1.0f));
+                ui_widget_t* thumb_widget = ui_widget_build_from_format_string("%s-scroll-y", widget->name);
+                thumb_widget->position.x = thumb_x;
+                thumb_widget->position.y = thumb_y;
+
+                ui_signal_t thumb_signal = ui_signal_for(thumb_widget);
+
+                if (thumb_signal.held)
+                {
+                    f32 delta = global_ui->input->mouse_delta.y;
+                    f32 track = viewport - thumb_height;
+                    f32 scroll_per_pixel = max_scroll / track;
+                    ui_widget_scroll_set(widget, UI_AXIS_Y, ui_widget_scroll(widget, UI_AXIS_Y) + delta * scroll_per_pixel);
+                }
+            }
+        }
+
+        if (ui_is_flag_set(widget, UI_FLAG_SCROLLABLE_X))
+        {
+            f32 viewport = ui_widget_rect_size(widget, UI_AXIS_X);
+            f32 content = widget->content_size[UI_AXIS_X];
+
+            if (content > viewport)
+            {
+                f32 max_scroll = content - viewport;
+                f32 thumb_width = max(viewport * (viewport / content), 20.0f);
+                f32 thumb_height = 6.0f;
+                f32 track = viewport - thumb_width;
+                f32 fraction = ui_widget_scroll(widget, UI_AXIS_X) / max_scroll;
+                f32 thumb_x = ui_widget_rect_position(widget, UI_AXIS_X) + fraction * track;
+                f32 thumb_y = widget->rect.y + widget->rect.height - thumb_height;
+
+                ui_next_flags(UI_FLAG_BACKGROUND | UI_FLAG_FLOATING | UI_FLAG_CLICKABLE);
+                ui_next_color(v4(0.5f, 0.5f, 0.5f, 0.5f));
+                ui_next_size(ui_pixel(thumb_width, 1.0f), ui_pixel(thumb_height, 1.0f));
+                ui_widget_t* thumb_widget = ui_widget_build_from_format_string("%s-scroll-x", widget->name);
+                thumb_widget->position.x = thumb_x;
+                thumb_widget->position.y = thumb_y;
+
+                ui_signal_t thumb_signal = ui_signal_for(thumb_widget);
+
+                if (thumb_signal.held)
+                {
+                    f32 delta = global_ui->input->mouse_delta.x;
+                    f32 track = viewport - thumb_width;
+                    f32 scroll_per_pixel = max_scroll / track;
+                    ui_widget_scroll_set(widget, UI_AXIS_X, ui_widget_scroll(widget, UI_AXIS_X) + delta * scroll_per_pixel);
+                }
+            }
+        }
+    }
+
+    if (parent_widget)
+    {
+        ui_pop_parent();
+    }
+}
+
 static inline void ui_text_edit_collapse(ui_text_edit_t* text_edit)
 {
     text_edit->selection = text_edit->cursor;
@@ -652,6 +743,7 @@ static void ui_text_edit_update_scroll(ui_widget_t* widget, ui_text_edit_t* text
     if (widget->text_wrap == UI_TEXT_WRAP_NONE)
     {
         f32 cursor_x = global_ui->graphics->measure_text_width(widget->font.font, text_edit->text, text_edit->cursor);
+        f32 text_width = global_ui->graphics->measure_text_width(widget->font.font, text_edit->text, text_edit->length);
         f32 view_width = ui_widget_rect_size(widget, UI_AXIS_X);
         f32 cursor_width = 1.0f;
         f32 scroll_x = ui_widget_scroll(widget, UI_AXIS_X);
@@ -670,8 +762,14 @@ static void ui_text_edit_update_scroll(ui_widget_t* widget, ui_text_edit_t* text
         {
             scroll_x = 0.0f;
         }
-        
-        widget->scroll[UI_AXIS_X] = widget->scroll_target[UI_AXIS_X] = scroll_x;
+
+        // NOTE: widget->content_size is from last frame but our
+        // scroll_x value calculated in this frame so when we call
+        // ui_widget_scroll_set without setting content_size it will
+        // clamp against the old lower value.  It makes cursor flicker
+        // if it is at the end of line.
+        widget->content_size[UI_AXIS_X] = text_width + cursor_width;
+        ui_widget_scroll_set(widget, UI_AXIS_X, scroll_x);
     }
     else
     {
@@ -702,9 +800,12 @@ static void ui_text_edit_update_scroll(ui_widget_t* widget, ui_text_edit_t* text
             }
 
             scroll_y = clamp(0.0f, scroll_y, total_line_height - view_height);
-
-            widget->scroll[UI_AXIS_Y] = widget->scroll_target[UI_AXIS_Y] = scroll_y;
         }
+
+        // NOTE: The same problem with scroll_x but I did not see this causing visual problems.
+        // Nevertheless, it is better to set widget->content_size here again.
+        widget->content_size[UI_AXIS_Y] = total_line_height * widget->text_size[UI_AXIS_Y];
+        ui_widget_scroll_set(widget, UI_AXIS_Y, scroll_y);
     }
 }
 
@@ -746,7 +847,6 @@ static ui_signal_t ui_widget_text_edit(const char* name, ui_text_edit_t* text_ed
 {
     input_t* input = global_ui->input;
     ui_next_flags(UI_FLAG_TEXT);
-    ui_next_border(1.0f, v4(1.0f, 1.0f, 1.0f, 0.2f));
     ui_widget_t* widget = ui_widget(name);
     ui_signal_t signal = ui_signal_for(widget);
 
@@ -829,56 +929,6 @@ static ui_signal_t ui_widget_text_edit(const char* name, ui_text_edit_t* text_ed
     ui_equip_text(widget, text_edit->text, text_edit->length);
 
     return signal;
-}
-
-#define ui_widget_scrollable(name, scroll_x, scroll_y) defer_loop(ui_widget_scrollable_begin(name, scroll_x, scroll_y), ui_widget_scrollable_end())
-
-static void ui_widget_scrollable_begin(const char* name, bool scroll_x, bool scroll_y)
-{
-    if (scroll_x) ui_next_flags(UI_FLAG_SCROLLABLE_X);
-    if (scroll_y) ui_next_flags(UI_FLAG_SCROLLABLE_Y);
-    ui_widget_t* widget = ui_widget_build_from_string(name);
-    
-    ui_push_parent(widget);
-
-    if (scroll_y)
-    {
-        f32 viewport = ui_widget_rect_size(widget, UI_AXIS_Y);
-        f32 content = widget->content_size[UI_AXIS_Y];
-
-        if (content > viewport)
-        {
-            f32 max_scroll = content - viewport;
-            f32 thumb_width = 6.0f;
-            f32 thumb_height = max(viewport * (viewport / content), 20.0f);
-            f32 track = viewport - thumb_height;
-            f32 fraction = ui_widget_scroll(widget, UI_AXIS_Y) / max_scroll;
-            f32 thumb_x = widget->rect.x + widget->rect.width - thumb_width;
-            f32 thumb_y = ui_widget_rect_position(widget, UI_AXIS_Y) + fraction * track;
-
-            ui_next_flags(UI_FLAG_BACKGROUND | UI_FLAG_FLOATING | UI_FLAG_CLICKABLE);
-            ui_next_color(v4(0.0f, 0.0f, 0.0f, 0.3f));
-            ui_next_size(ui_pixel(thumb_width, 1.0f), ui_pixel(thumb_height, 1.0f));
-            ui_widget_t* thumb_widget = ui_widget_build_from_string("scroll");
-            thumb_widget->position.x = thumb_x;
-            thumb_widget->position.y = thumb_y;
-
-            ui_signal_t thumb_signal = ui_signal_for(thumb_widget);
-
-            if (thumb_signal.held)
-            {
-                f32 delta = global_ui->input->mouse_delta.y;
-                f32 track = viewport - thumb_height;
-                f32 scroll_per_pixel = max_scroll / track;
-                ui_widget_scroll_set(widget, UI_AXIS_Y, widget->scroll[UI_AXIS_Y] + delta * scroll_per_pixel);
-            }
-        }
-    }
-}
-
-static void ui_widget_scrollable_end(void)
-{
-    ui_pop_parent();
 }
 
 #define H_UI_UTILS_H

@@ -1724,7 +1724,7 @@ update_function(update)
                 }
                 
                 ui_next_size(ui_percent(1.0f, 0.0f), ui_percent(1.0f, 1.0f));
-                ui_next_flags(UI_FLAG_CLICKABLE);
+                ui_next_flags(UI_FLAG_CLICKABLE | UI_FLAG_BACKGROUND);
                 ui_next_text_wrap(UI_TEXT_WRAP_NONE);
                 ui_next_text_alignment((ui_alignment_t){ UI_ALIGNMENT_LEADING, UI_ALIGNMENT_CENTER });
                 ui_widget_text_edit("search-bar", &search_text_edit);
@@ -1746,17 +1746,26 @@ update_function(update)
                 ui_next_size(ui_percent(1.0f, 1.0f), ui_em(20.0f, 1.0f));
                 ui_next_axis(ui_axis_y());
                 ui_next_padding(4.0f);
-                ui_next_flags(UI_FLAG_BACKGROUND);
-                ui_widget_scrollable("search-results-column", false, true)
+                ui_next_flags(UI_FLAG_BACKGROUND | UI_FLAG_SCROLLABLE_Y);
+                ui_widget_named_column("search-results-column")
                 {
+                    ui_widget_scrollbar(0);
+
                     for (u32 i = 0; i < 20; ++i)
                     {
                         if (country_search_results[i].match_count == 0)
                         {
                             break;
                         }
-                    
+
                         country_name_t country_name = global_shape_country_names[country_search_results[i].index];
+
+                        if (i != 0)
+                        {
+                            ui_next_size(ui_percent(0.99f, 1.0f), ui_pixel(1.0f, 1.0f));
+                            ui_next_color(v4v(theme->font_color.rgb, 0.8f)); ui_next_flags(UI_FLAG_BACKGROUND);
+                            ui_widget_build_from_key(ui_key_zero());
+                        }
 
                         ui_signal_t last_signal = ui_widget_last_signal(country_name.name);
                         ui_next_border(1.0f, theme->fg_color);
@@ -1767,8 +1776,6 @@ update_function(update)
                         ui_next_text_alignment((ui_alignment_t){ UI_ALIGNMENT_LEADING, UI_ALIGNMENT_CENTER });
                         ui_next_padding(4.0f);
                         ui_widget_text(country_name.name, country_name.name);
-
-                        ui_widget_spacer(ui_pixel(2.0f, 1.0f));
                     }   
                 }
             }

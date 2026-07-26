@@ -1,3 +1,4 @@
+#include <stdarg.h>
 #include "ui.h"
 
 #define UI_INITIAL_HASH 0xCBF29CE484222325ULL
@@ -568,6 +569,22 @@ static ui_widget_t* ui_widget_build_from_string(const char* widget_name)
     return widget;
 }
 
+static ui_widget_t* ui_widget_build_from_format_string(const char* widget_name_format, ...)
+{
+    u32 max_widget_name_size = 64;
+    char* widget_name = ma_push_size(global_ui->frame_arena, max_widget_name_size);
+    va_list args;
+    
+    va_start(args, widget_name_format);
+    u32 size = vsnprintf(widget_name, sizeof(widget_name) - 1, widget_name_format, args);
+    widget_name[size] = '\0';
+    va_end(args);
+
+    ui_widget_t* widget = ui_widget_build_from_string(widget_name);
+
+    return widget;
+}
+
 static inline void ui_set_focus(ui_key_t key)
 {
     global_ui->focus_key = key;
@@ -731,6 +748,7 @@ static void ui_resolve_text_lines(ui_widget_t* root_widget, ui_axis_t axis)
     if (root_widget->text)
     {
         f32 wrap_width = root_widget->fixed_size[UI_AXIS_X] - root_widget->padding * 2.0f;
+        f32 max_width = 0.0f;
 
         if (wrap_width < 0.0f)
         {
@@ -751,6 +769,8 @@ static void ui_resolve_text_lines(ui_widget_t* root_widget, ui_axis_t axis)
                 text_line->length = root_widget->text_length;
                 text_line->size[UI_AXIS_X] = global_ui->graphics->measure_text_width(root_widget->font.font, root_widget->text, root_widget->text_length);
                 text_line->size[UI_AXIS_Y] = root_widget->text_size[UI_AXIS_Y];
+
+                max_width = text_line->size[UI_AXIS_X];
             } break;
 
             case UI_TEXT_WRAP_CHAR:
@@ -786,6 +806,8 @@ static void ui_resolve_text_lines(ui_widget_t* root_widget, ui_axis_t axis)
                     text_line->length = fits_end - start_offset;
                     text_line->size[UI_AXIS_X] = width;
                     text_line->size[UI_AXIS_Y] = root_widget->text_size[UI_AXIS_Y];
+
+                    max_width = fmaxf(max_width, text_line->size[UI_AXIS_X]);
 
                     start_offset = fits_end;
                 }
@@ -858,10 +880,15 @@ static void ui_resolve_text_lines(ui_widget_t* root_widget, ui_axis_t axis)
                     text_line->size[UI_AXIS_X] = line_width;
                     text_line->size[UI_AXIS_Y] = root_widget->text_size[UI_AXIS_Y];
 
+                    max_width = fmaxf(max_width, text_line->size[UI_AXIS_X]);
+
                     start_offset = fits_end;
                 }
             } break;
         }
+
+        root_widget->content_size[UI_AXIS_X] = max_width + 1.0f;
+        root_widget->content_size[UI_AXIS_Y] = root_widget->text_line_count * root_widget->text_size[UI_AXIS_Y];
     }
 
     for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
@@ -1145,9 +1172,13 @@ static void ui_resolve_layout(ui_widget_t* root_widget, ui_axis_t axis)
 
     if (ui_is_flag_set(root_widget, UI_FLAG_SCROLLABLE_X) || ui_is_flag_set(root_widget, UI_FLAG_SCROLLABLE_Y))
     {
-        root_widget->content_size[axis] = (root_widget->layout_axis == axis ?
-                                       layout_at + root_widget->padding :
-                                       cross_axis_size + root_widget->padding * 2.0f);
+        if (root_widget->text_line_count == 0)
+        {
+            root_widget->content_size[axis] = (root_widget->layout_axis == axis ?
+                                               layout_at + root_widget->padding :
+                                               cross_axis_size + root_widget->padding * 2.0f);
+        }
+
         ui_widget_scroll_to(root_widget, axis, root_widget->scroll_target[axis]);
 
         f32 difference = root_widget->scroll_target[axis] - root_widget->scroll[axis];
@@ -1510,6 +1541,7 @@ static inline void ui_widget_scroll_set(ui_widget_t* widget, ui_axis_t axis, f32
 {
     f32 max_scroll = ui_widget_max_scroll(widget, axis);
     f32 clamped_value = clamp(0.0f, value, max_scroll);
+
     widget->scroll[axis] = clamped_value;
     widget->scroll_target[axis] = clamped_value;
 }
@@ -1518,6 +1550,7 @@ static inline void ui_widget_scroll_to(ui_widget_t* widget, ui_axis_t axis, f32 
 {
     f32 max_scroll = ui_widget_max_scroll(widget, axis);
     f32 clamped_value = clamp(0.0f, value, max_scroll);
+
     widget->scroll_target[axis] = clamped_value;
 }
 
@@ -1727,13 +1760,15 @@ static void ui_resolve_scrollable(void)
     
     if (mouse_wheel != 0.0f)
     {
-        ui_widget_t* widget = ui_hit_test_scrollable(global_ui->root_widget,
-                                                     global_ui->input->mouse_position,
-                                                     v2(0.0f, 0.0f), UI_AXIS_Y);
-        
-        if (widget)
+        for (i32 axis = UI_AXIS_X; axis < UI_AXIS_COUNT; ++axis)
         {
-            ui_widget_scroll_to(widget, UI_AXIS_Y, widget->scroll_target[UI_AXIS_Y] - mouse_wheel * 60.0f);
+            ui_widget_t* widget = ui_hit_test_scrollable(global_ui->root_widget,
+                                                         global_ui->input->mouse_position,
+                                                         v2(0.0f, 0.0f), axis);
+            if (widget)
+            {
+                ui_widget_scroll_to(widget, axis, widget->scroll_target[axis] - mouse_wheel * 60.0f);
+            }   
         }
     }
 }
