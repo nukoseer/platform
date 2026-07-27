@@ -1175,7 +1175,7 @@ static void ui_resolve_layout(ui_widget_t* root_widget, ui_axis_t axis)
         if (root_widget->text_line_count == 0)
         {
             root_widget->content_size[axis] = (root_widget->layout_axis == axis ?
-                                               layout_at + root_widget->padding :
+                                               layout_at - root_widget->padding :
                                                cross_axis_size + root_widget->padding * 2.0f);
         }
 
