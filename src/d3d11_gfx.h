@@ -6,6 +6,7 @@ typedef struct d3d11_t
     ID3D11DeviceContext* context;
     ID3D11RenderTargetView* rt_view;
     ID3D11DepthStencilView* ds_view;
+    ID3D11Texture2D* back_buffer;
     // TODO: Not sure if this is a good idea.
     // NOTE: Backbuffer width and height.
     i32 width;

@@ -302,8 +302,10 @@ static bool resize_back_buffer(window_t* window)
         if (window->d3d11->rt_view)
         {
             ID3D11DeviceContext_ClearState(window->d3d11->context);
+            ID3D11Texture2D_Release(window->d3d11->back_buffer);
             ID3D11RenderTargetView_Release(window->d3d11->rt_view);
             ID3D11DepthStencilView_Release(window->d3d11->ds_view);
+            window->d3d11->back_buffer = 0;
             window->d3d11->rt_view = 0;
             window->d3d11->ds_view = 0;
         }
@@ -321,15 +323,14 @@ static bool resize_back_buffer(window_t* window)
             HRESULT result = IDXGISwapChain1_ResizeBuffers(window->swap_chain, 0, window->width, window->height, DXGI_FORMAT_UNKNOWN, 0);
             fatal_system(SUCCEEDED(result), "[DXGI] Failed to resize swap chain.");
 
-            ID3D11Texture2D* back_buffer = 0;
-            IDXGISwapChain1_GetBuffer(window->swap_chain, 0, &IID_ID3D11Texture2D, (void**)&back_buffer);
+            IDXGISwapChain1_GetBuffer(window->swap_chain, 0, &IID_ID3D11Texture2D, (void**)&window->d3d11->back_buffer);
             
             D3D11_RENDER_TARGET_VIEW_DESC backbuffer_target =
             {
                 .ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D,
                 .Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB,
             };
-            ID3D11Device_CreateRenderTargetView(window->d3d11->device, (ID3D11Resource*)back_buffer, &backbuffer_target, &window->d3d11->rt_view);
+            ID3D11Device_CreateRenderTargetView(window->d3d11->device, (ID3D11Resource*)window->d3d11->back_buffer, &backbuffer_target, &window->d3d11->rt_view);
 
             D3D11_TEXTURE2D_DESC depth_desc =
             {
@@ -350,7 +351,7 @@ static bool resize_back_buffer(window_t* window)
 
 #if FONT_ENABLE
             IDXGISurface* dxgi_surface = 0;
-            result = ID3D11Texture2D_QueryInterface(back_buffer, &IID_IDXGISurface, (void**)&dxgi_surface);
+            result = ID3D11Texture2D_QueryInterface(window->d3d11->back_buffer, &IID_IDXGISurface, (void**)&dxgi_surface);
             fatal_system(SUCCEEDED(result), "[DXGI] Failed to get surface.");
             
             D2D1_RENDER_TARGET_PROPERTIES d2d_render_target_props = 
@@ -390,7 +391,6 @@ static bool resize_back_buffer(window_t* window)
 
             IDXGISurface_Release(dxgi_surface);
 #endif
-            ID3D11Texture2D_Release(back_buffer);
         }
 
         window->d3d11->width = window->width;
@@ -646,6 +646,8 @@ static DWORD WINAPI main_thread(void* param)
         .create_buffer = gfx_create_buffer,
         .create_texture_2d = gfx_create_texture_2d,
         .resolve_texture = gfx_resolve_texture,
+        .copy_texture = gfx_copy_texture,
+        .texture_from_target = gfx_texture_from_target,
         .create_sampler = gfx_create_sampler,
         .create_target = gfx_create_target,
         .create_shader = gfx_create_shader,

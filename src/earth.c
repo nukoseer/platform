@@ -8,10 +8,10 @@
 #include "../shader/pixel_shader_sphere_grid.h"
 
 #include "../shader/glow_mask_pixel_shader.h"
+#include "../shader/glow_merge_pixel_shader.h"
 
 #include "ray.h"
 #include "country.h"
-#include "blur.h"
 
 typedef struct earth_glow_mask_parameters_t
 {
@@ -86,7 +86,7 @@ typedef struct earth_sphere_graphics_t
 
 typedef struct earth_parameters_t
 {
-    f32 shape;
+    f32 morph;
     f32 yaw;
     f32 pitch;
     f32 line_thickness;
@@ -116,9 +116,7 @@ typedef struct earth_graphics_t
     graphics_texture_t msaa_texture;
     graphics_texture_t msaa_depth_texture;
 
-    // graphics_target_t target;
     graphics_target_t msaa_target;
-    graphics_target_t msaa_depth_target;
     
     graphics_buffer_t vertex_buffer;
     graphics_buffer_t index_buffer;
@@ -128,8 +126,6 @@ typedef struct earth_graphics_t
     graphics_vertex_attribute_t attributes[4];
     u32 attribute_count;
     graphics_program_t program;
-
-    graphics_pipeline_t depth_test_write_pipeline;
 } earth_graphics_t;
 
 typedef struct earth_t
@@ -146,12 +142,13 @@ typedef struct earth_t
     bool orbiting;
     bool reset;
 
+    f32 glow_intensity;
+
     country_data_t country_data;
     u8 country_index;
 
     earth_graphics_t earth_graphics;
     earth_sphere_graphics_t sphere_graphics;
-    blur_graphics_t blur_graphics;
     earth_glow_graphics_t glow_graphics;
 } earth_t;
 
@@ -327,14 +324,6 @@ static void init_earth_graphics(const graphics_t* graphics, earth_graphics_t* ea
         .attributes = earth_graphics->attributes,
         .attribute_count = 4,
     });
-
-    earth_graphics->depth_test_write_pipeline = graphics->create_pipeline(&(graphics_pipeline_desc_t)
-    {
-        .cull = true,
-        .depth_test = true,
-        .depth_write = true,
-        .blend = BLEND_ALPHA,
-    });
 }
  
 static vec2 earth_xy_to_lon_lat(f32 x, f32 y, f32 width, f32 height)
@@ -485,9 +474,16 @@ static void earth_find_country_index_under_cursor(const input_t* input, const ca
     earth->country_index = country_cell_get_index(&earth->country_data.query, lon_lat.x, lon_lat.y);
 }
 
-static void earth_update(const input_t* input, const camera_t* camera, f32 delta_time,
+static void earth_update(const input_t* input, const camera_t* camera, const theme_t* theme, f32 delta_time,
                          u32 width, u32 height, earth_t* earth)
 {
+    earth->glow_intensity = 2.0f;
+    
+    if (theme->dark_mode)
+    {
+        earth->glow_intensity = 0.3f;
+    }
+    
     // NOTE: Rotation only works when the earth is in globe mode.
     if (earth->morph == 1.0f)
     {
@@ -503,29 +499,29 @@ static void resize_earth_graphics(const graphics_t* graphics, u32 width, u32 hei
     earth_graphics_t* earth_graphics = &earth->earth_graphics;
     earth_glow_graphics_t* glow_graphics = &earth->glow_graphics;
     
-    if ((earth->prev_width != 0 && width > 0) && (earth->prev_height != 0 && height > 0))
-    {
-        // graphics->delete_target(earth_graphics->target);
-        graphics->delete_target(earth_graphics->msaa_target);
-        graphics->delete_target(earth_graphics->msaa_depth_target);
-
-        graphics->delete_target(glow_graphics->merge_graphics.msaa_target);
-        graphics->delete_target(glow_graphics->mask_graphics.msaa_target);
-        
-        graphics->delete_texture_2d(earth_graphics->texture);
-        graphics->delete_texture_2d(earth_graphics->msaa_texture);
-        graphics->delete_texture_2d(earth_graphics->msaa_depth_texture);
-
-        graphics->delete_texture_2d(glow_graphics->x_texture);
-        graphics->delete_texture_2d(glow_graphics->y_texture);
-        graphics->delete_texture_2d(glow_graphics->merge_graphics.msaa_texture);
-        graphics->delete_texture_2d(glow_graphics->merge_graphics.texture);
-        graphics->delete_texture_2d(glow_graphics->mask_graphics.msaa_texture);
-        graphics->delete_texture_2d(glow_graphics->mask_graphics.texture);
-    }
-    
     if (width != earth->prev_width || height != earth->prev_height)
     {
+        if (earth->prev_width > 0 || earth->prev_height > 0)
+        {
+            graphics->delete_target(earth_graphics->msaa_target);
+            graphics->delete_target(glow_graphics->merge_graphics.msaa_target);
+            graphics->delete_target(glow_graphics->mask_graphics.msaa_target);
+
+            graphics->delete_target(glow_graphics->x_target);
+            graphics->delete_target(glow_graphics->y_target);
+
+            graphics->delete_texture_2d(earth_graphics->texture);
+            graphics->delete_texture_2d(earth_graphics->msaa_texture);
+            graphics->delete_texture_2d(earth_graphics->msaa_depth_texture);
+
+            graphics->delete_texture_2d(glow_graphics->x_texture);
+            graphics->delete_texture_2d(glow_graphics->y_texture);
+            graphics->delete_texture_2d(glow_graphics->merge_graphics.msaa_texture);
+            graphics->delete_texture_2d(glow_graphics->merge_graphics.texture);
+            graphics->delete_texture_2d(glow_graphics->mask_graphics.msaa_texture);
+            graphics->delete_texture_2d(glow_graphics->mask_graphics.texture);
+        }
+
         earth->prev_width = width;
         earth->prev_height = height;
         earth->width = width;
@@ -607,12 +603,6 @@ static void resize_earth_graphics(const graphics_t* graphics, u32 width, u32 hei
             .height = (u32)(height * 0.5f),
         }, 0, 0);
 
-        earth_graphics->msaa_target = graphics->create_target(&(graphics_target_desc_t)
-        {
-            .color = earth_graphics->msaa_texture,
-            .depth = earth_graphics->msaa_depth_texture,
-        });
-
         glow_graphics->x_target = graphics->create_target(&(graphics_target_desc_t)
         {
             .color = glow_graphics->x_texture,
@@ -621,6 +611,12 @@ static void resize_earth_graphics(const graphics_t* graphics, u32 width, u32 hei
         glow_graphics->y_target = graphics->create_target(&(graphics_target_desc_t)
         {
             .color = glow_graphics->y_texture,
+        });
+
+        earth_graphics->msaa_target = graphics->create_target(&(graphics_target_desc_t)
+        {
+            .color = earth_graphics->msaa_texture,
+            .depth = earth_graphics->msaa_depth_texture,
         });
 
         glow_graphics->merge_graphics.msaa_target = graphics->create_target(&(graphics_target_desc_t)
@@ -644,11 +640,31 @@ static void update_earth_transform_buffer(const camera_t* camera, earth_graphics
     earth_graphics->transform_parameters.projection = camera->projection;
 }
 
-static void earth_render(const graphics_t* graphics, const camera_t* camera, const theme_t* theme,
+static earth_t* earth_init(memory_arena_t* arena, const graphics_t* graphics, const graphics_state_t* graphics_state, const io_t* io)
+{
+    earth_t* earth = ma_push_struct_zero(arena, earth_t);
+
+    earth->morph = 1.0f;
+    earth->morph_direction = 1.0f;
+
+    init_sphere_graphics(graphics, &earth->sphere_graphics);
+    init_earth_graphics(graphics, &earth->earth_graphics);
+    init_earth_glow_mask_graphics(graphics, &earth->earth_graphics, &earth->glow_graphics.mask_graphics);
+    init_earth_glow_merge_graphics(graphics, graphics_state->blur_graphics.vertex_shader, &earth->glow_graphics.merge_graphics);
+
+    country_data_init(arena, graphics, io, &earth->country_data);
+
+    return earth;
+}
+
+static void earth_render(const graphics_t* graphics, const graphics_state_t* graphics_state,
+                         const camera_t* camera, const theme_t* theme,
                          u32 width, u32 height, earth_t* earth)
 {
     earth_graphics_t* earth_graphics = &earth->earth_graphics;
-
+    earth_sphere_graphics_t* sphere_graphics = &earth->sphere_graphics;
+    earth_glow_graphics_t* glow_graphics = &earth->glow_graphics;
+    
     resize_earth_graphics(graphics, width, height, earth);
     update_earth_transform_buffer(camera, &earth->earth_graphics);
 
@@ -659,7 +675,6 @@ static void earth_render(const graphics_t* graphics, const camera_t* camera, con
         .clear_depth = true, .clear_depth_value = 1.0f
     });
     {
-        earth_sphere_graphics_t* sphere_graphics = &earth->sphere_graphics;
         sphere_graphics->parameters.color = v4v(srgb_to_linear(theme->bg_color.rgb), earth->morph);
         graphics->update_buffer(earth_graphics->transform_buffer, &earth_graphics->transform_parameters, 0, sizeof(earth_graphics->transform_parameters));
         graphics->update_buffer(sphere_graphics->parameter_buffer, &sphere_graphics->parameters, 0, sizeof(sphere_graphics->parameters));
@@ -668,23 +683,194 @@ static void earth_render(const graphics_t* graphics, const camera_t* camera, con
         graphics->set_vertex_buffer(sphere_graphics->vertex_buffer, 0, sizeof(vec3), 0);
         graphics->set_index_buffer(sphere_graphics->index_buffer, 0);
         graphics->set_program(sphere_graphics->program);
-        graphics->set_pipeline(earth_graphics->depth_test_write_pipeline);
+        graphics->set_pipeline(graphics_state->depth_test_write_pipeline);
         graphics->draw_indexed(TOPOLOGY_TRIANGLE_LIST, sphere_graphics->index_buffer.size, 0, 0);
     }
     graphics->end_pass();
-}
 
-static earth_t* earth_init(memory_arena_t* arena, const graphics_t* graphics, const io_t* io)
-{
-    earth_t* earth = ma_push_struct_zero(arena, earth_t);
+    f32 half_height = camera->position.z * tanf(camera->fov_y * (f32)DEG2RAD * 0.5f);
+    f32 half_width = half_height * camera->aspect_ratio;
+    f32 scale_x = half_width / (f32)PI;
+    f32 scale_y = half_height / (0.5f * (f32)PI);
 
-    init_sphere_graphics(graphics, &earth->sphere_graphics);
-    init_earth_graphics(graphics, &earth->earth_graphics);
-    blur_graphics_create(graphics, &earth->blur_graphics);
-    init_earth_glow_mask_graphics(graphics, &earth->earth_graphics, &earth->glow_graphics.mask_graphics);
-    init_earth_glow_merge_graphics(graphics, earth->blur_graphics.vertex_shader, &earth->glow_graphics.merge_graphics);
+    earth_parameters_t* earth_parameters = &earth_graphics->parameters;
+    earth_parameters->morph = earth->morph;
+    earth_parameters->yaw = earth->yaw;
+    earth_parameters->pitch = earth->pitch;
+    earth_parameters->line_thickness = 1.0f;
+    earth_parameters->scale = v2(scale_x, scale_y);
+    earth_parameters->viewport_size = v2((f32)width, (f32)height);
+    earth_parameters->lift = 0.0f;
 
-    country_data_init(arena, graphics, io, &earth->country_data);
+    graphics->begin_pass(earth_graphics->msaa_target, &(graphics_pass_desc_t){ 0 });
+    {
+        earth_parameters->color = theme->sphere_grid_color;
 
-    return earth;
+        graphics->update_buffer(earth_graphics->transform_buffer, &earth_graphics->transform_parameters, 0, sizeof(earth_graphics->transform_parameters));
+        graphics->update_buffer(earth_graphics->parameter_buffer, &earth_graphics->parameters, 0, sizeof(earth_graphics->parameters));
+        graphics->set_buffer(earth_graphics->transform_buffer, STAGE_VERTEX_SHADER, 0, 0, 0);
+        graphics->set_buffer(earth_graphics->parameter_buffer, STAGE_VERTEX_SHADER | STAGE_PIXEL_SHADER, 1, 0, 0);
+        graphics->set_vertex_buffer(sphere_graphics->vertex_buffer, 0, sizeof(vec3), 0);
+        graphics->set_index_buffer(sphere_graphics->index_buffer, 0);
+        graphics->set_program(sphere_graphics->program_grid);
+        graphics->set_pipeline(graphics_state->depth_test_pipeline);
+        graphics->draw_indexed(TOPOLOGY_LINE_LIST, sphere_graphics->index_buffer.size, 0, 0);
+    }
+    graphics->end_pass();
+
+    graphics->begin_pass(glow_graphics->mask_graphics.msaa_target, &(graphics_pass_desc_t) { .clear_color = true });
+    {
+        country_mesh_data_t* country_mesh_data = &earth->country_data.mesh;
+        
+        earth_parameters->line_thickness = 2.5f;
+        
+        graphics->update_buffer(earth_graphics->transform_buffer, &earth_graphics->transform_parameters, 0, sizeof(earth_graphics->transform_parameters));
+        graphics->update_buffer(earth_graphics->parameter_buffer, &earth_graphics->parameters, 0, sizeof(earth_graphics->parameters));
+        graphics->set_buffer(earth_graphics->transform_buffer, STAGE_VERTEX_SHADER, 0, 0, 0);
+        graphics->set_buffer(earth_graphics->parameter_buffer, STAGE_VERTEX_SHADER, 1, 0, 0);
+        graphics->set_vertex_buffer(country_mesh_data->vertex_buffer, 0, country_mesh_data->vertex_stride, 0);
+        graphics->set_index_buffer(country_mesh_data->index_buffer, 0);
+
+        glow_graphics->mask_graphics.parameters.glow_color = srgb_to_linear(theme->fg_color.rgb);
+        glow_graphics->mask_graphics.parameters.glow = theme->dark_mode ? 1.0f : 0.0f;
+        
+        graphics->update_buffer(glow_graphics->mask_graphics.parameter_buffer, &glow_graphics->mask_graphics.parameters, 0, sizeof(glow_graphics->mask_graphics.parameters));
+        graphics->set_buffer(glow_graphics->mask_graphics.parameter_buffer, STAGE_PIXEL_SHADER, 0, 0, 0);
+        graphics->set_program(glow_graphics->mask_graphics.program);
+        graphics->set_pipeline(graphics_state->depth_test_no_alpha_pipeline);
+        graphics->draw_indexed(TOPOLOGY_TRIANGLE_LIST, country_mesh_data->index_count, 0, 0);
+    }
+    graphics->end_pass();
+
+    graphics->resolve_texture(glow_graphics->mask_graphics.texture, glow_graphics->mask_graphics.msaa_texture);
+
+    // NOTE: Horizontal blur.
+    graphics->begin_pass(glow_graphics->x_target, &(graphics_pass_desc_t){ 0 });
+    {
+        const blur_graphics_t* blur_graphics = &graphics_state->blur_graphics;
+        blur_parameters_t blur_parameters =
+        {
+            .inverse_viewport_size = { 1.0f / glow_graphics->x_texture.width, 1.0f / glow_graphics->x_texture.height },
+            .direction = { 1.0f, 0.0f }   
+        };
+
+        graphics->update_buffer(blur_graphics->parameter_buffer, &blur_parameters, 0, sizeof(blur_parameters));
+        graphics->set_buffer(blur_graphics->parameter_buffer, STAGE_PIXEL_SHADER, 0, 0, 0);
+        graphics->set_program(blur_graphics->program);
+        graphics->set_pipeline(graphics_state->depth_test_no_alpha_pipeline);
+        graphics->set_samplers(STAGE_PIXEL_SHADER, &graphics_state->linear_sampler, 1, 0);
+        graphics->set_srvs(STAGE_PIXEL_SHADER, &glow_graphics->mask_graphics.texture, 1, 0);
+        graphics->draw(TOPOLOGY_TRIANGLE_LIST, 3, 0);
+    }
+    graphics->end_pass();
+
+    // NOTE: Vertical blur.
+    graphics->begin_pass(glow_graphics->y_target, &(graphics_pass_desc_t){ 0 });
+    {
+        const blur_graphics_t* blur_graphics = &graphics_state->blur_graphics;
+
+        blur_parameters_t blur_parameters = (blur_parameters_t)
+        {
+            .inverse_viewport_size =
+            {
+                1.0f / glow_graphics->y_texture.width,
+                1.0f / glow_graphics->y_texture.height
+            },
+            .direction = { 1.0f, 0.0f }
+        };
+
+        graphics->update_buffer(blur_graphics->parameter_buffer, &blur_parameters, 0, sizeof(blur_parameters));
+        graphics->set_buffer(blur_graphics->parameter_buffer, STAGE_PIXEL_SHADER, 0, 0, 0);
+        graphics->set_program(blur_graphics->program);
+        graphics->set_pipeline(graphics_state->depth_test_no_alpha_pipeline);
+        graphics->set_samplers(STAGE_PIXEL_SHADER, &graphics_state->linear_sampler, 1, 0);
+        graphics->set_srvs(STAGE_PIXEL_SHADER, &glow_graphics->x_texture, 1, 0);
+        graphics->draw(TOPOLOGY_TRIANGLE_LIST, 3, 0);
+    }
+    graphics->end_pass();
+
+    graphics->resolve_texture(earth_graphics->texture, earth_graphics->msaa_texture);
+    
+    // NOTE: Glow merge pass.
+    graphics->begin_pass(glow_graphics->merge_graphics.msaa_target, &(graphics_pass_desc_t){ 0 });
+    {
+        glow_graphics->merge_graphics.parameters.viewport_size = (vec2){ (f32)width, (f32)height };
+        glow_graphics->merge_graphics.parameters.intensity = earth->glow_intensity;
+        glow_graphics->merge_graphics.parameters.glow = theme->dark_mode ? 1.0f : 0.0f;
+        
+        graphics->update_buffer(glow_graphics->merge_graphics.parameter_buffer, &glow_graphics->merge_graphics.parameters, 0, sizeof(glow_graphics->merge_graphics.parameters));
+        graphics->set_buffer(glow_graphics->merge_graphics.parameter_buffer, STAGE_PIXEL_SHADER, 0, 0, 0);
+        graphics->set_program(glow_graphics->merge_graphics.program);
+        graphics->set_pipeline(graphics_state->depth_test_no_alpha_pipeline);
+        graphics_sampler_t samplers[] = { graphics_state->point_sampler, graphics_state->linear_sampler };
+        graphics->set_samplers(STAGE_PIXEL_SHADER, samplers, 2, 0);
+        graphics_texture_t srvs[] = { earth_graphics->texture, glow_graphics->y_texture };
+        graphics->set_srvs(STAGE_PIXEL_SHADER, srvs, 2, 0);
+        graphics->draw(TOPOLOGY_TRIANGLE_LIST, 3, 0);
+    }
+    graphics->end_pass();
+
+    graphics->begin_pass(glow_graphics->merge_graphics.msaa_target, &(graphics_pass_desc_t){ 0 });
+    {
+        country_mesh_data_t* country_mesh_data = &earth->country_data.mesh;
+
+        earth_parameters->color = v4v(srgb_to_linear(theme->fg_color.rgb), theme->fg_color.a);
+        earth_parameters->line_thickness = 2.5f;
+        
+        graphics->update_buffer(earth_graphics->transform_buffer, &earth_graphics->transform_parameters, 0, sizeof(earth_graphics->transform_parameters));
+        graphics->set_buffer(earth_graphics->transform_buffer, STAGE_VERTEX_SHADER, 0, 0, 0);
+        graphics->update_buffer(earth_graphics->parameter_buffer, &earth_graphics->parameters, 0, sizeof(earth_graphics->parameters));
+        graphics->set_buffer(earth_graphics->parameter_buffer, STAGE_VERTEX_SHADER | STAGE_PIXEL_SHADER, 1, 0, 0);
+        graphics->set_vertex_buffer(country_mesh_data->vertex_buffer, 0, country_mesh_data->vertex_stride, 0);
+        graphics->set_index_buffer(country_mesh_data->index_buffer, 0);
+        graphics->set_program(earth_graphics->program);
+        graphics->set_pipeline(graphics_state->depth_test_pipeline);
+        graphics->draw_indexed(TOPOLOGY_TRIANGLE_LIST, country_mesh_data->index_count, 0, 0);
+
+        if (country_is_valid_index(earth->country_index))
+        {
+            earth_parameters->line_thickness = 4.0f;
+            earth_parameters->lift = 0.01f;
+            earth_parameters->color = v4v(srgb_to_linear(theme->highlight_color.rgb), theme->highlight_color.a);
+
+            graphics->update_buffer(earth_graphics->parameter_buffer, &earth_graphics->parameters, 0, sizeof(earth_graphics->parameters));
+            graphics->set_buffer(earth_graphics->parameter_buffer, STAGE_VERTEX_SHADER | STAGE_PIXEL_SHADER, 1, 0, 0);
+            graphics->draw_indexed(TOPOLOGY_TRIANGLE_LIST,
+                                   country_mesh_data->index_ranges[earth->country_index].index_count,
+                                   country_mesh_data->index_ranges[earth->country_index].index_offset, 0);
+        }
+    }
+    graphics->end_pass();
+
+    graphics->resolve_texture(glow_graphics->merge_graphics.texture, glow_graphics->merge_graphics.msaa_texture);
+    
+    graphics->begin_pass(earth_graphics->msaa_target, &(graphics_pass_desc_t){ 0 });
+    {
+        graphics->set_program(graphics_state->composite_graphics.program);
+        graphics->set_pipeline(graphics_state->depth_test_no_alpha_pipeline);
+        graphics->set_samplers(STAGE_PIXEL_SHADER, &graphics_state->point_sampler, 1, 0);
+        graphics->set_srvs(STAGE_PIXEL_SHADER, &glow_graphics->merge_graphics.texture, 1, 0);
+        graphics->draw(TOPOLOGY_TRIANGLE_LIST, 3, 0);
+    }
+    graphics->end_pass();
+
+    graphics->resolve_texture(earth_graphics->texture, earth_graphics->msaa_texture);
+
+    graphics->begin_pass(graphics_state->offscreen_target_msaa, &(graphics_pass_desc_t)
+    {
+        .clear_color = true,
+        .clear_rgba = v4v(srgb_to_linear(theme->bg_color.rgb), theme->bg_color.a),
+        .clear_depth = true, .clear_depth_value = 1.0f
+    });
+    {
+        graphics->set_program(graphics_state->composite_graphics.program);
+        graphics->set_pipeline(graphics_state->depth_test_no_alpha_pipeline);
+        graphics->set_samplers(STAGE_PIXEL_SHADER, &graphics_state->point_sampler, 1, 0);
+        graphics->set_srvs(STAGE_PIXEL_SHADER, &earth_graphics->texture, 1, 0);
+        graphics->set_viewport(0.0f, 0.0f, (f32)width, (f32)height);
+        graphics->draw(TOPOLOGY_TRIANGLE_LIST, 3, 0);
+    }
+    graphics->end_pass();
+    
+    graphics->resolve_texture(graphics_state->offscreen_scene, graphics_state->offscreen_scene_msaa);
 }

@@ -6,15 +6,8 @@
 #include "platform.h"
 #include "maths.h"
 
-#include "../shader/glow_merge_pixel_shader.h"
-#include "../shader/post_vertex_shader.h"
-#include "../shader/post_pixel_shader.h"
-
 #include "../shader/vertex_shader_shape_ui.h"
 #include "../shader/pixel_shader_shape_ui.h"
-
-#include "../shader/skybox_vertex_shader.h"
-#include "../shader/skybox_pixel_shader.h"
 
 #include "sphere_data.inl"
 
@@ -22,6 +15,7 @@
 #include "ray.c"
 #include "country.c"
 #include "blur.c"
+#include "composite.c"
 
 #include "ui.c"
 
@@ -60,15 +54,26 @@ typedef struct camera_t
     mat4x4 view_no_translation;
 } camera_t;
 
-#include "earth.c"
-
-typedef struct transform_param_t
+typedef struct graphics_state_t
 {
-    mat4x4 world;
-    mat4x4 view;
-    mat4x4 projection;
-    vec4 camera_world;
-} transform_param_t;
+    graphics_texture_t offscreen_scene;
+    graphics_texture_t offscreen_scene_msaa;
+    graphics_texture_t offscreen_depth_msaa;
+    graphics_target_t offscreen_target_msaa;
+
+    graphics_sampler_t point_sampler;
+    graphics_sampler_t linear_sampler;
+
+    graphics_pipeline_t no_alpha_pipeline;
+    graphics_pipeline_t depth_test_no_alpha_pipeline;
+    graphics_pipeline_t depth_test_write_pipeline;
+    graphics_pipeline_t depth_test_pipeline;
+
+    blur_graphics_t blur_graphics;
+    composite_graphics_t composite_graphics;
+} graphics_state_t;
+
+#include "earth.c"
 
 typedef struct skybox_param_t
 {
@@ -164,18 +169,6 @@ typedef struct glow_merge_param_t
     f32 glow;
 } glow_merge_param_t;
 
-typedef struct post_param_t
-{
-    vec2 viewport_size;
-    f32 aspect_ratio;
-    f32 invert;
-
-    f32 vignette;
-    f32 vignette_soft;
-
-    f32 _pad[2];
-} post_param_t;
-
 typedef struct glow_mask_param_t
 {
     vec3 glow_color;
@@ -196,70 +189,10 @@ typedef struct skybox_vertex_t
 typedef struct game_t
 {
     memory_arena_t* memory_arena;
+
+    graphics_state_t graphics_state;
     
-    graphics_texture_t offscreen_scene;
-    graphics_texture_t offscreen_scene_msaa;
-    graphics_texture_t offscreen_depth_msaa;
-    graphics_target_t offscreen_target_msaa;
-
-    graphics_texture_t merge_scene;
-    graphics_texture_t merge_scene_msaa;
-    graphics_target_t merge_target_msaa;
-    
-    graphics_pipeline_t default_pipeline;
-    graphics_pipeline_t pre_multiplied_pipeline;
-    graphics_pipeline_t alphaoff_pipeline;
-    graphics_pipeline_t additive_pipeline;
-    graphics_pipeline_t d_test_write_pipeline;
-    graphics_pipeline_t d_test_pipeline;
-
-    graphics_sampler_t point_sampler;
-    graphics_sampler_t linear_sampler;
-
     camera_t camera;
-    transform_param_t transform_param;
-    graphics_buffer_t transform_buffer;
-
-    shape_info_ui_t shape_info_ui;
-    skybox_info_t skybox_info;
-
-    glow_mask_param_t glow_mask_param;
-    graphics_buffer_t glow_mask_buffer;
-    graphics_texture_t glow_mask_msaa;
-    graphics_texture_t glow_mask;
-    graphics_texture_t glow_a;
-    graphics_texture_t glow_b;
-    graphics_target_t glow_mask_msaa_target;
-    graphics_target_t glow_a_target;
-    graphics_target_t glow_b_target;
-    graphics_shader_t glow_mask_pixel_shader;
-    graphics_program_t glow_mask_program;
-
-    glow_blur_param_t glow_blur_param;
-    graphics_buffer_t blur_buffer;
-    graphics_shader_t blur_vertex_shader;
-    graphics_shader_t blur_pixel_shader;
-    graphics_program_t blur_program;
-
-    glow_merge_param_t glow_merge_param;
-    graphics_buffer_t glow_merge_param_buffer;
-    graphics_shader_t glow_merge_pixel_shader;
-    graphics_program_t glow_merge_program;
-
-    post_param_t post_param;
-    graphics_buffer_t post_param_buffer;
-    graphics_shader_t post_vertex_shader;
-    graphics_shader_t post_pixel_shader;
-    graphics_program_t post_program;
-
-    graphics_texture_t skybox_texture;
-    graphics_buffer_t skybox_param_buffer;
-    graphics_buffer_t skybox_vertex_buffer;
-    graphics_buffer_t skybox_index_buffer;
-    graphics_shader_t skybox_vertex_shader;
-    graphics_shader_t skybox_pixel_shader;
-    graphics_program_t skybox_program;
-    
     theme_t themes[THEME_TYPE_COUNT];
     theme_type_t current_theme_type;
 
@@ -273,15 +206,6 @@ typedef struct game_t
 
     country_data_t country_data;
     u8 country_index;
-
-    // NOTE: 1.0f is globe map, 0.0f flat map.
-    f32 shape_value;
-    f32 shape_speed;
-    f32 shape_direction;
-
-    f32 glow_intensity;
-    f32 vignette;
-    f32 invert;
 } game_t;
 
  #pragma pack(push, 1)
@@ -311,115 +235,6 @@ typedef struct bmp_header_t
 } bmp_header_t;
 
 #pragma pack(pop)
-
-typedef struct bmp_image_t
-{
-    u8* data;
-    u32 width;
-    u32 height;
-    u32 pitch;
-} bmp_image_t;
-
-static bool global_orbiting_mode;
-static f32 global_earth_yaw;
-static f32 global_earth_pitch;
-static bool global_earth_reset;
-
-static bmp_image_t load_bmp_image(memory_arena_t* memory_arena, const io_t* io, const char* file_name)
-{
-    bmp_image_t result = { 0 };
-    io_file_read_result_t read_result = io->read_file(file_name);
-
-    if (read_result.size != 0)
-    {
-        bmp_header_t* header = (bmp_header_t*)read_result.data;
-        u32 bytes_per_pixel = header->bits_per_pixel / 8;
-        u32* pixels = (u32*)((u8*)read_result.data + header->bitmap_offset);
-        u32* memory = 0;
-
-        assert(bytes_per_pixel == 4 && "[BMP] Unsupported bytes per pixel.");
-        
-        if (memory_arena)
-        {
-            memory = ma_push_size(memory_arena, header->width * header->height * bytes_per_pixel);
-        }
-        else
-        {
-            memory = malloc(header->width * header->height * bytes_per_pixel);
-        }
-
-        memset(memory, 0, header->width * header->height * bytes_per_pixel);
-
-        result.data = (u8*)memory;
-        result.width = header->width;
-        result.height = header->height;
-
-        assert(header->compression == 3 && "[BMP] Unsupported compression format.");
-        // NOTE: If you are using this generically for some reason,
-        // please remember that BMP files can go in either direction and
-        // the height will be negative for top-down.
-        // Also, there can be compression etc., etc...
-        // Don't think this is complete BMP loading code because it is not.
-
-        // NOTE: Byter order in memory is determined by the header itself.
-        // So we have to read out the masks and convert the pixels ourselves.
-
-        u32 red_mask = header->red_mask;
-        u32 green_mask = header->green_mask;
-        u32 blue_mask = header->blue_mask;
-        u32 alpha_mask = ~(red_mask | green_mask | blue_mask);
-        
-        u32 red_index = 0;
-        u32 green_index = 0;
-        u32 blue_index = 0;
-        u32 alpha_index = 0;
-    
-        bool red_found = _BitScanForward((unsigned long*)&red_index, red_mask);
-        bool green_found = _BitScanForward((unsigned long*)&green_index, green_mask);
-        bool blue_found = _BitScanForward((unsigned long*)&blue_index, blue_mask);
-        bool alpha_found = _BitScanForward((unsigned long*)&alpha_index, alpha_mask);
-    
-        assert(red_found   && "[BMP] Invalid red channel mask.");
-        assert(green_found && "[BMP] Invalid green channel mask.");
-        assert(blue_found  && "[BMP] Invalid blue channel mask.");
-        assert(alpha_found && "[BMP] Invalud alpha channel mask.");
-    
-        for (u32 y = 0; y < header->height; ++y)
-        {
-            u32 flipped_y = (header->height - 1) - y;
-            
-            for (u32 x = 0; x < header->width; ++x)
-            {
-    	        u32 color = pixels[y * header->width + x];
-
-    	        f32 r = (f32)((color & red_mask) >> red_index);
-    	        f32 g = (f32)((color & green_mask) >> green_index);
-    	        f32 b = (f32)((color & blue_mask) >> blue_index);
-    	        f32 a = (f32)((color & alpha_mask) >> alpha_index);
-
-    	        memory[flipped_y * header->width + x] = (((u32)(a + 0.5f) << 24) |
-                                                         ((u32)(b + 0.5f) << 16) |
-                                                         ((u32)(g + 0.5f) << 8)  |
-                                                         ((u32)(r + 0.5f) << 0));
-            }
-        }
-    }
-    else
-    {
-        assert(!"[BMP] File could not read.");
-    }
-
-    result.pitch = result.width * 4;
-    
-#if 0
-    result.memory = (u8*)result.memory + result.pitch * (result.height - 1);
-    result.pitch = -result.pitch;
-#endif
-
-    io->release_file_memory(read_result.data);
-
-    return result;
-}
 
 // static void resize_offscreen_buffer(platform_t* platform, game_t* game)
 // {
@@ -778,22 +593,16 @@ init_function(init)
     memory_arena_t* memory_arena = ma_initialize(memory->permanent + sizeof(game_t), memory->permanent_size - sizeof(game_t));
     game->memory_arena = memory_arena;
 
-    init_camera(&game->camera, v3(0.0f, 0.0f, 2.5f), v3(0.0f, 0.0f, 0.0f),
-                60.0f, (f32)platform->width / (f32)platform->height);
-    game->earth = earth_init(memory_arena, graphics, io);
-    // init_shape_ui(graphics, &game->shape_info_ui, &game->country_data);
-    init_theme(game);
-    ui_init(memory_arena);
+    graphics_state_t* graphics_state = &game->graphics_state;
 
-    game->shape_value = 1.0f;
-    game->shape_direction = 1.0f;
+    blur_graphics_create(graphics, &graphics_state->blur_graphics);
+    composite_graphics_create(graphics, &graphics_state->composite_graphics);
 
-    game->default_pipeline = graphics->create_pipeline(&(graphics_pipeline_desc_t){ .blend = BLEND_ALPHA, });
-    game->pre_multiplied_pipeline = graphics->create_pipeline(&(graphics_pipeline_desc_t){ .blend = BLEND_PRE_MULTIPLIED });
-    game->alphaoff_pipeline = graphics->create_pipeline(&(graphics_pipeline_desc_t){ .depth_test = true, });
-    game->additive_pipeline = graphics->create_pipeline(&(graphics_pipeline_desc_t){ .depth_test = true, .blend = BLEND_ADDITIVE });
+    graphics_state->no_alpha_pipeline = graphics->create_pipeline(&(graphics_pipeline_desc_t){ 0 });
 
-    game->d_test_write_pipeline = graphics->create_pipeline(&(graphics_pipeline_desc_t)
+    graphics_state->depth_test_no_alpha_pipeline = graphics->create_pipeline(&(graphics_pipeline_desc_t){ .depth_test = true, });
+
+    graphics_state->depth_test_write_pipeline = graphics->create_pipeline(&(graphics_pipeline_desc_t)
     {
         .cull = true,
         .depth_test = true,
@@ -801,7 +610,7 @@ init_function(init)
         .blend = BLEND_ALPHA,
     });
 
-    game->d_test_pipeline = graphics->create_pipeline(&(graphics_pipeline_desc_t)
+    graphics_state->depth_test_pipeline = graphics->create_pipeline(&(graphics_pipeline_desc_t)
     {
         .cull = false,
         .depth_test = true,
@@ -809,7 +618,7 @@ init_function(init)
         .blend = BLEND_ALPHA,
     });
 
-    game->linear_sampler = graphics->create_sampler(&(graphics_sampler_desc_t)
+    graphics_state->linear_sampler = graphics->create_sampler(&(graphics_sampler_desc_t)
     {
         .filter = FILTER_MIN_MAG_MIP_LINEAR,
         .address_u = TEXTURE_ADDRESS_CLAMP,
@@ -817,7 +626,7 @@ init_function(init)
         .address_w = TEXTURE_ADDRESS_CLAMP,
     });
 
-    game->point_sampler = graphics->create_sampler(&(graphics_sampler_desc_t)
+    graphics_state->point_sampler = graphics->create_sampler(&(graphics_sampler_desc_t)
     {
         .filter = FILTER_MIN_MAG_MIP_POINT,
         .address_u = TEXTURE_ADDRESS_WRAP,
@@ -825,124 +634,12 @@ init_function(init)
         .address_w = TEXTURE_ADDRESS_WRAP,
     });
 
-    game->transform_buffer = graphics->create_buffer(&(graphics_buffer_desc_t)
-    {
-        .size = sizeof(transform_param_t),
-        .usage = USAGE_DYNAMIC,
-        .bind = BIND_CONSTANT_BUFFER,
-    });
-
-    // game->glow_mask_buffer = graphics->create_buffer(&(graphics_buffer_desc_t)
-    // {
-    //     .size = 16,
-    //     .usage = USAGE_DYNAMIC,
-    //     .bind = BIND_CONSTANT_BUFFER,
-    // });
-
-    // game->glow_mask_pixel_shader = graphics->create_shader(&(graphics_shader_desc_t)
-    // {
-    //     .bytecode = glow_mask_pshader,
-    //     .bytecode_size = sizeof(glow_mask_pshader),
-    //     .stage = STAGE_PIXEL_SHADER,
-    // });
-
-    // game->glow_mask_program = graphics->create_program(&(graphics_program_desc_t)
-    // {
-    //     .vertex_shader = game->shape_info.vertex_shader,
-    //     .pixel_shader = game->glow_mask_pixel_shader,
-    //     .attributes = (graphics_vertex_attribute_t[])
-    //     {
-    //         { "TEXCOORD", FORMAT_R32G32B32_FLOAT, offsetof(country_border_mesh_vertex_t, prev), 0, 0, 0, 0 },
-    //         { "POSITION", FORMAT_R32G32B32_FLOAT, offsetof(country_border_mesh_vertex_t, current), 0, 0, 0, 0 },
-    //         { "TEXCOORD", FORMAT_R32G32B32_FLOAT, offsetof(country_border_mesh_vertex_t, next), 1, 0, 0, 0 },
-    //         { "TEXCOORD", FORMAT_R32_FLOAT,       offsetof(country_border_mesh_vertex_t, side), 2, 0, 0, 0 },
-    //     },
-    //     .attribute_count = 4,
-    // });
-
-    // game->blur_buffer = graphics->create_buffer(&(graphics_buffer_desc_t)
-    // {
-    //     .size = 16,
-    //     .usage = USAGE_DYNAMIC,
-    //     .bind = BIND_CONSTANT_BUFFER,
-    // });
-
-    // game->blur_vertex_shader = graphics->create_shader(&(graphics_shader_desc_t)
-    // {
-    //     .bytecode = blur_vshader,
-    //     .bytecode_size = sizeof(blur_vshader),
-    //     .stage = STAGE_VERTEX_SHADER,
-    // });
-
-    // game->blur_pixel_shader = graphics->create_shader(&(graphics_shader_desc_t)
-    // {
-    //     .bytecode = blur_pshader,
-    //     .bytecode_size = sizeof(blur_pshader),
-    //     .stage = STAGE_PIXEL_SHADER,
-    // });
-
-    // game->blur_program = graphics->create_program(&(graphics_program_desc_t)
-    // {
-    //     .vertex_shader = game->blur_vertex_shader,
-    //     .pixel_shader = game->blur_pixel_shader,
-    //     // NOTE: No input layout.
-    //     .attributes = 0,
-    //     .attribute_count = 0,
-    // });
-
-    // game->glow_merge_param_buffer = graphics->create_buffer(&(graphics_buffer_desc_t)
-    // {
-    //     .size = sizeof(glow_merge_param_t),
-    //     .usage = USAGE_DYNAMIC,
-    //     .bind = BIND_CONSTANT_BUFFER,
-    // });
-    
-    // game->glow_merge_pixel_shader = graphics->create_shader(&(graphics_shader_desc_t)
-    // {
-    //     .bytecode = glow_merge_pshader,
-    //     .bytecode_size = sizeof(glow_merge_pshader),
-    //     .stage = STAGE_PIXEL_SHADER,
-    // });
-
-    // game->glow_merge_program = graphics->create_program(&(graphics_program_desc_t)
-    // {
-    //     .vertex_shader = game->blur_vertex_shader,
-    //     .pixel_shader = game->glow_merge_pixel_shader,
-    //     // NOTE: No input layout.
-    //     .attributes = 0,
-    //     .attribute_count = 0,
-    // });
-
-    // NOTE: Post shaders and pipeline.
-    game->post_param_buffer = graphics->create_buffer(&(graphics_buffer_desc_t)
-    {
-        .size = sizeof(post_param_t),
-        .usage = USAGE_DYNAMIC,
-        .bind = BIND_CONSTANT_BUFFER,
-    });
-
-    game->post_vertex_shader = graphics->create_shader(&(graphics_shader_desc_t)
-    {
-        .bytecode = post_vshader,
-        .bytecode_size = sizeof(post_vshader),
-        .stage = STAGE_VERTEX_SHADER,
-    });
-
-    game->post_pixel_shader = graphics->create_shader(&(graphics_shader_desc_t)
-    {
-        .bytecode = post_pshader,
-        .bytecode_size = sizeof(post_pshader),
-        .stage = STAGE_PIXEL_SHADER,
-    });
-
-    game->post_program = graphics->create_program(&(graphics_program_desc_t)
-    {
-        .vertex_shader = game->post_vertex_shader,
-        .pixel_shader = game->post_pixel_shader,
-        // NOTE: No input layout.
-        .attributes = 0,
-        .attribute_count = 0,
-    });
+    init_camera(&game->camera, v3(0.0f, 0.0f, 2.2f), v3(0.0f, 0.0f, 0.0f),
+                60.0f, (f32)platform->width / (f32)platform->height);
+    game->earth = earth_init(memory_arena, graphics, graphics_state, io);
+    // init_shape_ui(graphics, &game->shape_info_ui, &game->country_data);
+    init_theme(game);
+    ui_init(memory_arena);
 
 #if FONT_ENABLE
     game->font_12 = graphics->create_font("IosevkaTerm NFM", 12);
@@ -1749,26 +1446,9 @@ update_function(update)
     game_t* game = (game_t*)memory->permanent;
     camera_t* camera = &game->camera;
 
-    game->glow_intensity = 2.0f;
-    
-    if (get_current_theme(game)->dark_mode)
-    {
-        game->glow_intensity = 0.3f;
-    }
-
     if (input_is_key_released(input, KEY_C))
     {
         update_theme(game, game->current_theme_type);
-    }
-    
-    if (input_is_key_released(input, KEY_I))
-    {
-        game->invert = game->invert == 0.0f ? 1.0f : 0.0f;
-    }
-
-    if (input_is_key_released(input, KEY_V))
-    {
-        game->vignette = game->vignette == 0.0f ? 1.0f : 0.0f;
     }
     
     theme_t* theme = get_current_theme(game);
@@ -1780,18 +1460,57 @@ update_function(update)
 
     update_camera(camera);
 
-    earth_update(input, camera, platform->delta_time, (f32)platform->width, (f32)platform->height, game->earth);
-    
-    if (country_is_valid_index(game->earth->country_index))
-    {
-        country_name_t country_name = country_get_name(game->earth->country_index);
+    earth_update(input, camera, theme, platform->delta_time, (u32)(platform->width * 0.66f), (u32)(platform->height * 0.66f), game->earth);
+}
 
-        if (country_name.name)
+static void resize_offscreen_buffer(platform_t* platform, game_t* game)
+{
+    graphics_t* graphics = platform->graphics;
+    graphics_state_t* graphics_state = &game->graphics_state;
+    bool resized = platform->resized;
+    bool is_valid = graphics->is_valid_target(graphics_state->offscreen_target_msaa);
+
+    if (is_valid && resized)
+    {
+        graphics->delete_target(graphics_state->offscreen_target_msaa);
+        graphics->delete_texture_2d(graphics_state->offscreen_scene_msaa);
+        graphics->delete_texture_2d(graphics_state->offscreen_depth_msaa);
+        graphics->delete_texture_2d(graphics_state->offscreen_scene);
+    }
+
+    if (!is_valid || resized)
+    {
+        graphics_state->offscreen_scene = graphics->create_texture_2d(&(graphics_texture_2d_desc_t)
         {
-            fprintf(stderr, "\rcountry: %s, id: %u, yaw: %f, pitch: %f",
-                    country_name.name, game->earth->country_index,
-                    game->earth->yaw, game->earth->pitch);
-        }
+            .format = FORMAT_R16G16B16A16_FLOAT,
+            .bind = BIND_SHADER_RESOURCE | BIND_RENDER_TARGET,
+            .width = platform->width,
+            .height = platform->height,
+        }, 0, 0);
+
+        graphics_state->offscreen_scene_msaa = graphics->create_texture_2d(&(graphics_texture_2d_desc_t)
+        {
+            .format = FORMAT_R16G16B16A16_FLOAT,
+            .bind = BIND_SHADER_RESOURCE | BIND_RENDER_TARGET,
+            .width = platform->width,
+            .height = platform->height,
+            .sample_count = 8,
+        }, 0, 0);
+
+        graphics_state->offscreen_depth_msaa = graphics->create_texture_2d(&(graphics_texture_2d_desc_t)
+        {
+            .format = FORMAT_D24_UNORM_S8_UINT,
+            .bind = BIND_DEPTH_STENCIL,
+            .width = platform->width,
+            .height = platform->height,
+            .sample_count = 8,
+        }, 0, 0);
+
+        graphics_state->offscreen_target_msaa = graphics->create_target(&(graphics_target_desc_t)
+        {
+            .color = graphics_state->offscreen_scene_msaa,
+            .depth = graphics_state->offscreen_depth_msaa
+        });
     }
 }
 
@@ -1801,7 +1520,26 @@ render_function(render)
     graphics_t* graphics = platform->graphics;
     game_t* game = (game_t*)memory->permanent;
     camera_t* camera = &game->camera;
+    graphics_state_t* graphics_state = &game->graphics_state;
     theme_t* theme = get_current_theme(game);
+    earth_t* earth = game->earth;
+    
+    resize_offscreen_buffer(platform, game);
 
-    earth_render(graphics, camera, theme, platform->width, platform->height, game->earth);
+    earth_render(graphics, graphics_state, camera, theme, (u32)(platform->width * 0.66f), (u32)(platform->height * 0.66f), earth);
+
+    graphics->begin_pass(graphics->get_backbuffer_target(), &(graphics_pass_desc_t)
+    {
+        .clear_color = true,
+        .clear_rgba = v4v(srgb_to_linear(theme->bg_color.rgb), theme->bg_color.a),
+        .clear_depth = true, .clear_depth_value = 1.0f
+    });
+    {
+        graphics->set_program(graphics_state->composite_graphics.program);
+        graphics->set_pipeline(graphics_state->depth_test_no_alpha_pipeline);
+        graphics->set_samplers(STAGE_PIXEL_SHADER, &graphics_state->point_sampler, 1, 0);
+        graphics->set_srvs(STAGE_PIXEL_SHADER, &graphics_state->offscreen_scene, 1, 0);
+        graphics->draw(TOPOLOGY_TRIANGLE_LIST, 3, 0);
+    }
+    graphics->end_pass();
 }

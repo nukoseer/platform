@@ -37,8 +37,10 @@ typedef struct gfx_target_t
     // TODO: Multiple render targets and optional depth stencil?
     ID3D11RenderTargetView* render_target;
     ID3D11DepthStencilView* depth_stencil;
-    i32 width;
-    i32 height;
+    u32 color_texture_index;
+    u32 depth_texture_index;
+    u32 width;
+    u32 height;
     u32 next_free_index;
 } gfx_target_t;
 
@@ -790,6 +792,55 @@ static graphics_resolve_texture_function(gfx_resolve_texture)
                                            map_dxgi_resource_format(gfx_src_texture->format));
 }
 
+static graphics_copy_texture_function(gfx_copy_texture)
+{
+    u32 src_texture_generation = get_generation(src_texture.platform);
+    u32 src_texture_index = get_index(src_texture.platform);
+    gfx_texture_t* gfx_src_texture = global_textures + src_texture_index;
+    u32 dst_texture_generation = get_generation(dst_texture.platform);
+    u32 dst_texture_index = get_index(dst_texture.platform);
+    gfx_texture_t* gfx_dst_texture = global_textures + dst_texture_index;
+
+    if (src_texture_generation != gfx_src_texture->generation)
+    {
+        assert(!"[GFX] Source texture generation does not match.");
+    }
+
+    if (dst_texture_generation != gfx_dst_texture->generation)
+    {
+        assert(!"[GFX] Destination texture generation does not match.");
+    }
+
+    assert(gfx_src_texture->texture && "[GFX] Invalid source texture for copy.");
+    assert(gfx_dst_texture->texture && "[GFX] Invalid destination texture for copy.");
+
+    ID3D11DeviceContext_CopyResource(global_d3d11.context,
+                                     (ID3D11Resource*)gfx_dst_texture->texture,
+                                     (ID3D11Resource*)gfx_src_texture->texture);
+}
+
+static graphics_texture_from_target_function(gfx_texture_from_target)
+{
+    u32 target_generation = get_generation(target.platform);
+    u32 target_index = get_index(target.platform);
+    gfx_target_t* gfx_target = global_targets + target_index;
+
+    if (target_generation != gfx_target->generation)
+    {
+        assert(!"[GFX] Target generation does not match.");
+    }
+
+    assert(gfx_target->render_target && "[GFX] Invalid target.");
+
+    gfx_texture_t* gfx_color_texture = global_textures + gfx_target->color_texture_index;
+    graphics_texture_t graphics_texture = { 0 };
+    graphics_texture.platform = pack_generation_index(gfx_color_texture->generation, gfx_target->color_texture_index),
+    graphics_texture.width = gfx_color_texture->width;
+    graphics_texture.height = gfx_color_texture->height;
+
+    return graphics_texture;
+}
+
 static graphics_create_target_function(gfx_create_target)
 {
     u32 color_texture_generation = get_generation(target_desc->color.platform);
@@ -800,8 +851,8 @@ static graphics_create_target_function(gfx_create_target)
     gfx_texture_t* gfx_depth_texture = global_textures + depth_texture_index;
     ID3D11RenderTargetView* render_target = 0;
     ID3D11DepthStencilView* depth_stencil = 0;
-    i32 width = 0;
-    i32 height = 0;
+    u32 width = 0;
+    u32 height = 0;
 
     if (color_texture_index != 0)
     {
@@ -894,6 +945,8 @@ static graphics_create_target_function(gfx_create_target)
 
     gfx_target->render_target = render_target;
     gfx_target->depth_stencil = depth_stencil;
+    gfx_target->color_texture_index = color_texture_index;
+    gfx_target->depth_texture_index = depth_texture_index;
     // TODO: We assume color and depth buffer always have same size. Idk it is right or not.
     gfx_target->width = width;
     gfx_target->height = height;

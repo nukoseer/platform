@@ -5,7 +5,7 @@
 
 static void blur_graphics_create(const graphics_t* graphics, blur_graphics_t* blur_graphics)
 {
-    blur_graphics->buffer = graphics->create_buffer(&(graphics_buffer_desc_t)
+    blur_graphics->parameter_buffer = graphics->create_buffer(&(graphics_buffer_desc_t)
     {
         .size = 16,
         .usage = USAGE_DYNAMIC,

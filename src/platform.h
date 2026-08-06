@@ -526,6 +526,12 @@ typedef graphics_create_texture_2d_function(graphics_create_texture_2d_f);
 #define graphics_resolve_texture_function(name) void name(graphics_texture_t dst_texture, graphics_texture_t src_texture)
 typedef graphics_resolve_texture_function(graphics_resolve_texture_f);
 
+#define graphics_copy_texture_function(name) void name(graphics_texture_t dst_texture, graphics_texture_t src_texture)
+typedef graphics_copy_texture_function(graphics_copy_texture_f);
+
+#define graphics_texture_from_target_function(name) graphics_texture_t name(graphics_target_t target)
+typedef graphics_texture_from_target_function(graphics_texture_from_target_f);
+
 #define graphics_create_sampler_function(name) graphics_sampler_t name(const graphics_sampler_desc_t* sampler_desc)
 typedef graphics_create_sampler_function(graphics_create_sampler_f);
 
@@ -673,6 +679,8 @@ typedef struct graphics_t
             graphics_create_buffer_f* create_buffer;
             graphics_create_texture_2d_f* create_texture_2d;
             graphics_resolve_texture_f* resolve_texture;
+            graphics_copy_texture_f* copy_texture;
+            graphics_texture_from_target_f* texture_from_target;
             graphics_create_sampler_f* create_sampler;
             graphics_create_target_f* create_target;
             graphics_create_shader_f* create_shader;
