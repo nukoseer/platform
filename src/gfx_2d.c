@@ -172,6 +172,8 @@ static graphics_2d_create_font_function(gfx_2d_create_font)
     generate_char_advance_list(gfx_2d_font);
 
     font.platform = pack_generation_index(font_generation, font_index);
+    font.point_size = point_size;
+    font.pixel_size = pixel_size;
     
     return font;
 }

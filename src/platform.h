@@ -116,11 +116,21 @@ typedef struct input_event_t
     u32 value;
 } input_event_t;
 
+typedef enum input_owner_t
+{
+    INPUT_OWNER_NULL,
+
+    INPUT_OWNER_UI,
+    INPUT_OWNER_SCENE,
+} input_owner_t;
+
 typedef struct input_t
 {
     input_event_t events[256];
     u32 event_count;
 
+    input_owner_t owner;
+    
     key_modifier_t modifiers;    
     vec2 mouse_position;
     f32 wheel;
@@ -128,6 +138,17 @@ typedef struct input_t
     bool key_down[KEY_COUNT];
 } input_t;
 
+static inline void input_set_owner(input_t* input, input_owner_t owner)
+{
+    input->owner = owner;
+}
+
+static inline bool input_is_owner(input_t* input, input_owner_t owner)
+{
+    bool result = input->owner == owner;
+
+    return result;
+}
 
 static inline bool input_is_key_down(const input_t* input, key_t key)
 {
@@ -244,6 +265,20 @@ static inline bool input_consume_key_press_all(input_t* input, key_t key)
 static inline bool input_consume_key_release(input_t* input, key_t key)
 {
     bool result = input_consume_event(input, INPUT_EVENT_KEY_RELEASE, key);
+    
+    return result;
+}
+
+static inline bool input_consume_mouse_press(input_t* input, key_t key)
+{
+    bool result = input_consume_event(input, INPUT_EVENT_MOUSE_PRESS, key);
+    
+    return result;
+}
+
+static inline bool input_consume_mouse_release(input_t* input, key_t key)
+{
+    bool result = input_consume_event(input, INPUT_EVENT_MOUSE_RELEASE, key);
     
     return result;
 }
@@ -632,6 +667,8 @@ typedef enum graphics_2d_text_alignment_t
 typedef struct graphics_2d_font_t
 {
     u64 platform;
+    f32 point_size;
+    f32 pixel_size;
 } graphics_2d_font_t;
 
 #define graphics_2d_create_font_function(name) graphics_2d_font_t name(const char* font_name, f32 point_size)

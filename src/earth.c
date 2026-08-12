@@ -130,11 +130,14 @@ typedef struct earth_graphics_t
 
 typedef struct earth_t
 {
-    u32 prev_width;
-    u32 prev_height;
-    u32 width;
-    u32 height;
-    
+    f32 prev_width;
+    f32 prev_height;
+    f32 width;
+    f32 height;
+
+    vec2 pressed_position;
+    bool dragging;
+
     f32 morph; // NOTE: 1.0f is globe map, 0.0f flat map.
     f32 morph_direction;
     f32 yaw;
@@ -145,7 +148,9 @@ typedef struct earth_t
     f32 glow_intensity;
 
     country_data_t country_data;
-    u8 country_index;
+    u8 country_hover_index;
+    u8 country_selected_index;
+    vec2 country_card_position;
 
     earth_graphics_t earth_graphics;
     earth_sphere_graphics_t sphere_graphics;
@@ -372,75 +377,66 @@ static ray_result_t earth_ray_to_lon_lat(ray_t ray, vec2* lon_lat, earth_t* eart
     return ray_result;
 }
 
-static void earth_rotation(const input_t* input, f32 delta_time, earth_t* earth)
+static void earth_rotate(input_t* input, f32 delta_time, earth_t* earth)
 {
-    if (input_is_key_released(input, KEY_O))
+    // NOTE: Rotation only works when the earth is in globe mode.
+    if (earth->morph == 1.0f)
     {
-        earth->orbiting = !earth->orbiting;
-    }
+        earth->yaw += 5.0f * input->mouse_delta.x * delta_time;
+        earth->pitch += 5.0f * -input->mouse_delta.y * delta_time;
+        earth->pitch = clamp(-90.0f, earth->pitch, 90.0f);
+
+        if (input_is_key_released(input, KEY_R))
+        {
+            earth->reset = !earth->reset;
+        }
+
+        f32 earth_reset_speed = 200.0f * delta_time;
     
-    if (input_is_key_down(input, KEY_MOUSE_LEFT))
-    {
-        earth->yaw += 3.0f * input->mouse_delta.x * delta_time;
-        earth->pitch += 3.0f * -input->mouse_delta.y * delta_time;
-    }
-    else if (earth->orbiting)
-    {
-        earth->yaw += 10.0f * delta_time;
-    }
-
-    earth->pitch = clamp(-90.0f, earth->pitch, 90.0f);
-
-    if (input_is_key_released(input, KEY_R))
-    {
-        earth->reset = !earth->reset;
-    }
-
-    f32 earth_reset_speed = 200.0f * delta_time;
-    
-    if (earth->reset)
-    {
-        if (earth->yaw != 0.0f)
+        if (earth->reset)
         {
-            while (earth->yaw > 360.0f)
+            if (earth->yaw != 0.0f)
             {
-                earth->yaw -= 360.0f;
+                while (earth->yaw > 360.0f)
+                {
+                    earth->yaw -= 360.0f;
+                }
+
+                while (earth->yaw < -360.0f)
+                {
+                    earth->yaw += 360.0f;
+                }
+
+                if (fabs(earth->yaw) < earth_reset_speed)
+                {
+                    earth->yaw = 0.0f;
+                }
+                else
+                {
+                    earth->yaw += earth->yaw > 0.0f ? -earth_reset_speed : earth_reset_speed;
+                }
+            }
+            if (earth->pitch != 0.0f)
+            {
+                if (fabs(earth->pitch) < earth_reset_speed)
+                {
+                    earth->pitch = 0.0f;
+                }
+                else
+                {
+                    earth->pitch += earth->pitch > 0.0f ? -earth_reset_speed : earth_reset_speed;
+                }
             }
 
-            while (earth->yaw < -360.0f)
+            if (earth->yaw == 0.0f && earth->pitch == 0.0f)
             {
-                earth->yaw += 360.0f;
-            }
-
-            if (fabs(earth->yaw) < earth_reset_speed)
-            {
-                earth->yaw = 0.0f;
-            }
-            else
-            {
-                earth->yaw += earth->yaw > 0.0f ? -earth_reset_speed : earth_reset_speed;
+                earth->reset = false;
             }
         }
-        if (earth->pitch != 0.0f)
-        {
-            if (fabs(earth->pitch) < earth_reset_speed)
-            {
-                earth->pitch = 0.0f;
-            }
-            else
-            {
-                earth->pitch += earth->pitch > 0.0f ? -earth_reset_speed : earth_reset_speed;
-            }
-        }
-
-        if (earth->yaw == 0.0f && earth->pitch == 0.0f)
-        {
-            earth->reset = false;
-        }
-    }    
+    }
 }
 
-static void earth_morph(const input_t* input, f32 delta_time, earth_t* earth)
+static inline void earth_morph(const input_t* input, f32 delta_time, earth_t* earth)
 {
     earth->morph_direction = (input_is_key_released(input, KEY_T) ?
                               -earth->morph_direction : earth->morph_direction);
@@ -448,8 +444,10 @@ static void earth_morph(const input_t* input, f32 delta_time, earth_t* earth)
     earth->morph = clamp(0.0f, earth->morph, 1.0f);
 }
 
-static void earth_find_country_index_under_cursor(const input_t* input, const camera_t* camera, f32 width, f32 height, earth_t* earth)
+static u8 earth_find_country_index_under_cursor(const input_t* input, const camera_t* camera, earth_t* earth)
 {
+    f32 width = earth->width;
+    f32 height = earth->height;
     vec2 mouse_position = input->mouse_position;
     vec2 lon_lat = { 0 };
     
@@ -461,21 +459,28 @@ static void earth_find_country_index_under_cursor(const input_t* input, const ca
     {
         ray_t mouse_ray = ray_world(mouse_position.x, mouse_position.y, width, height,
                                     camera->fov_y, camera->position, camera->view);
-
+        
         vec2 ray_lon_lat = { 0 };    
         ray_result_t ray_result = earth_ray_to_lon_lat(mouse_ray, &ray_lon_lat, earth);
-
+        
         if (ray_result.hit)
         {
             lon_lat = ray_lon_lat;
         }
     }
+    
+    u8 index = country_cell_get_index(&earth->country_data.query, lon_lat.x, lon_lat.y);
 
-    earth->country_index = country_cell_get_index(&earth->country_data.query, lon_lat.x, lon_lat.y);
+    return index;
 }
 
-static void earth_update(const input_t* input, const camera_t* camera, const theme_t* theme, f32 delta_time,
-                         u32 width, u32 height, earth_t* earth)
+static void earth_find_country(input_t* input, const camera_t* camera, earth_t* earth)
+{
+    
+
+}
+    
+static void earth_glow(const theme_t* theme, earth_t* earth)
 {
     earth->glow_intensity = 2.0f;
     
@@ -483,18 +488,9 @@ static void earth_update(const input_t* input, const camera_t* camera, const the
     {
         earth->glow_intensity = 0.3f;
     }
-    
-    // NOTE: Rotation only works when the earth is in globe mode.
-    if (earth->morph == 1.0f)
-    {
-        earth_rotation(input, delta_time, earth);
-    }
-    
-    earth_morph(input, delta_time, earth);
-    earth_find_country_index_under_cursor(input, camera, (f32)width, (f32)height, earth);
 }
 
-static void resize_earth_graphics(const graphics_t* graphics, u32 width, u32 height, earth_t* earth)
+static void resize_earth_graphics(const graphics_t* graphics, f32 width, f32 height, earth_t* earth)
 {
     earth_graphics_t* earth_graphics = &earth->earth_graphics;
     earth_glow_graphics_t* glow_graphics = &earth->glow_graphics;
@@ -531,16 +527,16 @@ static void resize_earth_graphics(const graphics_t* graphics, u32 width, u32 hei
         {
             .format = FORMAT_R16G16B16A16_FLOAT,
             .bind = BIND_SHADER_RESOURCE | BIND_RENDER_TARGET,
-            .width = width,
-            .height = height,
+            .width = (u32)width,
+            .height = (u32)height,
         }, 0, 0);
         
         earth_graphics->msaa_texture = graphics->create_texture_2d(&(graphics_texture_2d_desc_t)
         {
             .format = FORMAT_R16G16B16A16_FLOAT,
             .bind = BIND_SHADER_RESOURCE | BIND_RENDER_TARGET,
-            .width = width,
-            .height = height,
+            .width = (u32)width,
+            .height = (u32)height,
             .sample_count = 8,
         }, 0, 0);
 
@@ -548,8 +544,8 @@ static void resize_earth_graphics(const graphics_t* graphics, u32 width, u32 hei
         {
             .format = FORMAT_D24_UNORM_S8_UINT,
             .bind = BIND_DEPTH_STENCIL,
-            .width = width,
-            .height = height,
+            .width = (u32)width,
+            .height = (u32)height,
             .sample_count = 8,
         }, 0, 0);
 
@@ -557,8 +553,8 @@ static void resize_earth_graphics(const graphics_t* graphics, u32 width, u32 hei
         {
             .format = FORMAT_R16G16B16A16_FLOAT,
             .bind = BIND_SHADER_RESOURCE | BIND_RENDER_TARGET,
-            .width = width,
-            .height = height,
+            .width = (u32)width,
+            .height = (u32)height,
             .sample_count = 8,
         }, 0, 0);
 
@@ -566,16 +562,16 @@ static void resize_earth_graphics(const graphics_t* graphics, u32 width, u32 hei
         {
             .format = FORMAT_R16G16B16A16_FLOAT,
             .bind = BIND_SHADER_RESOURCE | BIND_RENDER_TARGET,
-            .width = width,
-            .height = height,
+            .width = (u32)width,
+            .height = (u32)height,
         }, 0, 0);
 
         glow_graphics->merge_graphics.msaa_texture = graphics->create_texture_2d(&(graphics_texture_2d_desc_t)
         {
             .format = FORMAT_R16G16B16A16_FLOAT,
             .bind = BIND_SHADER_RESOURCE | BIND_RENDER_TARGET,
-            .width = width,
-            .height = height,
+            .width = (u32)width,
+            .height = (u32)height,
             .sample_count = 8,
         }, 0, 0);
 
@@ -583,8 +579,8 @@ static void resize_earth_graphics(const graphics_t* graphics, u32 width, u32 hei
         {
             .format = FORMAT_R16G16B16A16_FLOAT,
             .bind = BIND_SHADER_RESOURCE | BIND_RENDER_TARGET,
-            .width = width,
-            .height = height,
+            .width = (u32)width,
+            .height = (u32)height,
         }, 0, 0);
 
         glow_graphics->x_texture = graphics->create_texture_2d(&(graphics_texture_2d_desc_t)
@@ -640,10 +636,8 @@ static void update_earth_transform_buffer(const camera_t* camera, earth_graphics
     earth_graphics->transform_parameters.projection = camera->projection;
 }
 
-static earth_t* earth_init(memory_arena_t* arena, const graphics_t* graphics, const graphics_state_t* graphics_state, const io_t* io)
+static void earth_init(memory_arena_t* arena, const graphics_t* graphics, const graphics_state_t* graphics_state, const io_t* io, earth_t* earth)
 {
-    earth_t* earth = ma_push_struct_zero(arena, earth_t);
-
     earth->morph = 1.0f;
     earth->morph_direction = 1.0f;
 
@@ -653,17 +647,165 @@ static earth_t* earth_init(memory_arena_t* arena, const graphics_t* graphics, co
     init_earth_glow_merge_graphics(graphics, graphics_state->blur_graphics.vertex_shader, &earth->glow_graphics.merge_graphics);
 
     country_data_init(arena, graphics, io, &earth->country_data);
+    earth->country_hover_index = COUNTRY_INVALID_INDEX;
+    earth->country_selected_index = COUNTRY_INVALID_INDEX;
+    earth->country_card_position = v2(40.0f, 40.0f);
+}
 
-    return earth;
+static void earth_ui_update(input_t* input, const theme_t* theme, earth_t* earth)
+{
+    ui_signal_t counry_card_signal = ui_widget_last_signal("country-card-group");
+
+    if (counry_card_signal.held)
+    {
+        earth->country_card_position.x += input->mouse_delta.x;
+        earth->country_card_position.y += input->mouse_delta.y;
+    }
+
+    country_name_t country_hover = country_get_name(earth->country_hover_index);
+    country_name_t country_selected = country_get_name(earth->country_selected_index);
+
+    if (country_hover.name)
+    {
+        ui_next_size(ui_content(1.0f), ui_content(1.0f));
+        ui_next_padding(4.0f);
+        ui_next_flags(UI_FLAG_BACKGROUND | UI_FLAG_FLOATING);
+        ui_next_color(theme->bg_color);
+        ui_next_font(theme->font_header, theme->font_header.pixel_size);
+        ui_next_font_color(theme->fg_color);
+        ui_next_border(1.0f, theme->border_color);
+        {
+            ui_widget_t * country_floating_widget = ui_widget_text("country-name-floating", country_hover.name);
+            country_floating_widget->position.x = input->mouse_position.x;
+            country_floating_widget->position.y = input->mouse_position.y - 32.0f;
+        }
+    }
+
+    if  (country_selected.name)
+    {
+        ui_push_color(theme->bg_color);
+        ui_push_font(theme->font_text, theme->font_text.pixel_size);
+        ui_push_font_color(theme->fg_color);
+
+        ui_next_size(ui_pixel(420.0f, 0.0f), ui_children(1.0f));
+        ui_next_flags(UI_FLAG_BACKGROUND | UI_FLAG_FLOATING | UI_FLAG_CLICKABLE);
+        ui_widget_group("country-card-group", earth->country_card_position.x, earth->country_card_position.y)
+        {
+            ui_next_size(ui_percent(1.0f, 0.0f), ui_children(1.0f));
+            ui_next_border(1.0f, theme->border_color);
+            ui_next_flags(UI_FLAG_BACKGROUND);
+            ui_widget_named_column("country-card-column")
+            {
+                ui_next_anchored(UI_ANCHOR_TOP_RIGHT, UI_ANCHOR_CENTER_RIGHT, -8.0f, 16.0f);
+                ui_next_color(theme->highlight_color);
+                ui_next_size(ui_pixel(8.0f, 1.0f), ui_pixel(16.0f, 1.0f));
+                ui_next_flags(UI_FLAG_BACKGROUND);
+                ui_widget("country-active-mark");
+
+                ui_next_size(ui_percent(1.0f, 0.0f), ui_children(1.0f));
+                ui_next_padding(8.0f);
+                ui_widget_named_column("country-data-column")
+                {
+                    ui_next_size(ui_content(1.0f), ui_content(1.0f));
+                    ui_next_flags(UI_FLAG_BACKGROUND);
+                    ui_next_text_alignment(ui_align_center());
+                    ui_next_font(theme->font_header, theme->font_header.pixel_size);
+                    ui_widget_text("country-data-header", "COUNTRY.DATA");
+
+                    ui_next_size(ui_percent(1.0f, 0.0f), ui_children(1.0f));
+                    ui_next_padding(8.0f);
+                    ui_widget_named_column("country-selected-column")
+                    {
+                        ui_next_size(ui_percent(1.0f, 1.0f), ui_content(1.0f));
+                        ui_next_font(theme->font_header, theme->font_header.pixel_size);
+                        ui_next_text_alignment(ui_align_leading());
+                        ui_widget_text("country-selected-name", country_selected.name ? country_selected.name : "Not Selected");
+
+                        ui_widget_spacer(ui_pixel(8.0f, 1.0f));
+
+                        ui_next_size(ui_percent(1.0f, 1.0f), ui_pixel(1.0f, 1.0f));
+                        ui_next_color(theme->border_color); ui_next_flags(UI_FLAG_BACKGROUND);
+                        ui_widget("country-name-separator");
+
+                        ui_widget_spacer(ui_pixel(8.0f, 1.0f));
+                    
+                        ui_next_size(ui_percent(1.0f, 1.0f), ui_content(1.0f));
+                        ui_next_text_alignment(ui_align_leading());
+                        ui_widget_text("country-pop", "POP:  67.4M");
+                    
+                        ui_next_size(ui_percent(1.0f, 1.0f), ui_content(1.0f));
+                        ui_next_text_alignment(ui_align_leading());
+                        ui_widget_text("country-area", "AREA: 643K km2");
+                    
+                        ui_next_size(ui_percent(1.0f, 1.0f), ui_content(1.0f));
+                        ui_next_text_alignment(ui_align_leading());
+                        ui_widget_text("country-gov", "GOV:  REPUBLIC");
+                    }
+                }
+            }
+        }
+        
+        ui_pop_font_color();
+        ui_pop_font();
+        ui_pop_color();
+    }
+}
+
+static void earth_update(input_t* input, const camera_t* camera, const theme_t* theme, f32 delta_time,
+                         f32 width, f32 height, earth_t* earth)
+{
+    earth->width = width;
+    earth->height = height;
+
+    earth_morph(input, delta_time, earth);
+
+    earth->country_hover_index = earth_find_country_index_under_cursor(input, camera, earth);
+        
+    if (input_is_mouse_pressed(input, KEY_MOUSE_LEFT))
+    {
+        input_set_owner(input, INPUT_OWNER_SCENE);
+        earth->pressed_position = input->mouse_position;
+    }
+
+    if (input_is_owner(input, INPUT_OWNER_SCENE) && input_is_key_down(input, KEY_MOUSE_LEFT))
+    {
+        f32 total_moved = v2_length(v2_sub(input->mouse_position, earth->pressed_position));
+
+        // NOTE: Arbitrary drag threshold.
+        if (total_moved > 4.0f)
+        {
+            earth->dragging = true;
+        }
+
+        if (earth->dragging)
+        {
+            earth_rotate(input, delta_time, earth);
+        }
+    }
+        
+    if (input_is_owner(input, INPUT_OWNER_SCENE) && input_is_mouse_released(input, KEY_MOUSE_LEFT))
+    {
+        if (!earth->dragging)
+        {
+            earth->country_selected_index = earth->country_hover_index;
+            input_consume_mouse_release(input, KEY_MOUSE_LEFT);
+        }
+
+        earth->dragging = false;
+        input_set_owner(input, INPUT_OWNER_NULL);
+    }
+
+    earth_glow(theme, earth);
 }
 
 static void earth_render(const graphics_t* graphics, const graphics_state_t* graphics_state,
-                         const camera_t* camera, const theme_t* theme,
-                         u32 width, u32 height, earth_t* earth)
+                         const camera_t* camera, const theme_t* theme, earth_t* earth)
 {
     earth_graphics_t* earth_graphics = &earth->earth_graphics;
     earth_sphere_graphics_t* sphere_graphics = &earth->sphere_graphics;
     earth_glow_graphics_t* glow_graphics = &earth->glow_graphics;
+    f32 width = earth->width;
+    f32 height = earth->height;
     
     resize_earth_graphics(graphics, width, height, earth);
     update_earth_transform_buffer(camera, &earth->earth_graphics);
@@ -704,7 +846,7 @@ static void earth_render(const graphics_t* graphics, const graphics_state_t* gra
 
     graphics->begin_pass(earth_graphics->msaa_target, &(graphics_pass_desc_t){ 0 });
     {
-        earth_parameters->color = theme->sphere_grid_color;
+        earth_parameters->color = theme->dim_color;
 
         graphics->update_buffer(earth_graphics->transform_buffer, &earth_graphics->transform_parameters, 0, sizeof(earth_graphics->transform_parameters));
         graphics->update_buffer(earth_graphics->parameter_buffer, &earth_graphics->parameters, 0, sizeof(earth_graphics->parameters));
@@ -827,7 +969,7 @@ static void earth_render(const graphics_t* graphics, const graphics_state_t* gra
         graphics->set_pipeline(graphics_state->depth_test_pipeline);
         graphics->draw_indexed(TOPOLOGY_TRIANGLE_LIST, country_mesh_data->index_count, 0, 0);
 
-        if (country_is_valid_index(earth->country_index))
+        if (country_is_valid_index(earth->country_hover_index))
         {
             earth_parameters->line_thickness = 4.0f;
             earth_parameters->lift = 0.01f;
@@ -836,8 +978,8 @@ static void earth_render(const graphics_t* graphics, const graphics_state_t* gra
             graphics->update_buffer(earth_graphics->parameter_buffer, &earth_graphics->parameters, 0, sizeof(earth_graphics->parameters));
             graphics->set_buffer(earth_graphics->parameter_buffer, STAGE_VERTEX_SHADER | STAGE_PIXEL_SHADER, 1, 0, 0);
             graphics->draw_indexed(TOPOLOGY_TRIANGLE_LIST,
-                                   country_mesh_data->index_ranges[earth->country_index].index_count,
-                                   country_mesh_data->index_ranges[earth->country_index].index_offset, 0);
+                                   country_mesh_data->index_ranges[earth->country_hover_index].index_count,
+                                   country_mesh_data->index_ranges[earth->country_hover_index].index_offset, 0);
         }
     }
     graphics->end_pass();
@@ -859,7 +1001,6 @@ static void earth_render(const graphics_t* graphics, const graphics_state_t* gra
     graphics->begin_pass(graphics_state->offscreen_target_msaa, &(graphics_pass_desc_t)
     {
         .clear_color = true,
-        .clear_rgba = v4v(srgb_to_linear(theme->bg_color.rgb), theme->bg_color.a),
         .clear_depth = true, .clear_depth_value = 1.0f
     });
     {
@@ -867,7 +1008,7 @@ static void earth_render(const graphics_t* graphics, const graphics_state_t* gra
         graphics->set_pipeline(graphics_state->depth_test_no_alpha_pipeline);
         graphics->set_samplers(STAGE_PIXEL_SHADER, &graphics_state->point_sampler, 1, 0);
         graphics->set_srvs(STAGE_PIXEL_SHADER, &earth_graphics->texture, 1, 0);
-        graphics->set_viewport(0.0f, 0.0f, (f32)width, (f32)height);
+        graphics->set_viewport(0.0f, 0.0f, width, height);
         graphics->draw(TOPOLOGY_TRIANGLE_LIST, 3, 0);
     }
     graphics->end_pass();

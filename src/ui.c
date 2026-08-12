@@ -39,7 +39,7 @@ typedef struct ui_t
     input_t* input;
 
     f32 delta_time;
-    
+
     memory_arena_t* arena;
     memory_arena_t* frame_arena;
     ui_widget_t* root_widget;
@@ -627,10 +627,10 @@ static ui_widget_t* ui_widget_group_begin(const char* widget_name, f32 x, f32 y)
     ui_widget_t* widget = ui_widget_build_from_string(widget_name);
 
     // TODO: Right now, it is not supported to position widgets inside a widget group except it is directly under the root widget.
-    if ((x != 0 || y != 0) && (widget->parent != global_ui->root_widget))
+    if ((x != 0 || y != 0) && (widget->parent != global_ui->root_widget && !ui_is_flag_set(widget, UI_FLAG_FLOATING)))
     {
         // TODO: We can also silently ignore position parameters but for now keep the assert.
-        assert(!"[UI] Only widgets directly under the root widget can specify position.");
+        assert(!"[UI] Only widgets directly under the root widget or floating widgets can specify position.");
         widget->position.x = 0.0f;
         widget->position.y = 0.0f;
     }
@@ -1055,7 +1055,7 @@ static void ui_resolve_sizes(ui_widget_t* root_widget, ui_axis_t axis)
             {
                 if (axis == UI_AXIS_X)
                 {
-                    f32 width = global_ui->graphics->measure_text_width(child_widget->font.font, child_widget->text, child_widget->text_length);
+                    f32 width = global_ui->graphics->measure_text_width(child_widget->font.font, child_widget->text, child_widget->text_length) + 0.5f;
                     child_widget->fixed_size[axis] = width + child_widget->padding * 2.0f;
                 }
                 else if (axis == UI_AXIS_Y)
@@ -1691,16 +1691,27 @@ static void ui_resolve_hot(void)
 static void ui_resolve_active(void)
 {
     bool pressed = input_is_mouse_pressed(global_ui->input, KEY_MOUSE_LEFT);
-    bool released = input_is_mouse_released(global_ui->input, KEY_MOUSE_LEFT);
-
+    bool released = input_is_mouse_released(global_ui->input, KEY_MOUSE_LEFT);;
+    
     if (pressed)
     {
         ui_widget_t* widget = ui_widget_from_key(global_ui->hot_key);
+
         if (widget)
         {
+            widget->pressed = true;
+            
             global_ui->active_key = global_ui->hot_key;
             global_ui->pressed_key = global_ui->active_key;
-            widget->pressed = true;
+            global_ui->focus_key = ui_key_zero();
+            
+            if (ui_is_flag_set(widget, UI_FLAG_FOCUSABLE))
+            {
+                global_ui->focus_key = global_ui->hot_key;
+            }
+
+            input_set_owner(global_ui->input, INPUT_OWNER_UI);
+            input_consume_mouse_press(global_ui->input, KEY_MOUSE_LEFT);
         }
     }
 
@@ -1718,39 +1729,19 @@ static void ui_resolve_active(void)
                 global_ui->clicked_key = global_ui->active_key;
                 widget->clicked = true;
             }
+
+            input_set_owner(global_ui->input, INPUT_OWNER_NULL);
+            input_consume_mouse_release(global_ui->input, KEY_MOUSE_LEFT);
         }
             
         global_ui->active_key = (ui_key_t){ 0 };
     }
 
-    ui_widget_t* widget = ui_widget_from_key(global_ui->active_key);
+    ui_widget_t* active_widget = ui_widget_from_key(global_ui->active_key);
 
-    if (widget)
+    if (active_widget)
     {
-        widget->active = true;
-    }
-}
-
-static void ui_resolve_focus(void)
-{
-    bool pressed = input_is_mouse_pressed(global_ui->input, KEY_MOUSE_LEFT);
-
-    if (pressed)
-    {
-        ui_widget_t* hot_widget = ui_widget_from_key(global_ui->hot_key);
-
-        if (hot_widget && ui_is_flag_set(hot_widget, UI_FLAG_FOCUSABLE))
-        {
-            global_ui->focus_key = hot_widget->key;
-        }
-        else if (hot_widget && ui_keys_equal(hot_widget->key, global_ui->focus_key))
-        {
-            global_ui->focus_key = hot_widget->key;
-        }
-        else
-        {
-            global_ui->focus_key = (ui_key_t){ 0 };
-        }
+        active_widget->active = true;
     }
 }
 
@@ -1807,7 +1798,6 @@ static void ui_resolve_interaction(void)
     
     ui_resolve_hot();
     ui_resolve_active();
-    ui_resolve_focus();
     ui_resolve_scrollable();
 }
 
