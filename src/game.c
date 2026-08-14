@@ -298,7 +298,7 @@ static void init_themes(graphics_t* graphics, themes_t* themes)
         .bg_color = v4(0.0705f, 0.0705f, 0.0705f, 1.0f),
         .fg_color = v4(0.8f, 0.8f, 0.8f, 1.0f),
         .highlight_color = v4(0.1058f, 0.9921f, 0.6117f, 1.0f),
-        .dim_color = v4(0.020f, 0.020f, 0.020f, 1.0f),
+        .dim_color = v4(0.012f, 0.012f, 0.012f, 1.0f),
         .border_color = v4(0.1647f, 0.1647f, 0.1647f, 1.0f),
         .font_text = font_text,
         .font_header = font_header,
@@ -433,7 +433,7 @@ update_function(update)
 
     ui_begin(graphics, input, platform->delta_time, (f32)platform->width, (f32)platform->height);
     {
-        earth_ui_update(input, theme, &game->earth);
+        earth_ui_update(game->memory_arena, input, theme, &game->earth);
     }
     ui_end();
 

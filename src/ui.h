@@ -246,6 +246,9 @@ typedef struct ui_widget_t
     bool pressed;
     bool clicked;
     bool released;
+
+    f32 hot_t;
+    f32 active_t;
 } ui_widget_t;
 
 typedef struct ui_signal_t
@@ -256,6 +259,8 @@ typedef struct ui_signal_t
     bool held;
     bool clicked;
     bool released;
+    f32 hot_t;
+    f32 active_t;
 } ui_signal_t;
 
 static inline ui_size_t ui_pixel(f32 pixel, f32 strictness);

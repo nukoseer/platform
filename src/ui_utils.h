@@ -721,7 +721,7 @@ static void ui_widget_text_edit_selection(ui_widget_t* widget, ui_text_edit_t* t
 
             f32 start_measure_x = global_ui->graphics->measure_text_width(widget->font.font, text_edit->text + text_line->offset, selection_start - text_line->offset);
             f32 end_measure_x = global_ui->graphics->measure_text_width(widget->font.font, text_edit->text + text_line->offset, selection_end - text_line->offset);
-            f32 start_x = text_line->position[UI_AXIS_X] + start_measure_x - ui_widget_scroll(widget, UI_AXIS_X);
+            f32 start_x = text_line->position[UI_AXIS_X] + start_measure_x;
             f32 size_x = end_measure_x - start_measure_x;
 
             ui_push_parent(widget);
@@ -731,7 +731,7 @@ static void ui_widget_text_edit_selection(ui_widget_t* widget, ui_text_edit_t* t
                 ui_next_color(v4v(widget->font_color.rgb, 0.2f));
                 ui_widget_t* selection_widget = ui_widget_build_from_key((ui_key_t){ 0 });
                 selection_widget->position.x = start_x;
-                selection_widget->position.y = text_line->position[UI_AXIS_Y] - ui_widget_scroll(widget, UI_AXIS_Y);
+                selection_widget->position.y = text_line->position[UI_AXIS_Y];
             }
             ui_pop_parent();
         }
@@ -826,8 +826,8 @@ static void ui_widget_text_edit_cursor(ui_widget_t* widget, ui_text_edit_t* text
         
         if (text_line)
         {
-            cursor_x = text_line->position[UI_AXIS_X] + global_ui->graphics->measure_text_width(widget->font.font, text_edit->text + text_line->offset, text_edit->cursor - text_line->offset) - ui_widget_scroll(widget, UI_AXIS_X);
-            cursor_y = text_line->position[UI_AXIS_Y] - ui_widget_scroll(widget, UI_AXIS_Y);
+            cursor_x = text_line->position[UI_AXIS_X] + global_ui->graphics->measure_text_width(widget->font.font, text_edit->text + text_line->offset, text_edit->cursor - text_line->offset);
+            cursor_y = text_line->position[UI_AXIS_Y];
         }
         else
         {
@@ -843,7 +843,7 @@ static void ui_widget_text_edit_cursor(ui_widget_t* widget, ui_text_edit_t* text
     ui_pop_parent();
 }
 
-static ui_signal_t ui_widget_text_edit(const char* name, ui_text_edit_t* text_edit)
+static ui_signal_t ui_widget_text_edit(const char* name, ui_text_edit_t* text_edit, const char* placeholder)
 {
     input_t* input = global_ui->input;
     ui_next_flags(UI_FLAG_TEXT);
@@ -861,7 +861,7 @@ static ui_signal_t ui_widget_text_edit(const char* name, ui_text_edit_t* text_ed
         u32 codepoint = 0;
         u32 key_index = 0;
         key_t key = KEY_NULL;
-        
+
         while ((codepoint = input_consume_next_text_event(input, &codepoint_index)) != 0)
         {
             ui_text_edit_insert(text_edit, codepoint);
@@ -926,7 +926,15 @@ static ui_signal_t ui_widget_text_edit(const char* name, ui_text_edit_t* text_ed
         ui_widget_text_edit_cursor(widget, text_edit);
     }
 
-    ui_equip_text(widget, text_edit->text, text_edit->length);
+    if (!ui_is_focused(widget->key) && placeholder && text_edit->length == 0)
+    {
+        ui_equip_text(widget, placeholder, (i32)strlen(placeholder));
+        widget->font_color = v4v(ui_top_font_color().rgb, 0.3f);
+    }
+    else
+    {
+        ui_equip_text(widget, text_edit->text, text_edit->length);
+    }
 
     return signal;
 }

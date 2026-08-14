@@ -617,6 +617,8 @@ static inline ui_signal_t ui_signal_for(ui_widget_t* widget)
         .held = widget->active,
         .clicked = widget->clicked,
         .released = widget->released,
+        .hot_t = widget->hot_t,
+        .active_t = widget->active_t
     };
 
     return signal;
@@ -1713,6 +1715,10 @@ static void ui_resolve_active(void)
             input_set_owner(global_ui->input, INPUT_OWNER_UI);
             input_consume_mouse_press(global_ui->input, KEY_MOUSE_LEFT);
         }
+        else
+        {
+            global_ui->focus_key = ui_key_zero();
+        }
     }
 
     if (released)
@@ -1761,6 +1767,22 @@ static void ui_resolve_scrollable(void)
                 ui_widget_scroll_to(widget, axis, widget->scroll_target[axis] - mouse_wheel * 60.0f);
             }   
         }
+    }
+}
+
+static void ui_resolve_animation(ui_widget_t* root_widget)
+{
+    for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
+    {
+        f32 rate = 1.0f - powf(0.0001f, global_ui->delta_time);
+
+        child_widget->hot_t += ((child_widget->hot ? 1.0f : 0.0f) - child_widget->hot_t) * rate;
+        child_widget->active_t += ((child_widget->active ? 1.0f : 0.0f) - child_widget->active_t) * rate;
+    }
+
+    for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
+    {
+        ui_resolve_animation(child_widget);
     }
 }
 
@@ -1855,6 +1877,7 @@ static void ui_end(void)
     }
 
     ui_resolve_interaction();
+    ui_resolve_animation(global_ui->root_widget);
     ui_emit_all_draw_commands(global_ui->root_widget);
     // ui_print_info(global_ui->root_widget);
     
