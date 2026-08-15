@@ -403,7 +403,7 @@ static bool resize_back_buffer(window_t* window)
     return resized;
 }
 
-static inline void input_event_push(input_t* input, input_event_kind_t kind, u32 value)
+static inline void input_event_push(input_t* input, input_event_kind_t kind, usize value)
 {
     if (input->event_count >= array_count(input->events))
     {
@@ -413,17 +413,32 @@ static inline void input_event_push(input_t* input, input_event_kind_t kind, u32
     input_event_t* event = input->events + input->event_count++;
     event->kind = kind;
     event->consumed = false;
-    event->is_repeat = false;
-    event->value = value;
 
+    bool ctrl_is_down = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
+    bool shift_is_down = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
+    bool alt_is_down = (GetKeyState(VK_MENU) & 0x8000) != 0;
+
+    event->modifiers = ((alt_is_down * KEY_MODIFIER_ALT) |
+                        (shift_is_down * KEY_MODIFIER_SHIFT) |
+                        (ctrl_is_down * KEY_MODIFIER_CTRL));
+    
     if (kind == INPUT_EVENT_KEY_PRESS || kind == INPUT_EVENT_MOUSE_PRESS)
     {
-        event->is_repeat = input->key_down[value];
+        event->key = (u32)value;
         input->key_down[value] = true;
     }
     else if (kind == INPUT_EVENT_KEY_RELEASE || kind == INPUT_EVENT_MOUSE_RELEASE)
     {
+        event->key = (u32)value;
         input->key_down[value] = false;
+    }
+    else if (kind == INPUT_EVENT_MOUSE_WHEEL)
+    {
+        event->wheel = (f32)value;
+    }
+    else if (kind == INPUT_EVENT_TEXT)
+    {
+        event->codepoint = (u32)value;
     }
 }
 
@@ -432,7 +447,7 @@ static bool process_thread_messages(window_t* window, input_t* input)
     static key_t key_map[256];
     bool quit = false;
     MSG message = { 0 };
-    f32 mouse_z = 0.0f;
+    f32 mouse_wheel = 0.0f;
 
     input->event_count = 0;
     
@@ -455,41 +470,42 @@ static bool process_thread_messages(window_t* window, input_t* input)
             case WM_LBUTTONDOWN:
             {
                 SetCapture(window->hwnd);
-                input_event_push(input, INPUT_EVENT_MOUSE_PRESS, KEY_MOUSE_LEFT);
+                input_event_push(input, INPUT_EVENT_MOUSE_PRESS, (usize)KEY_MOUSE_LEFT);
             } break;
 
             case WM_LBUTTONUP:
             {
-                input_event_push(input, INPUT_EVENT_MOUSE_RELEASE, KEY_MOUSE_LEFT);
+                input_event_push(input, INPUT_EVENT_MOUSE_RELEASE, (usize)KEY_MOUSE_LEFT);
                 ReleaseCapture();
             } break;
 
             case WM_RBUTTONDOWN:
             {
                 SetCapture(window->hwnd);
-                input_event_push(input, INPUT_EVENT_MOUSE_PRESS, KEY_MOUSE_RIGHT);
+                input_event_push(input, INPUT_EVENT_MOUSE_PRESS, (usize)KEY_MOUSE_RIGHT);
             } break;
             
             case WM_RBUTTONUP:
             {
-                input_event_push(input, INPUT_EVENT_MOUSE_RELEASE, KEY_MOUSE_RIGHT);
+                input_event_push(input, INPUT_EVENT_MOUSE_RELEASE, (usize)KEY_MOUSE_RIGHT);
             } break;
 
             case WM_MBUTTONDOWN:
             {
                 SetCapture(window->hwnd);
-                input_event_push(input, INPUT_EVENT_MOUSE_PRESS, KEY_MOUSE_MIDDLE);
+                input_event_push(input, INPUT_EVENT_MOUSE_PRESS, (usize)KEY_MOUSE_MIDDLE);
             } break;
             
             case WM_MBUTTONUP:
             {
-                input_event_push(input, INPUT_EVENT_MOUSE_RELEASE, KEY_MOUSE_MIDDLE);
+                input_event_push(input, INPUT_EVENT_MOUSE_RELEASE, (usize)KEY_MOUSE_MIDDLE);
                 ReleaseCapture();
             } break;
             
             case WM_MOUSEWHEEL:
             {
-                mouse_z = (f32)GET_WHEEL_DELTA_WPARAM(message.wParam) / (f32)WHEEL_DELTA;
+                mouse_wheel = (f32)GET_WHEEL_DELTA_WPARAM(message.wParam) / (f32)WHEEL_DELTA;
+                input_event_push(input, INPUT_EVENT_MOUSE_WHEEL, (usize)mouse_wheel);
             } break;
             
             case WM_SYSKEYDOWN:
@@ -536,7 +552,7 @@ static bool process_thread_messages(window_t* window, input_t* input)
                     key = key_map[key_code];
                 }
 
-                input_event_push(input, INPUT_EVENT_KEY_PRESS, key);
+                input_event_push(input, INPUT_EVENT_KEY_PRESS, (usize)key);
             
                 if (key_code == VK_RETURN && is_down && alt_is_down)
                 {
@@ -559,23 +575,15 @@ static bool process_thread_messages(window_t* window, input_t* input)
                     key = key_map[key_code];
                 }
 
-                input_event_push(input, INPUT_EVENT_KEY_RELEASE, key);
+                input_event_push(input, INPUT_EVENT_KEY_RELEASE, (usize)key);
             } break;
 
             case WM_CHAR:
             {
-                input_event_push(input, INPUT_EVENT_TEXT, (u32)message.wParam);
+                input_event_push(input, INPUT_EVENT_TEXT, (usize)message.wParam);
             } break;
         }
     }
-
-    bool alt_is_down = (GetKeyState(VK_MENU) & 0x8000) != 0;
-    bool shift_is_down = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
-    bool ctrl_is_down = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
-    
-    input->modifiers = ((alt_is_down * KEY_MODIFIER_ALT) |
-                        (shift_is_down * KEY_MODIFIER_SHIFT) |
-                        (ctrl_is_down * KEY_MODIFIER_CTRL));
 
     static POINT prev_mouse_point = { 0 };
     POINT mouse_point = { 0 };
@@ -583,7 +591,7 @@ static bool process_thread_messages(window_t* window, input_t* input)
     ScreenToClient(window->hwnd, &mouse_point);
 
     input->mouse_position = v2((f32)mouse_point.x, (f32)mouse_point.y);
-    input->wheel = mouse_z;
+    input->mouse_wheel = mouse_wheel;
     input->mouse_delta = v2((f32)mouse_point.x - (f32)prev_mouse_point.x, (f32)mouse_point.y - prev_mouse_point.y);
 
     if (input->mouse_position.x < 0.0f || input->mouse_position.x > (f32)window->width ||

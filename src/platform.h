@@ -104,6 +104,7 @@ typedef enum input_event_kind_t
     INPUT_EVENT_KEY_RELEASE,
     INPUT_EVENT_MOUSE_PRESS,
     INPUT_EVENT_MOUSE_RELEASE,
+    INPUT_EVENT_MOUSE_WHEEL,
     
     INPUT_EVENT_COUNT,
 } input_event_kind_t;
@@ -112,8 +113,14 @@ typedef struct input_event_t
 {
     input_event_kind_t kind;
     bool consumed;
-    bool is_repeat;
-    u32 value;
+    key_modifier_t modifiers;
+
+    union
+    {
+        key_t key;
+        u32 codepoint;
+        f32 wheel;
+    };
 } input_event_t;
 
 typedef enum input_owner_t
@@ -131,9 +138,8 @@ typedef struct input_t
 
     input_owner_t owner;
     
-    key_modifier_t modifiers;    
     vec2 mouse_position;
-    f32 wheel;
+    f32 mouse_wheel;
     vec2 mouse_delta;
     bool key_down[KEY_COUNT];
 } input_t;
@@ -157,7 +163,7 @@ static inline bool input_is_key_down(const input_t* input, key_t key)
     return result;
 }
 
-static inline input_event_t* input_find_event(const input_t* input, input_event_kind_t kind, u32 value, bool skip_repeat)
+static inline input_event_t* input_find_event(const input_t* input, input_event_kind_t kind, usize value, key_modifier_t modifiers)
 {
     input_event_t* result = 0;
     
@@ -175,14 +181,13 @@ static inline input_event_t* input_find_event(const input_t* input, input_event_
             continue;
         }
 
-        if (skip_repeat && event->is_repeat)
+        if (event->kind == INPUT_EVENT_KEY_PRESS || event->kind == INPUT_EVENT_KEY_RELEASE ||
+            event->kind == INPUT_EVENT_MOUSE_PRESS || event->kind == INPUT_EVENT_MOUSE_RELEASE)
         {
-            continue;
-        }
-
-        if (event->value != value)
-        {
-            continue;
+            if (event->key != (u32)value || event->modifiers != modifiers)
+            {
+                continue;
+            }
         }
 
         result = (input_event_t*)event;
@@ -192,38 +197,46 @@ static inline input_event_t* input_find_event(const input_t* input, input_event_
     return result;
 }
 
-static inline bool input_is_key_pressed(const input_t* input, key_t key)
+static inline bool input_is_key_pressed(const input_t* input, key_t key, key_modifier_t modifiers)
 {
-    bool result = input_find_event(input, INPUT_EVENT_KEY_PRESS, key, true) != 0;
+    bool result = input_find_event(input, INPUT_EVENT_KEY_PRESS, key, modifiers) != 0;
 
     return result;
 }
 
-static inline bool input_is_key_released(const input_t* input, key_t key)
+static inline bool input_is_key_released(const input_t* input, key_t key, key_modifier_t modifiers)
 {
-    bool result = input_find_event(input, INPUT_EVENT_KEY_RELEASE, key, true) != 0;
+    bool result = input_find_event(input, INPUT_EVENT_KEY_RELEASE, key, modifiers) != 0;
 
     return result;
 }
 
 static inline bool input_is_mouse_pressed(const input_t* input, key_t key)
 {
-    bool result = input_find_event(input, INPUT_EVENT_MOUSE_PRESS, key, true) != 0;
+    bool result = input_find_event(input, INPUT_EVENT_MOUSE_PRESS, key, 0) != 0;
 
     return result;
 }
 
 static inline bool input_is_mouse_released(const input_t* input, key_t key)
 {
-    bool result = input_find_event(input, INPUT_EVENT_MOUSE_RELEASE, key, true) != 0;
+    bool result = input_find_event(input, INPUT_EVENT_MOUSE_RELEASE, key, 0) != 0;
 
     return result;
 }
 
-static inline bool input_consume_event(input_t* input, input_event_kind_t kind, key_t key)
+
+static inline bool input_is_mouse_wheeled(const input_t* input)
+{
+    bool result = input_find_event(input, INPUT_EVENT_MOUSE_WHEEL, 0, 0) != 0;
+
+    return result;
+}
+
+static inline bool input_consume_matching_event(input_t* input, input_event_kind_t kind, key_t key, key_modifier_t modifiers)
 {
     bool result = false;
-    input_event_t* event = input_find_event(input, kind, key, false);
+    input_event_t* event = input_find_event(input, kind, key, modifiers);
 
     if (event)
     {
@@ -234,102 +247,43 @@ static inline bool input_consume_event(input_t* input, input_event_kind_t kind, 
     return result;
 }
 
-static inline bool input_consume_event_all(input_t* input, input_event_kind_t kind, key_t key)
+static inline void input_consume_event(input_t* input, input_event_t* event)
 {
-    bool result = false;
-    input_event_t* event = input_find_event(input, kind, key, true);
-
-    if (event)
-    {
-        event->consumed = true;
-        result = true;
-    }
-
-    return result;
+    event->consumed = true;
 }
 
-static inline bool input_consume_key_press(input_t* input, key_t key)
+static inline bool input_consume_key_press(input_t* input, key_t key, key_modifier_t modifiers)
 {
-    bool result = input_consume_event(input, INPUT_EVENT_KEY_PRESS, key);
+    bool result = input_consume_matching_event(input, INPUT_EVENT_KEY_PRESS, key, modifiers);
     
     return result;
 }
 
-static inline bool input_consume_key_press_all(input_t* input, key_t key)
+static inline bool input_consume_key_release(input_t* input, key_t key, key_modifier_t modifiers)
 {
-    bool result = input_consume_event_all(input, INPUT_EVENT_KEY_PRESS, key);
-    
-    return result;
-}
-
-static inline bool input_consume_key_release(input_t* input, key_t key)
-{
-    bool result = input_consume_event(input, INPUT_EVENT_KEY_RELEASE, key);
+    bool result = input_consume_matching_event(input, INPUT_EVENT_KEY_RELEASE, key, modifiers);
     
     return result;
 }
 
 static inline bool input_consume_mouse_press(input_t* input, key_t key)
 {
-    bool result = input_consume_event(input, INPUT_EVENT_MOUSE_PRESS, key);
+    bool result = input_consume_matching_event(input, INPUT_EVENT_MOUSE_PRESS, key, 0);
     
     return result;
 }
 
 static inline bool input_consume_mouse_release(input_t* input, key_t key)
 {
-    bool result = input_consume_event(input, INPUT_EVENT_MOUSE_RELEASE, key);
+    bool result = input_consume_matching_event(input, INPUT_EVENT_MOUSE_RELEASE, key, 0);
     
     return result;
 }
 
-static inline key_t input_consume_next_event(input_t* input, input_event_kind_t kind, u32* index)
+static inline bool input_consume_mouse_wheel(input_t* input)
 {
-    key_t result = KEY_NULL;
+    bool result = input_consume_matching_event(input, INPUT_EVENT_MOUSE_WHEEL, 0, 0);
     
-    while (*index < input->event_count)
-    {
-        input_event_t* event = input->events + *index;
-        (*index)++;
-
-        if (event->consumed)
-        {
-            continue;
-        }
-
-        if (event->kind == kind)
-        {
-            result = (key_t)event->value;
-            event->consumed = true;
-            break;
-        }
-    }
-
-    return result;
-}
-
-static inline u32 input_consume_next_text_event(input_t* input, u32* index)
-{
-    u32 result = 0;
-    
-    while (*index < input->event_count)
-    {
-        input_event_t* event = input->events + *index;
-        (*index)++;
-        
-        if (event->consumed)
-        {
-            continue;
-        }
-
-        if (event->kind == INPUT_EVENT_TEXT && event->value >= 32)
-        {
-            event->consumed = true;
-            result = event->value;
-            break;
-        }
-    }
-
     return result;
 }
 

@@ -1177,7 +1177,7 @@ static void ui_resolve_layout(ui_widget_t* root_widget, ui_axis_t axis)
         if (root_widget->text_line_count == 0)
         {
             root_widget->content_size[axis] = (root_widget->layout_axis == axis ?
-                                               layout_at - root_widget->padding :
+                                               layout_at + root_widget->padding :
                                                cross_axis_size + root_widget->padding * 2.0f);
         }
 
@@ -1442,7 +1442,7 @@ static void ui_emit_subtree(ui_widget_t* root_widget, ui_rect_t clip_rect, vec2 
     
     for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
     {
-        ui_emit_subtree(child_widget, child_clip_rect, child_scroll_offset);
+        ui_emit_subtree(child_widget, child_clip_rect, ui_is_flag_set(child_widget, UI_FLAG_FLOATING) ? scroll_offset : child_scroll_offset);
     }
 }
 
@@ -1488,7 +1488,7 @@ static void ui_emit_floating_pass(ui_widget_t* root_widget, ui_rect_t clip_rect,
     
     for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
     {
-        ui_emit_floating_pass(child_widget, child_clip_rect, scroll_offset);
+        ui_emit_floating_pass(child_widget, child_clip_rect, ui_is_flag_set(child_widget, UI_FLAG_FLOATING) ? scroll_offset : child_scroll_offset);
     }
 }
 
@@ -1753,9 +1753,9 @@ static void ui_resolve_active(void)
 
 static void ui_resolve_scrollable(void)
 {
-    f32 mouse_wheel = global_ui->input->wheel;
+    bool mouse_wheeled = input_is_mouse_wheeled(global_ui->input);
     
-    if (mouse_wheel != 0.0f)
+    if (mouse_wheeled)
     {
         for (i32 axis = UI_AXIS_X; axis < UI_AXIS_COUNT; ++axis)
         {
@@ -1764,7 +1764,10 @@ static void ui_resolve_scrollable(void)
                                                          v2(0.0f, 0.0f), axis);
             if (widget)
             {
-                ui_widget_scroll_to(widget, axis, widget->scroll_target[axis] - mouse_wheel * 60.0f);
+                while (input_consume_mouse_wheel(global_ui->input))
+                {
+                    ui_widget_scroll_to(widget, axis, widget->scroll_target[axis] - global_ui->input->mouse_wheel * 60.0f);
+                }
             }   
         }
     }

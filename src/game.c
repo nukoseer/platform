@@ -419,21 +419,16 @@ update_function(update)
     camera_t* camera = &game->camera;
     theme_t* theme = theme_get_current(&game->themes);
 
-    if (input_is_key_released(input, KEY_C))
+    if (input_is_key_released(input, KEY_C, 0))
     {
         update_theme(&game->themes);
     }
     
-    if (input->wheel != 0.0f)
-    {
-        camera->position.z += 3.0f * platform->delta_time * -input->wheel;
-    }
-
     update_camera(camera);
 
     ui_begin(graphics, input, platform->delta_time, (f32)platform->width, (f32)platform->height);
     {
-        earth_ui_update(game->memory_arena, input, theme, &game->earth);
+        earth_ui_update(input, theme, &game->earth);
     }
     ui_end();
 

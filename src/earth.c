@@ -130,6 +130,8 @@ typedef struct earth_graphics_t
 
 typedef struct earth_t
 {
+    memory_arena_t* memory_arena;
+    
     f32 prev_width;
     f32 prev_height;
     f32 width;
@@ -150,8 +152,12 @@ typedef struct earth_t
     country_data_t country_data;
     u8 country_hover_index;
     u8 country_selected_index;
+
     vec2 country_card_position;
 
+    i32 country_match_indices[32];
+    i32 country_match_scores[32];
+    i32 country_match_score_count;
     bool country_search_enabled;
     ui_text_edit_t country_search_text_edit;
 
@@ -389,7 +395,7 @@ static void earth_rotate(input_t* input, f32 delta_time, earth_t* earth)
         earth->pitch += 5.0f * -input->mouse_delta.y * delta_time;
         earth->pitch = clamp(-90.0f, earth->pitch, 90.0f);
 
-        if (input_is_key_released(input, KEY_R))
+        if (input_is_key_released(input, KEY_R, 0))
         {
             earth->reset = !earth->reset;
         }
@@ -439,9 +445,17 @@ static void earth_rotate(input_t* input, f32 delta_time, earth_t* earth)
     }
 }
 
+static inline void earth_zoom(input_t* input, camera_t* camera, f32 delta_time, earth_t* earth)
+{
+    if (earth->morph == 1.0f)
+    {
+        camera->position.z += 3.0f * delta_time * -input->mouse_wheel;
+    }
+}
+
 static inline void earth_morph(const input_t* input, f32 delta_time, earth_t* earth)
 {
-    earth->morph_direction = (input_is_key_released(input, KEY_T) ?
+    earth->morph_direction = (input_is_key_released(input, KEY_T, 0) ?
                               -earth->morph_direction : earth->morph_direction);
     earth->morph += 1.0f * delta_time * earth->morph_direction;
     earth->morph = clamp(0.0f, earth->morph, 1.0f);
@@ -633,7 +647,7 @@ static void update_earth_transform_buffer(const camera_t* camera, earth_graphics
     earth_graphics->transform_parameters.projection = camera->projection;
 }
 
-static void earth_init(memory_arena_t* arena, const graphics_t* graphics, const graphics_state_t* graphics_state, const io_t* io, earth_t* earth)
+static void earth_init(memory_arena_t* memory_arena, const graphics_t* graphics, const graphics_state_t* graphics_state, const io_t* io, earth_t* earth)
 {
     earth->morph = 1.0f;
     earth->morph_direction = 1.0f;
@@ -643,28 +657,53 @@ static void earth_init(memory_arena_t* arena, const graphics_t* graphics, const 
     init_earth_glow_mask_graphics(graphics, &earth->earth_graphics, &earth->glow_graphics.mask_graphics);
     init_earth_glow_merge_graphics(graphics, graphics_state->blur_graphics.vertex_shader, &earth->glow_graphics.merge_graphics);
 
-    country_data_init(arena, graphics, io, &earth->country_data);
+    country_data_init(memory_arena, graphics, io, &earth->country_data);
+    earth->memory_arena = memory_arena;
     earth->country_hover_index = COUNTRY_INVALID_INDEX;
     earth->country_selected_index = COUNTRY_INVALID_INDEX;
     earth->country_card_position = v2(40.0f, 40.0f);
 }
 
-static void earth_ui_update(memory_arena_t* memory_arena, input_t* input, const theme_t* theme, earth_t* earth)
+static void earth_search_country(memory_arena_t* memory_arena, const char* name, u32 length, earth_t* earth)
 {
-    ui_signal_t counry_card_signal = ui_widget_last_signal("country-card-group");
+    earth->country_match_score_count = 0;
 
-    if (counry_card_signal.held)
+    for (i32 i = 0; i < array_count(global_shape_country_names); ++i)
     {
-        earth->country_card_position = v2_add(earth->country_card_position, input->mouse_delta);
-    }
+        if (earth->country_match_score_count > array_count(earth->country_match_scores) - 1)
+        {
+            break;
+        }
+        
+        country_name_t country_name = global_shape_country_names[i];
+        i32 score = 0;
 
+        if (fuzzy_match(memory_arena, name, length, country_name.name, country_name.length, &score))
+        {
+            i32 j = earth->country_match_score_count++;
+
+            if (j > 0 && score > earth->country_match_scores[j - 1])
+            {
+                earth->country_match_scores[j] = earth->country_match_scores[j - 1];
+                earth->country_match_indices[j] = earth->country_match_indices[j - 1];
+                j--;
+            }
+
+            earth->country_match_scores[j] = score;
+            earth->country_match_indices[j] = i;
+        }
+    }
+}
+
+static void earth_ui_update(input_t* input, const theme_t* theme, earth_t* earth)
+{
     country_name_t country_hover = country_get_name(earth->country_hover_index);
     country_name_t country_selected = country_get_name(earth->country_selected_index);
 
     ui_push_color(theme->bg_color);
     ui_push_font(theme->font_text, theme->font_text.pixel_size);
     ui_push_font_color(theme->fg_color);
-    
+
     if (country_hover.name)
     {
         ui_next_size(ui_content(1.0f), ui_content(1.0f));
@@ -679,27 +718,28 @@ static void earth_ui_update(memory_arena_t* memory_arena, input_t* input, const 
         }
     }
 
-    if  (country_selected.name)
+    if (country_selected.name)
     {
         ui_next_size(ui_pixel(420.0f, 0.0f), ui_children(1.0f));
         ui_next_flags(UI_FLAG_BACKGROUND | UI_FLAG_FLOATING | UI_FLAG_CLICKABLE);
-        ui_widget_group("country-card-group", earth->country_card_position.x, earth->country_card_position.y)
+        ui_widget_t* country_card_group = ui_widget_group_begin("country-card-group", earth->country_card_position.x, earth->country_card_position.y);
         {
             ui_next_size(ui_percent(1.0f, 0.0f), ui_children(1.0f));
             ui_next_border(1.0f, theme->border_color);
             ui_next_flags(UI_FLAG_BACKGROUND);
             ui_widget_named_column("country-card-column")
             {
-                ui_next_anchored(UI_ANCHOR_TOP_RIGHT, UI_ANCHOR_CENTER_RIGHT, -8.0f, 16.0f);
-                ui_next_color(theme->highlight_color);
-                ui_next_size(ui_pixel(8.0f, 1.0f), ui_pixel(16.0f, 1.0f));
-                ui_next_flags(UI_FLAG_BACKGROUND);
-                ui_widget("country-active-mark");
-
                 ui_next_size(ui_percent(1.0f, 0.0f), ui_children(1.0f));
-                ui_next_padding(8.0f);
+                ui_next_padding(16.0f);
                 ui_widget_named_column("country-data-column")
                 {
+                    ui_next_color(theme->highlight_color);
+                    ui_next_size(ui_percent(0.4f, 1.0f), ui_pixel(4.0f, 1.0f));
+                    ui_next_flags(UI_FLAG_BACKGROUND);
+                    ui_widget("country-active-mark");
+
+                    ui_widget_spacer(ui_pixel(8.0f, 1.0f));
+                    
                     ui_next_size(ui_content(1.0f), ui_content(1.0f));
                     ui_next_flags(UI_FLAG_BACKGROUND);
                     ui_next_text_alignment(ui_align_center());
@@ -715,7 +755,7 @@ static void earth_ui_update(memory_arena_t* memory_arena, input_t* input, const 
                         ui_next_text_alignment(ui_align_leading());
                         ui_widget_text("country-selected-name", country_selected.name ? country_selected.name : "Not Selected");
 
-                        ui_widget_spacer(ui_pixel(8.0f, 1.0f));
+                        ui_widget_spacer(ui_pixel(4.0f, 1.0f));
 
                         ui_next_size(ui_percent(1.0f, 1.0f), ui_pixel(1.0f, 1.0f));
                         ui_next_color(theme->border_color); ui_next_flags(UI_FLAG_BACKGROUND);
@@ -738,29 +778,50 @@ static void earth_ui_update(memory_arena_t* memory_arena, input_t* input, const 
                 }
             }
         }
+        ui_signal_t country_card_group_signal = ui_signal_for(country_card_group);
+        if (country_card_group_signal.held)
+        {
+            earth->country_card_position = v2_add(earth->country_card_position, input->mouse_delta);
+        }
+        ui_widget_group_end();
     }
 
-    if ((input->modifiers & KEY_MODIFIER_CTRL) && input_is_key_pressed(input, KEY_F))
+    if (input_is_key_pressed(input, KEY_F, KEY_MODIFIER_CTRL))
     {
         earth->country_search_enabled = !earth->country_search_enabled;
         input_set_owner(input, INPUT_OWNER_UI);
-        input_consume_key_press(input, KEY_F);
+        input_consume_key_press(input, KEY_F, KEY_MODIFIER_CTRL);
     }
 
     if (earth->country_search_enabled)
     {
+        if (earth->country_search_text_edit.changed)
+        {
+            earth_search_country(earth->memory_arena,
+                                 earth->country_search_text_edit.text, earth->country_search_text_edit.length,
+                                 earth);
+        }
+        
         ui_next_size(ui_percent(0.25f, 0.0f), ui_children(1.0f));
         ui_next_border(1.0f, theme->border_color);
         ui_next_flags(UI_FLAG_BACKGROUND | UI_FLAG_FLOATING);
-        ui_next_padding(8.0f);
+        ui_next_padding(16.0f);
         ui_widget_t* widget = ui_widget_named_column_begin("country-search-column");
         widget->position.x = earth->width * 0.70f;
         widget->position.y = 40.0f;
         {
+            ui_next_color(theme->highlight_color);
+            ui_next_size(ui_percent(0.4f, 1.0f), ui_pixel(4.0f, 1.0f));
+            ui_next_flags(UI_FLAG_BACKGROUND);
+            ui_widget("country-search-active-mark");
             ui_next_size(ui_content(1.0f), ui_content(1.0f));
+
+            ui_widget_spacer(ui_pixel(8.0f, 1.0f));
+
             ui_next_flags(UI_FLAG_BACKGROUND);
             ui_next_text_alignment(ui_align_center());
             ui_next_font(theme->font_header, theme->font_header.pixel_size);
+            ui_next_size(ui_content(1.0f), ui_content(1.0f));
             ui_widget_text("country-search-header", "COUNTRY.SEARCH");
         
             ui_next_size(ui_percent(1.0f, 1.0f), ui_children(1.0f));
@@ -780,36 +841,13 @@ static void earth_ui_update(memory_arena_t* memory_arena, input_t* input, const 
 
                 if (earth->country_search_text_edit.length > 0)
                 {
-                    i32 country_indices[array_count(global_shape_country_names)] = { 0 };
-                    i32 country_scores[array_count(global_shape_country_names)] = { 0 };
-                    i32 country_score_count = 0;
-
-                    for (i32 i = 0; i < array_count(global_shape_country_names); ++i)
-                    {
-                        country_name_t country_name = global_shape_country_names[i];
-                        i32 score = 0;
-
-                        if (fuzzy_match(memory_arena, earth->country_search_text_edit.text, earth->country_search_text_edit.length, country_name.name, country_name.length, &score))
-                        {
-                            i32 j = country_score_count++;
-
-                            if (j > 0 && score > country_scores[j - 1])
-                            {
-                                country_scores[j] = country_scores[j - 1];
-                                country_indices[j] = country_indices[j - 1];
-                                j--;
-                            }
-
-                            country_scores[j] = score;
-                            country_indices[j] = i;
-                        }
-                    }
+                    i32 country_score_count = earth->country_match_score_count;
 
                     if (country_score_count > 0)
                     {
-                        if (country_score_count > 20)
+                        if (country_score_count > array_count(earth->country_match_scores) - 1)
                         {
-                            country_score_count = 20;
+                            country_score_count = array_count(earth->country_match_scores) - 1;
                         }
 
                         ui_widget_spacer(ui_pixel(8.0f, 1.0f));
@@ -818,19 +856,22 @@ static void earth_ui_update(memory_arena_t* memory_arena, input_t* input, const 
                         ui_next_flags(UI_FLAG_BACKGROUND | UI_FLAG_SCROLLABLE_Y);
                         ui_widget_named_column("country-search-results-column")
                         {
+                            ui_widget_scrollbar(ui_top_parent());
+
                             for (i32 i = 0; i < country_score_count; ++i)
                             {
-                                i32 country_index = country_indices[i];
+                                i32 country_index = earth->country_match_indices[i];
                                 country_name_t country_name = global_shape_country_names[country_index];
 
                                 if (i != 0)
                                 {
+                                    ui_next_size(ui_percent(0.98f, 1.0f), ui_pixel(1.0f, 1.0f));
                                     ui_next_color(theme->border_color); ui_next_flags(UI_FLAG_BACKGROUND);
-                                    ui_widget_spacer(ui_pixel(1.0f, 1.0f));
+                                    ui_widget_build_from_key(ui_key_zero());
                                 }
 
                                 ui_signal_t signal = ui_widget_last_signal(country_name.name);
-                                ui_next_size(ui_percent(1.0f, 1.0f), ui_em(2.0f, 1.0f));
+                                ui_next_size(ui_percent(0.98f, 1.0f), ui_em(2.0f, 1.0f));
                                 ui_next_text_alignment((ui_alignment_t){ UI_ALIGNMENT_LEADING, UI_ALIGNMENT_CENTER });
                                 ui_next_padding(4.0f);
                                 ui_next_color(signal.hovering ? v4v(theme->fg_color.rgb, 0.05f) : theme->bg_color);
@@ -856,14 +897,15 @@ static void earth_ui_update(memory_arena_t* memory_arena, input_t* input, const 
     ui_pop_color();
 }
 
-static void earth_update(input_t* input, const camera_t* camera, const theme_t* theme, f32 delta_time,
+static void earth_update(input_t* input, camera_t* camera, const theme_t* theme, f32 delta_time,
                          f32 width, f32 height, earth_t* earth)
 {
     earth->width = width;
     earth->height = height;
 
     earth_morph(input, delta_time, earth);
-
+    earth_glow(theme, earth);
+    
     earth->country_hover_index = earth_find_country_index_under_cursor(input, camera, earth);
         
     if (input_is_mouse_pressed(input, KEY_MOUSE_LEFT))
@@ -900,7 +942,10 @@ static void earth_update(input_t* input, const camera_t* camera, const theme_t* 
         input_set_owner(input, INPUT_OWNER_NULL);
     }
 
-    earth_glow(theme, earth);
+    while (input_consume_mouse_wheel(input))
+    {
+        earth_zoom(input, camera, delta_time, earth);
+    }
 }
 
 static void earth_render(const graphics_t* graphics, const graphics_state_t* graphics_state,

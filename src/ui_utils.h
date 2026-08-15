@@ -169,6 +169,7 @@ typedef struct ui_text_edit_t
     i32 cursor;
     i32 selection;
     bool selecting;
+    bool changed;
 } ui_text_edit_t;
 
 static void ui_push_size_axis(ui_axis_t axis, ui_size_t size)
@@ -381,7 +382,7 @@ static void ui_widget_scrollbar(ui_widget_t* parent_widget)
                 f32 thumb_height = max(viewport * (viewport / content), 20.0f);
                 f32 track = viewport - thumb_height;
                 f32 fraction = ui_widget_scroll(widget, UI_AXIS_Y) / max_scroll;
-                f32 thumb_x = widget->rect.x + widget->rect.width - thumb_width;
+                f32 thumb_x = ui_widget_rect_position(widget, UI_AXIS_X) + ui_widget_rect_size(widget, UI_AXIS_X) - thumb_width;
                 f32 thumb_y = ui_widget_rect_position(widget, UI_AXIS_Y) + fraction * track;
 
                 ui_next_flags(UI_FLAG_BACKGROUND | UI_FLAG_FLOATING | UI_FLAG_CLICKABLE);
@@ -399,6 +400,7 @@ static void ui_widget_scrollbar(ui_widget_t* parent_widget)
                     f32 track = viewport - thumb_height;
                     f32 scroll_per_pixel = max_scroll / track;
                     ui_widget_scroll_set(widget, UI_AXIS_Y, ui_widget_scroll(widget, UI_AXIS_Y) + delta * scroll_per_pixel);
+                    thumb_widget->color = v4(0.5f, 0.5f, 0.5f, 0.6f);
                 }
             }
         }
@@ -416,7 +418,7 @@ static void ui_widget_scrollbar(ui_widget_t* parent_widget)
                 f32 track = viewport - thumb_width;
                 f32 fraction = ui_widget_scroll(widget, UI_AXIS_X) / max_scroll;
                 f32 thumb_x = ui_widget_rect_position(widget, UI_AXIS_X) + fraction * track;
-                f32 thumb_y = widget->rect.y + widget->rect.height - thumb_height;
+                f32 thumb_y = ui_widget_rect_position(widget, UI_AXIS_Y) + ui_widget_rect_size(widget, UI_AXIS_Y) - thumb_height;
 
                 ui_next_flags(UI_FLAG_BACKGROUND | UI_FLAG_FLOATING | UI_FLAG_CLICKABLE);
                 ui_next_color(v4(0.5f, 0.5f, 0.5f, 0.5f));
@@ -433,6 +435,7 @@ static void ui_widget_scrollbar(ui_widget_t* parent_widget)
                     f32 track = viewport - thumb_width;
                     f32 scroll_per_pixel = max_scroll / track;
                     ui_widget_scroll_set(widget, UI_AXIS_X, ui_widget_scroll(widget, UI_AXIS_X) + delta * scroll_per_pixel);
+                    thumb_widget->color = v4(0.5f, 0.5f, 0.5f, 0.6f);
                 }
             }
         }
@@ -461,6 +464,7 @@ static void ui_text_edit_delete_range(ui_text_edit_t* text_edit, i32 start, i32 
         text_edit->text[text_edit->length] = '\0';
         text_edit->cursor = clamp_i32(0, start, text_edit->length);
         text_edit->selection = clamp_i32(0, start, text_edit->length);
+        text_edit->changed = true;
     }
 }
 
@@ -540,6 +544,7 @@ static void ui_text_edit_insert(ui_text_edit_t* text_edit, key_t key)
     text_edit->cursor++;
     text_edit->length++;
     text_edit->text[text_edit->length] = '\0';
+    text_edit->changed = true;
     
     ui_text_edit_collapse(text_edit);
 }
@@ -850,6 +855,8 @@ static ui_signal_t ui_widget_text_edit(const char* name, ui_text_edit_t* text_ed
     ui_widget_t* widget = ui_widget(name);
     ui_signal_t signal = ui_signal_for(widget);
 
+    text_edit->changed = false;
+    
     if (signal.pressed)
     {
         ui_set_focus(widget->key);
@@ -859,67 +866,90 @@ static ui_signal_t ui_widget_text_edit(const char* name, ui_text_edit_t* text_ed
     {
         u32 codepoint_index = 0;
         u32 codepoint = 0;
-        u32 key_index = 0;
-        key_t key = KEY_NULL;
 
-        while ((codepoint = input_consume_next_text_event(input, &codepoint_index)) != 0)
+        for (u32 i = 0; i < input->event_count; ++i)
         {
-            ui_text_edit_insert(text_edit, codepoint);
-        }
+            input_event_t* event = input->events + i;
 
-        while ((key = input_consume_next_event(input, INPUT_EVENT_KEY_PRESS, &key_index)) != KEY_NULL)
-        {
-            if (key == KEY_BACKSPACE || (key == KEY_H && (input->modifiers & KEY_MODIFIER_CTRL)))
+            if (event->consumed)
             {
-                ui_text_edit_backspace(text_edit);
+                continue;
             }
 
-            if (key == KEY_H && input->modifiers & KEY_MODIFIER_ALT)
+            if (event->kind == INPUT_EVENT_TEXT && event->codepoint >= 32)
             {
-                ui_text_edit_backspace_all(text_edit);
+                ui_text_edit_insert(text_edit, event->codepoint);
+                input_consume_event(input, event);
             }
+            else if (event->kind == INPUT_EVENT_KEY_PRESS)
+            {
+                key_t key = event->key;
+                bool ctrl = event->modifiers & KEY_MODIFIER_CTRL;
+                bool shift = event->modifiers & KEY_MODIFIER_SHIFT;
+                bool alt = event->modifiers & KEY_MODIFIER_ALT;
 
-            if (key == KEY_UP)
-            {
-                ui_text_edit_move_up(widget, text_edit, input->modifiers & KEY_MODIFIER_SHIFT);
-            }
+                if (key == KEY_BACKSPACE || (key == KEY_H && ctrl))
+                {
+                    ui_text_edit_backspace(text_edit);
+                    input_consume_event(input, event);
+                }
 
-            if (key == KEY_DOWN)
-            {
-                ui_text_edit_move_down(widget, text_edit, input->modifiers & KEY_MODIFIER_SHIFT);
-            }
+                if (key == KEY_H && alt)
+                {
+                    ui_text_edit_backspace_all(text_edit);
+                    event->consumed = true;
+                }
+
+                if (key == KEY_UP)
+                {
+                    ui_text_edit_move_up(widget, text_edit, shift);
+                    input_consume_event(input, event);
+                }
+
+                if (key == KEY_DOWN)
+                {
+                    ui_text_edit_move_down(widget, text_edit, shift);
+                    input_consume_event(input, event);
+                }
             
-            if (key == KEY_LEFT)
-            {
-                ui_text_edit_move_left(text_edit, 1, input->modifiers & KEY_MODIFIER_SHIFT);
-            }
+                if (key == KEY_LEFT)
+                {
+                    ui_text_edit_move_left(text_edit, 1, shift);
+                    input_consume_event(input, event);
+                }
 
-            if (key == KEY_RIGHT)
-            {
-                ui_text_edit_move_right(text_edit, 1, input->modifiers & KEY_MODIFIER_SHIFT);
-            }
+                if (key == KEY_RIGHT)
+                {
+                    ui_text_edit_move_right(text_edit, 1, shift);
+                    input_consume_event(input, event);
+                }
 
-            if (key == KEY_E && input->modifiers & KEY_MODIFIER_CTRL)
-            {
-                ui_text_edit_move_right(text_edit, text_edit->length - text_edit->cursor, input->modifiers & KEY_MODIFIER_SHIFT);
-            }
+                if (key == KEY_E && ctrl)
+                {
+                    ui_text_edit_move_right(text_edit, text_edit->length - text_edit->cursor, shift);
+                    input_consume_event(input, event);
+                }
 
-            if (key == KEY_A && input->modifiers & KEY_MODIFIER_CTRL)
-            {
-                ui_text_edit_move_left(text_edit, text_edit->cursor, input->modifiers & KEY_MODIFIER_SHIFT);
-            }
+                if (key == KEY_A && ctrl)
+                {
+                    ui_text_edit_move_left(text_edit, text_edit->cursor, shift);
+                    input_consume_event(input, event);
+                }
 
-            if (key == KEY_D && input->modifiers & KEY_MODIFIER_CTRL)
-            {
-                ui_text_edit_delete(text_edit);
-            }
+                if (key == KEY_D && ctrl)
+                {
+                    ui_text_edit_delete(text_edit);
+                    input_consume_event(input, event);
+                }
 
-            if (key == KEY_D && input->modifiers & KEY_MODIFIER_ALT)
-            {
-                ui_text_edit_delete_all(text_edit);
+                if (key == KEY_D && alt)
+                {
+                    ui_text_edit_delete_all(text_edit);
+                    input_consume_event(input, event);
+                }
             }
         }
-
+        
         ui_text_edit_selection(widget, text_edit);
         ui_text_edit_update_scroll(widget, text_edit);
         ui_widget_text_edit_selection(widget, text_edit);
