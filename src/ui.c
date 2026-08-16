@@ -188,34 +188,25 @@ static inline ui_axis_t ui_axis_flip(ui_axis_t axis)
     return flipped_axis;
 }
 
-static inline ui_alignment_t ui_align_center(void)
+static inline ui_alignment_kind_t ui_align_center(void)
 {
-    ui_alignment_t alignment =
-    {
-        .value = { UI_ALIGNMENT_CENTER, UI_ALIGNMENT_CENTER },
-    };
+    ui_alignment_kind_t alignment = UI_ALIGNMENT_CENTER;
 
     return alignment;
 }
 
-static inline ui_alignment_t ui_align_leading(void)
+static inline ui_alignment_kind_t ui_align_leading(void)
 {
-    ui_alignment_t alignment =
-    {
-        .value = { UI_ALIGNMENT_LEADING, UI_ALIGNMENT_LEADING },
-    };
+    ui_alignment_kind_t alignment = UI_ALIGNMENT_LEADING;
 
     return alignment;
 }
 
-static inline ui_alignment_t ui_align_trailing(void)
+static inline ui_alignment_kind_t ui_align_trailing(void)
 {
-    ui_alignment_t widget_alignment =
-    {
-        .value = { UI_ALIGNMENT_TRAILING, UI_ALIGNMENT_TRAILING },
-    };
+    ui_alignment_kind_t alignment = UI_ALIGNMENT_TRAILING;
 
-    return widget_alignment;
+    return alignment;
 }
 
 static inline f32 ui_widget_rect_position(ui_widget_t* widget, ui_axis_t axis)

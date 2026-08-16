@@ -152,8 +152,8 @@ static void ui_stack_set_flags(ui_flags_t flags)
 #define ui_top_font_color() ui_top(&global_ui->stacks.font_color, vec4)
 #define ui_pop_font_color() ui_pop(&global_ui->stacks.font_color)
 
-#define ui_push_text_alignment(...) ui_push(&global_ui->stacks.text_alignment, ui_alignment_t, __VA_ARGS__)
-#define ui_next_text_alignment(...) ui_next(&global_ui->stacks.text_alignment, ui_alignment_t, __VA_ARGS__)
+#define ui_push_text_alignment(x, y) ui_push(&global_ui->stacks.text_alignment, ui_alignment_t, ((ui_alignment_t){ x, y }))
+#define ui_next_text_alignment(x, y) ui_next(&global_ui->stacks.text_alignment, ui_alignment_t, ((ui_alignment_t){ x, y }))
 #define ui_top_text_alignment() ui_top(&global_ui->stacks.text_alignment, ui_alignment_t)
 #define ui_pop_text_alignment() ui_pop(&global_ui->stacks.text_alignment)
 

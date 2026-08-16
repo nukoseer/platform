@@ -284,9 +284,9 @@ static inline ui_size_t ui_children(f32 strictness);
 static inline ui_axis_t ui_axis_x(void);
 static inline ui_axis_t ui_axis_y(void);
 static inline ui_axis_t ui_axis_flip(ui_axis_t axis);
-static inline ui_alignment_t ui_align_center(void);
-static inline ui_alignment_t ui_align_leading(void);
-static inline ui_alignment_t ui_align_trailing(void);
+static inline ui_alignment_kind_t ui_align_center(void);
+static inline ui_alignment_kind_t ui_align_leading(void);
+static inline ui_alignment_kind_t ui_align_trailing(void);
 
 static inline ui_key_t ui_key_zero(void);
 static ui_widget_t* ui_widget_build_from_key(ui_key_t key);
