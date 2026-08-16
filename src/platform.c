@@ -534,6 +534,7 @@ static bool process_thread_messages(window_t* window, input_t* input)
                         key_map[vk_f] = (key_t)key;
                     }
 
+                    key_map[VK_ESCAPE] = KEY_ESC;
                     key_map[VK_BACK] = KEY_BACKSPACE;
                     key_map[VK_TAB] = KEY_TAB;
                     key_map[VK_SPACE] = KEY_SPACE;
@@ -558,7 +559,7 @@ static bool process_thread_messages(window_t* window, input_t* input)
                 {
                     toggle_fullscreen(window);
                 }
-                else if (key_code == VK_ESCAPE && is_down)
+                else if (key_code == VK_F4 && is_down && alt_is_down)
                 {
                     PostQuitMessage(0);
                 }

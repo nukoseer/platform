@@ -587,7 +587,12 @@ static ui_widget_t* ui_widget_build_from_format_string(const char* widget_name_f
 
 static inline void ui_set_focus(ui_key_t key)
 {
-    global_ui->focus_key = key;
+    ui_widget_t* widget = ui_widget_from_key(key);
+
+    if (widget && ui_is_flag_set(widget, UI_FLAG_FOCUSABLE))
+    {
+        global_ui->focus_key = key;
+    }
 }
 
 static inline void ui_clear_focus(ui_key_t key)
@@ -1705,7 +1710,6 @@ static void ui_resolve_active(void)
             
             global_ui->active_key = global_ui->hot_key;
             global_ui->pressed_key = global_ui->active_key;
-            global_ui->focus_key = ui_key_zero();
             
             if (ui_is_flag_set(widget, UI_FLAG_FOCUSABLE))
             {
@@ -1714,10 +1718,6 @@ static void ui_resolve_active(void)
 
             input_set_owner(global_ui->input, INPUT_OWNER_UI);
             input_consume_mouse_press(global_ui->input, KEY_MOUSE_LEFT);
-        }
-        else
-        {
-            global_ui->focus_key = ui_key_zero();
         }
     }
 

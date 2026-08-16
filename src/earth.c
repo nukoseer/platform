@@ -786,7 +786,8 @@ static void earth_ui_update(input_t* input, const theme_t* theme, earth_t* earth
         ui_widget_group_end();
     }
 
-    if (input_is_key_pressed(input, KEY_F, KEY_MODIFIER_CTRL))
+    bool ctrl_f_pressed = input_is_key_pressed(input, KEY_F, KEY_MODIFIER_CTRL);
+    if (ctrl_f_pressed)
     {
         earth->country_search_enabled = !earth->country_search_enabled;
         input_set_owner(input, INPUT_OWNER_UI);
@@ -802,7 +803,7 @@ static void earth_ui_update(input_t* input, const theme_t* theme, earth_t* earth
                                  earth);
         }
         
-        ui_next_size(ui_percent(0.25f, 0.0f), ui_children(1.0f));
+        ui_next_size(ui_pixel(420.0f, 0.0f), ui_children(1.0f));
         ui_next_border(1.0f, theme->border_color);
         ui_next_flags(UI_FLAG_BACKGROUND | UI_FLAG_FLOATING);
         ui_next_padding(16.0f);
@@ -831,10 +832,86 @@ static void earth_ui_update(input_t* input, const theme_t* theme, earth_t* earth
                 ui_next_size(ui_percent(1.0f, 1.0f), ui_content(1.0f));
                 ui_next_padding(8.0f);
                 ui_next_flags(UI_FLAG_BACKGROUND | UI_FLAG_CLICKABLE);
-                ui_signal_t signal = ui_widget_text_edit("country-search", &earth->country_search_text_edit, "Search Country...");
+                ui_widget_t* country_search_widget = ui_widget_text_edit_begin("country-search", &earth->country_search_text_edit, "Search Country...");
+                ui_signal_t country_search_signal = ui_signal_for(country_search_widget);
+                {
+                    if (country_search_signal.clicked || ctrl_f_pressed)
+                    {
+                        ui_set_focus(country_search_widget->key);
+                    }
+
+                    if (ui_is_focused(country_search_widget->key))
+                    {
+                        ui_text_edit_t* text_edit = &earth->country_search_text_edit;
+
+                        for (u32 i = 0; i < input->event_count; ++i)
+                        {
+                            input_event_t* event = input->events + i;
+
+                            if (event->consumed)
+                            {
+                                continue;
+                            }
+
+                            if (event->kind == INPUT_EVENT_TEXT && event->codepoint >= 32)
+                            {
+                                ui_text_edit_insert(text_edit, event->codepoint);
+                                input_consume_event(input, event);
+                            }
+                            else if (event->kind == INPUT_EVENT_KEY_PRESS)
+                            {
+                                key_t key = event->key;
+                                bool shift = event->modifiers & KEY_MODIFIER_SHIFT;
+
+                                if (key == KEY_BACKSPACE)
+                                {
+                                    ui_text_edit_backspace(text_edit);
+                                    input_consume_event(input, event);
+                                }
+
+                                if (key == KEY_UP)
+                                {
+                                    ui_text_edit_move_up(widget, text_edit, shift);
+                                    input_consume_event(input, event);
+                                }
+
+                                if (key == KEY_DOWN)
+                                {
+                                    ui_text_edit_move_down(widget, text_edit, shift);
+                                    input_consume_event(input, event);
+                                }
+            
+                                if (key == KEY_LEFT)
+                                {
+                                    ui_text_edit_move_left(text_edit, 1, shift);
+                                    input_consume_event(input, event);
+                                }
+
+                                if (key == KEY_RIGHT)
+                                {
+                                    ui_text_edit_move_right(text_edit, 1, shift);
+                                    input_consume_event(input, event);
+                                }
+
+                                if (key == KEY_ESC)
+                                {
+                                    if (text_edit->length > 0)
+                                    {
+                                        ui_text_edit_clear(text_edit);
+                                    }
+                                    else
+                                    {
+                                        ui_clear_focus(country_search_widget->key);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                ui_widget_text_edit_end(country_search_widget, &earth->country_search_text_edit);
 
                 ui_next_color(theme->border_color);
-                if (ui_is_focused(signal.widget->key)) ui_next_color(theme->fg_color);
+                if (ui_is_focused(country_search_widget->key)) ui_next_color(theme->fg_color);
                 ui_next_size(ui_percent(1.0f, 1.0f), ui_pixel(1.0f, 1.0f));
                 ui_next_flags(UI_FLAG_BACKGROUND);
                 ui_widget("country-search-bar");
@@ -881,7 +958,6 @@ static void earth_ui_update(input_t* input, const theme_t* theme, earth_t* earth
                                 if (signal.clicked)
                                 {
                                     earth->country_selected_index = (u8)country_index;
-                                    earth->country_search_text_edit.length = 0;
                                 }
                             }
                         }
