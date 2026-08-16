@@ -220,14 +220,14 @@ static inline ui_alignment_t ui_align_trailing(void)
 
 static inline f32 ui_widget_rect_position(ui_widget_t* widget, ui_axis_t axis)
 {
-    f32 content_position = widget->rect.xy[axis] + widget->padding;
+    f32 content_position = widget->rect.xy[axis] + widget->padding.xy[axis];
 
     return content_position;
 }
 
 static inline f32 ui_widget_rect_size(ui_widget_t* widget, ui_axis_t axis)
 {
-    f32 content_size = widget->rect.size[axis] - widget->padding * 2.0f;
+    f32 content_size = widget->rect.size[axis] - widget->padding.xy[axis] * 2.0f;
 
     return content_size > 0.0f ? content_size : 0.0f;
 }
@@ -748,13 +748,13 @@ static void ui_clear_text_lines(ui_widget_t* widget)
     assert(widget->text_line_count == 0 && "[UI] Invalid text line count.");
 }
 
-static void ui_resolve_text_lines(ui_widget_t* root_widget, ui_axis_t axis)
+static void ui_resolve_text_lines(ui_widget_t* root_widget)
 {
     ui_clear_text_lines(root_widget);
     
     if (root_widget->text)
     {
-        f32 wrap_width = root_widget->fixed_size[UI_AXIS_X] - root_widget->padding * 2.0f;
+        f32 wrap_width = root_widget->fixed_size[UI_AXIS_X] - root_widget->padding.xy[UI_AXIS_X] * 2.0f;
         f32 max_width = 0.0f;
 
         if (wrap_width < 0.0f)
@@ -900,7 +900,7 @@ static void ui_resolve_text_lines(ui_widget_t* root_widget, ui_axis_t axis)
 
     for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
     {
-        ui_resolve_text_lines(child_widget, axis);
+        ui_resolve_text_lines(child_widget);
     }
 }
 
@@ -999,7 +999,7 @@ static void ui_resolve_size_constraints(ui_widget_t* root_widget, ui_axis_t axis
             }
 
             f32 child_size = child_widget->fixed_size[axis];
-            f32 violation_amount = child_size - (root_widget->fixed_size[axis] - root_widget->padding * 2.0f);
+            f32 violation_amount = child_size - (root_widget->fixed_size[axis] - root_widget->padding.xy[axis] * 2.0f);
             f32 fix_amount = clamp(0.0f, violation_amount, child_size);
 
             if (fix_amount > 0.0f)
@@ -1025,7 +1025,7 @@ static void ui_resolve_size_constraints(ui_widget_t* root_widget, ui_axis_t axis
             total_weighted_size += child_widget->fixed_size[axis] * (1.0f - child_widget->size[axis].strictness);
         }
 
-        f32 violation_amount = total_size - (root_widget->fixed_size[axis] - root_widget->padding * 2.0f);
+        f32 violation_amount = total_size - (root_widget->fixed_size[axis] - root_widget->padding.xy[axis] * 2.0f);
 
         if (violation_amount > 0.0f && total_weighted_size > 0.0f)
         {
@@ -1063,7 +1063,7 @@ static void ui_resolve_sizes(ui_widget_t* root_widget, ui_axis_t axis)
                 if (axis == UI_AXIS_X)
                 {
                     f32 width = global_ui->graphics->measure_text_width(child_widget->font.font, child_widget->text, child_widget->text_length) + 0.5f;
-                    child_widget->fixed_size[axis] = width + child_widget->padding * 2.0f;
+                    child_widget->fixed_size[axis] = width + child_widget->padding.xy[axis] * 2.0f;
                 }
                 else if (axis == UI_AXIS_Y)
                 {
@@ -1079,13 +1079,13 @@ static void ui_resolve_sizes(ui_widget_t* root_widget, ui_axis_t axis)
                         line_count = 1;
                     }
                     
-                    child_widget->fixed_size[axis] = line_count * child_widget->text_size[axis] + child_widget->padding * 2.0f;
+                    child_widget->fixed_size[axis] = line_count * child_widget->text_size[axis] + child_widget->padding.xy[axis] * 2.0f;
                 }
             } break;
 
             case UI_SIZE_PARENT:
             {
-                f32 interior = root_widget->fixed_size[axis] - root_widget->padding * 2.0f;
+                f32 interior = root_widget->fixed_size[axis] - root_widget->padding.xy[axis] * 2.0f;
                 if (interior < 0.0f) interior = 0.0f;
                 child_widget->fixed_size[axis] = child_widget->size[axis].value * interior;
             } break;
@@ -1125,7 +1125,7 @@ static void ui_resolve_sizes(ui_widget_t* root_widget, ui_axis_t axis)
                 }
             }
             
-            child_widget->fixed_size[axis] = children_size + child_widget->padding * 2.0f;
+            child_widget->fixed_size[axis] = children_size + child_widget->padding.xy[axis] * 2.0f;
         }
     }
 
@@ -1148,7 +1148,7 @@ static void ui_resolve_sizes(ui_widget_t* root_widget, ui_axis_t axis)
 static void ui_resolve_layout(ui_widget_t* root_widget, ui_axis_t axis)
 {
     bool is_root = root_widget == global_ui->root_widget;
-    f32 layout_at = root_widget->padding;
+    f32 layout_at = root_widget->padding.xy[axis];
     f32 cross_axis_size = 0.0f;
 
     // NOTE: Normal pass.
@@ -1182,8 +1182,8 @@ static void ui_resolve_layout(ui_widget_t* root_widget, ui_axis_t axis)
         if (root_widget->text_line_count == 0)
         {
             root_widget->content_size[axis] = (root_widget->layout_axis == axis ?
-                                               layout_at + root_widget->padding :
-                                               cross_axis_size + root_widget->padding * 2.0f);
+                                               layout_at + root_widget->padding.xy[axis] :
+                                               cross_axis_size + root_widget->padding.xy[axis] * 2.0f);
         }
 
         ui_widget_scroll_to(root_widget, axis, root_widget->scroll_target[axis]);
@@ -1392,10 +1392,10 @@ static void ui_emit_draw_commands(ui_widget_t* widget, ui_rect_t clip_rect, vec2
     {
         ui_rect_t content_rect =
         {
-            rect.x + widget->padding,
-            rect.y + widget->padding,
-            rect.width - widget->padding * 2.0f,
-            rect.height - widget->padding * 2.0f
+            rect.x + widget->padding.x,
+            rect.y + widget->padding.y,
+            rect.width - widget->padding.x * 2.0f,
+            rect.height - widget->padding.y * 2.0f
         };
         
         ui_rect_t text_clip = ui_is_flag_set(widget, UI_FLAG_ESCAPE_CLIP) ?
@@ -1520,7 +1520,7 @@ static void ui_init(memory_arena_t* memory_arena)
     ui_stack_init(global_ui->arena, &global_ui->stacks.size_x, sizeof(ui_size_t), UI_STACK_SIZE);
     ui_stack_init(global_ui->arena, &global_ui->stacks.size_y, sizeof(ui_size_t), UI_STACK_SIZE);
     ui_stack_init(global_ui->arena, &global_ui->stacks.layout_axis, sizeof(ui_axis_t), UI_STACK_SIZE);
-    ui_stack_init(global_ui->arena, &global_ui->stacks.padding, sizeof(f32), UI_STACK_SIZE);
+    ui_stack_init(global_ui->arena, &global_ui->stacks.padding, sizeof(ui_padding_t), UI_STACK_SIZE);
     ui_stack_init(global_ui->arena, &global_ui->stacks.color, sizeof(vec4), UI_STACK_SIZE);
     ui_stack_init(global_ui->arena, &global_ui->stacks.border, sizeof(ui_border_t), UI_STACK_SIZE);
     ui_stack_init(global_ui->arena, &global_ui->stacks.flags, sizeof(ui_flags_t), UI_STACK_SIZE);
@@ -1848,7 +1848,7 @@ static void ui_begin(graphics_t* graphics, input_t* input, f32 delta_time, f32 w
     ui_stack_push(&global_ui->stacks.size_x, &(ui_size_t){ 0 });
     ui_stack_push(&global_ui->stacks.size_y, &(ui_size_t){ 0 });
     ui_stack_push(&global_ui->stacks.layout_axis, &(ui_axis_t){ UI_AXIS_Y });
-    ui_stack_push(&global_ui->stacks.padding, &(f32){ 0 });
+    ui_stack_push(&global_ui->stacks.padding, &(ui_padding_t){ 0 });
     ui_stack_push(&global_ui->stacks.color, &(vec4){ 0 });
     ui_stack_push(&global_ui->stacks.border, &(ui_border_t){ 0 });
     ui_stack_push(&global_ui->stacks.flags, &(void*){ 0 });
@@ -1873,7 +1873,7 @@ static void ui_end(void)
 
         if (axis == UI_AXIS_X)
         {
-            ui_resolve_text_lines(global_ui->root_widget, axis);
+            ui_resolve_text_lines(global_ui->root_widget);
         }
 
         ui_resolve_layout(global_ui->root_widget, axis);

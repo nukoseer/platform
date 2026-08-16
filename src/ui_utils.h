@@ -110,9 +110,9 @@ static void ui_stack_set_flags(ui_flags_t flags)
 #define ui_top_axis() ui_top(&global_ui->stacks.layout_axis, ui_axis_t)
 #define ui_pop_axis() ui_pop(&global_ui->stacks.layout_axis)
 
-#define ui_push_padding(value) ui_push(&global_ui->stacks.padding, f32, value)
-#define ui_next_padding(value) ui_next(&global_ui->stacks.padding, f32, value)
-#define ui_top_padding() ui_top(&global_ui->stacks.padding, f32)
+#define ui_push_padding(x, y) ui_push(&global_ui->stacks.padding, ui_padding_t, ((ui_padding_t){ x, y }))
+#define ui_next_padding(x, y) ui_next(&global_ui->stacks.padding, ui_padding_t, ((ui_padding_t){ x, y }))
+#define ui_top_padding() ui_top(&global_ui->stacks.padding, ui_padding_t)
 #define ui_pop_padding() ui_pop(&global_ui->stacks.padding)
 
 #define ui_push_color(value) ui_push(&global_ui->stacks.color, vec4, value)

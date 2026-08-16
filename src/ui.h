@@ -15,13 +15,6 @@ typedef enum ui_size_kind_t
     UI_SIZE_COUNT,
 } ui_size_kind_t;
 
-typedef struct ui_size_t
-{
-    ui_size_kind_t kind;
-    f32 value;
-    f32 strictness;
-} ui_size_t;
-
 typedef enum ui_axis_t
 {
     UI_AXIS_X,
@@ -43,6 +36,27 @@ typedef struct ui_position_t
         f32 xy[UI_AXIS_COUNT];
     };
 } ui_position_t;
+
+typedef struct ui_size_t
+{
+    ui_size_kind_t kind;
+    f32 value;
+    f32 strictness;
+} ui_size_t;
+
+typedef struct ui_padding_t
+{
+    union
+    {
+        struct
+        {
+            f32 x;
+            f32 y;
+        };
+
+        f32 xy[UI_AXIS_COUNT];
+    };
+} ui_padding_t;
 
 typedef struct ui_border_t
 {
@@ -206,8 +220,8 @@ typedef struct ui_widget_t
     ui_key_t key;
     ui_position_t position;
     ui_size_t size[UI_AXIS_COUNT];
+    ui_padding_t padding;
     ui_axis_t layout_axis;
-    f32 padding;
     vec4 color;
     ui_border_t border;
     ui_flags_t flags;
