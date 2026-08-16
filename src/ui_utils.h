@@ -344,8 +344,11 @@ static void ui_widget_named_column_end(void)
 
 static ui_widget_t* ui_widget_column_begin(void)
 {
-    // TODO: Using an empty string will make a problem if there are multiple unnamed columns. We can either disallow unnamed columns or generate unique keys for unnamed columns.
-    ui_widget_t* widget = ui_widget_named_column_begin("");
+    ui_widget_t* widget = 0;
+
+    ui_next_axis(ui_axis_y());
+    widget = ui_widget_build_from_key(ui_key_zero());
+    ui_push_parent(widget);
 
     return widget;
 }
@@ -353,6 +356,28 @@ static ui_widget_t* ui_widget_column_begin(void)
 static void ui_widget_column_end(void)
 {
     ui_widget_named_column_end();
+}
+
+// TODO: This function does not check if target is really inside in scrollable widget.
+// If we would have a problem in future, we should implement a specific version of this.
+// It directly can take widget parameter as a target instead of rect and check if it is 
+// really descendant of scrollable widget.
+static void ui_scroll_to_visible(ui_widget_t* scrollable_widget, ui_rect_t target, ui_axis_t axis)
+{
+    f32 target_start = target.xy[axis];
+    f32 target_end = target_start + target.size[axis];
+
+    f32 view_start = ui_widget_scroll(scrollable_widget, UI_AXIS_Y) + ui_widget_rect_position(scrollable_widget, UI_AXIS_Y);
+    f32 view_end = view_start + ui_widget_rect_size(scrollable_widget, UI_AXIS_Y);
+
+    if (target_end > view_end)
+    {
+        ui_widget_scroll_set(scrollable_widget, UI_AXIS_Y, ui_widget_scroll(scrollable_widget, UI_AXIS_Y) + (target_end - view_end));
+    }
+    else if (target_start < view_start)
+    {
+        ui_widget_scroll_set(scrollable_widget, UI_AXIS_Y, ui_widget_scroll(scrollable_widget, UI_AXIS_Y) - (view_start - target_start));
+    }
 }
 
 static void ui_widget_scrollbar(ui_widget_t* parent_widget)

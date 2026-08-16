@@ -152,6 +152,8 @@ typedef struct earth_t
     country_data_t country_data;
     u8 country_hover_index;
     u8 country_selected_index;
+    i32 country_list_hover_index;
+    bool country_list_hover_index_changed;
 
     vec2 country_card_position;
 
@@ -661,6 +663,8 @@ static void earth_init(memory_arena_t* memory_arena, const graphics_t* graphics,
     earth->memory_arena = memory_arena;
     earth->country_hover_index = COUNTRY_INVALID_INDEX;
     earth->country_selected_index = COUNTRY_INVALID_INDEX;
+    earth->country_list_hover_index = -1;
+    earth->country_list_hover_index_changed = false;
     earth->country_card_position = v2(40.0f, 40.0f);
 }
 
@@ -670,7 +674,7 @@ static void earth_search_country(memory_arena_t* memory_arena, const char* name,
 
     for (i32 i = 0; i < array_count(global_shape_country_names); ++i)
     {
-        if (earth->country_match_score_count > array_count(earth->country_match_scores) - 1)
+        if (earth->country_match_score_count >= array_count(earth->country_match_scores) - 1)
         {
             break;
         }
@@ -692,6 +696,15 @@ static void earth_search_country(memory_arena_t* memory_arena, const char* name,
             earth->country_match_scores[j] = score;
             earth->country_match_indices[j] = i;
         }
+    }
+}
+
+static inline void earth_move_country_list_hover_index(earth_t* earth, i32 move)
+{
+    if (earth->country_match_score_count > 0)
+    {
+        earth->country_list_hover_index = clamp_i32(-1, earth->country_list_hover_index + move, earth->country_match_score_count - 1);
+        earth->country_list_hover_index_changed = true;
     }
 }
 
@@ -804,6 +817,8 @@ static void earth_ui_update(input_t* input, const theme_t* theme, earth_t* earth
 
     if (earth->country_search_enabled)
     {
+        earth->country_list_hover_index_changed = false;
+
         if (earth->country_search_text_edit.changed)
         {
             earth_search_country(earth->memory_arena,
@@ -881,13 +896,13 @@ static void earth_ui_update(input_t* input, const theme_t* theme, earth_t* earth
 
                                 if (key == KEY_UP)
                                 {
-                                    ui_text_edit_move_up(widget, text_edit, shift);
+                                    earth_move_country_list_hover_index(earth, -1);
                                     input_consume_event(input, event);
                                 }
 
                                 if (key == KEY_DOWN)
                                 {
-                                    ui_text_edit_move_down(widget, text_edit, shift);
+                                    earth_move_country_list_hover_index(earth, 1);
                                     input_consume_event(input, event);
                                 }
             
@@ -913,6 +928,8 @@ static void earth_ui_update(input_t* input, const theme_t* theme, earth_t* earth
                                     {
                                         ui_clear_focus(country_search_widget->key);
                                     }
+
+                                    earth->country_list_hover_index = -1;
                                 }
                             }
                         }
@@ -940,13 +957,14 @@ static void earth_ui_update(input_t* input, const theme_t* theme, earth_t* earth
                         }
 
                         ui_widget_spacer(ui_pixel(8.0f, 1.0f));
-                    
+
                         ui_next_size(ui_percent(1.0f, 1.0f), ui_em(20.0f, 1.0f));
                         ui_next_flags(UI_FLAG_BACKGROUND | UI_FLAG_SCROLLABLE_Y);
                         ui_widget_named_column("country-search-results-column")
                         {
-                            ui_widget_scrollbar(ui_top_parent());
-
+                            ui_widget_t* country_search_results_widget = ui_top_parent();
+                            ui_widget_scrollbar(country_search_results_widget);
+                            
                             for (i32 i = 0; i < country_score_count; ++i)
                             {
                                 i32 country_index = earth->country_match_indices[i];
@@ -956,9 +974,14 @@ static void earth_ui_update(input_t* input, const theme_t* theme, earth_t* earth
                                 ui_next_size(ui_percent(0.98f, 1.0f), ui_em(2.5f, 1.0f));
                                 ui_next_padding(8.0f, 0.0f);
                                 ui_next_text_alignment(ui_align_leading(), ui_align_center());
-                                ui_next_color(signal.hovering ? v4v(theme->fg_color.rgb, 0.05f) : theme->bg_color);
+                                ui_next_color(signal.hovering || earth->country_list_hover_index == i ? v4v(theme->fg_color.rgb, 0.05f) : theme->bg_color);
                                 ui_next_flags(UI_FLAG_BACKGROUND | UI_FLAG_CLICKABLE);
-                                ui_widget_text(country_name.name, country_name.name);
+                                ui_widget_t* widget = ui_widget_text(country_name.name, country_name.name);
+
+                                if (i == earth->country_list_hover_index && earth->country_list_hover_index_changed)
+                                {
+                                    ui_scroll_to_visible(country_search_results_widget, widget->rect, UI_AXIS_Y);
+                                }
 
                                 if (signal.clicked)
                                 {
