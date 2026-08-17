@@ -567,7 +567,7 @@ static ui_widget_t* ui_widget_build_from_format_string(const char* widget_name_f
     va_list args;
     
     va_start(args, widget_name_format);
-    u32 size = vsnprintf(widget_name, sizeof(widget_name) - 1, widget_name_format, args);
+    i32 size = vsnprintf(widget_name, max_widget_name_size, widget_name_format, args);
     widget_name[size] = '\0';
     va_end(args);
 
@@ -586,7 +586,7 @@ static inline void ui_set_focus(ui_key_t key)
     }
 }
 
-static inline void ui_clear_focus(ui_key_t key)
+static inline void ui_clear_focus(void)
 {
     global_ui->focus_key = (ui_key_t){ 0 };
 }

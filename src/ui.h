@@ -302,7 +302,7 @@ static inline void ui_widget_scroll_set(ui_widget_t* widget, ui_axis_t axis, f32
 static inline void ui_widget_scroll_to(ui_widget_t* widget, ui_axis_t axis, f32 value);
 
 static inline void ui_set_focus(ui_key_t key);
-static inline void ui_clear_focus(ui_key_t key);
+static inline void ui_clear_focus(void);
 static inline bool ui_is_focused(ui_key_t key);
 
 static inline ui_is_flag_set(ui_widget_t* widget, ui_flags_t flag);
