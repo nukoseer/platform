@@ -1,12 +1,27 @@
 #ifndef H_UI_UTILS_H
 
-static void ui_stack_init(memory_arena_t* arena, ui_stack_t* stack, u32 stride, u32 size)
+static void ui_stack_init(memory_arena_t* arena, ui_stack_t* stack, u32 stride, u32 size, void* default_value)
 {
     stack->data = ma_push_size(arena, stride * size);
     stack->stride = stride;
     stack->count = 0;
     stack->size = size;
     stack->auto_pop = false;
+
+    if (!default_value)
+    {
+        memset(stack->data, 0, stride * size);
+    }
+    else
+    {
+        u32 stride_offset = 0;
+
+        for (u32 i = 0; i < size; ++i)
+        {
+            memcpy(stack->data + stride_offset, default_value, stack->stride);
+            stride_offset += stride;
+        }   
+    }
 }
 
 static void ui_stack_push(ui_stack_t* stack, void* value)
@@ -141,6 +156,11 @@ static void ui_stack_set_flags(ui_flags_t flags)
 #define ui_next_anchor_offset(...) ui_next(&global_ui->stacks.anchor_offset, ui_anchor_offset_t, (ui_anchor_offset_t){ __VA_ARGS__ })
 #define ui_top_anchor_offset() ui_top(&global_ui->stacks.anchor_offset, ui_anchor_offset_t)
 #define ui_pop_anchor_offset() ui_pop(&global_ui->stacks.anchor_offset);
+
+#define ui_push_layer(value) ui_push(&global_ui->stacks.layer, i32, value)
+#define ui_next_layer(value) ui_next(&global_ui->stacks.layer, i32, value)
+#define ui_top_layer() ui_top(&global_ui->stacks.layer, i32)
+#define ui_pop_layer() ui_pop(&global_ui->stacks.layer);
 
 #define ui_push_font(...) ui_push(&global_ui->stacks.font, ui_font_t, (ui_font_t){ __VA_ARGS__ })
 #define ui_next_font(...) ui_next(&global_ui->stacks.font, ui_font_t, (ui_font_t){ __VA_ARGS__ })

@@ -1,5 +1,9 @@
 #ifndef H_UI_H
 
+#define UI_LAYER_UNSET    INT32_MIN
+#define UI_LAYER_NORMAL   -2
+#define UI_LAYER_FLOATING -1
+
 typedef struct ui_key_t
 {
     u64 value;
@@ -110,7 +114,6 @@ typedef enum ui_draw_kind_t
     UI_DRAW_RECT,
     UI_DRAW_BORDER,
     UI_DRAW_TEXT,
-    UI_DRAW_CUSTOM,
 } ui_draw_kind_t;
 
 typedef struct ui_draw_command_iter_t
@@ -130,7 +133,15 @@ typedef struct ui_draw_command_t
     graphics_2d_font_t font;
     const char* text;
     u32 length;
+    i32 layer;
+    u32 z;
 } ui_draw_command_t;
+
+typedef struct ui_draw_command_list_t
+{
+    ui_draw_command_t** commands;
+    i32 command_count;
+} ui_draw_command_list_t;
 
 typedef struct ui_draw_command_chunk_t
 {
@@ -216,6 +227,14 @@ typedef enum ui_flags_t
 
 typedef struct ui_widget_t
 {
+    struct ui_widget_t* parent;
+    struct ui_widget_t* hash_next;
+    struct ui_widget_t* hash_prev;
+    
+    ui_widget_list_t child_list;
+    struct ui_widget_t* child_next;
+    struct ui_widget_t* child_prev;
+
     const char* name;
     ui_key_t key;
     ui_position_t position;
@@ -243,17 +262,11 @@ typedef struct ui_widget_t
     f32 scroll[UI_AXIS_COUNT];
     f32 scroll_target[UI_AXIS_COUNT];
 
-    struct ui_widget_t* parent;
-    struct ui_widget_t* hash_next;
-    struct ui_widget_t* hash_prev;
-    
-    ui_widget_list_t child_list;
-    struct ui_widget_t* child_next;
-    struct ui_widget_t* child_prev;
-
     f32 content_size[UI_AXIS_COUNT];
     f32 fixed_size[UI_AXIS_COUNT];
     ui_rect_t rect;
+    i32 layer;
+    i32 z;
 
     bool hot;
     bool active;

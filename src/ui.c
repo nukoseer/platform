@@ -25,6 +25,7 @@ typedef struct ui_stacks_t
     ui_stack_t flags;
     ui_stack_t anchor;
     ui_stack_t anchor_offset;
+    ui_stack_t layer;
     
     ui_stack_t font;
     ui_stack_t font_color;
@@ -48,9 +49,7 @@ typedef struct ui_t
     ui_widget_list_t widget_lists[64];
     ui_text_line_t* free_text_lines;
 
-    ui_draw_command_chunk_t* draw_commands_first;
-    ui_draw_command_chunk_t* draw_commands_last;
-    u32 draw_command_count;
+    u32 max_z;
 
     ui_key_t hot_key;
     ui_key_t active_key;
@@ -58,6 +57,12 @@ typedef struct ui_t
     ui_key_t clicked_key;
     ui_key_t released_key;
     ui_key_t focus_key;
+
+    ui_draw_command_chunk_t* draw_commands_first;
+    ui_draw_command_chunk_t* draw_commands_last;
+    i32 draw_command_count;
+
+    ui_draw_command_list_t draw_command_list;
 } ui_t;
 
 static ui_t* global_ui;
@@ -533,6 +538,7 @@ static ui_widget_t* ui_widget_build_from_key(ui_key_t key)
     widget->anchor = ui_top_anchor();
     widget->anchor_offset[UI_AXIS_X] = ui_top_anchor_offset().x;
     widget->anchor_offset[UI_AXIS_Y] = ui_top_anchor_offset().y;
+    widget->layer = ui_top_layer();
 
     ui_stack_auto_pop(&global_ui->stacks.parent);
     ui_stack_auto_pop(&global_ui->stacks.size_x);
@@ -544,6 +550,7 @@ static ui_widget_t* ui_widget_build_from_key(ui_key_t key)
     ui_stack_auto_pop(&global_ui->stacks.flags);
     ui_stack_auto_pop(&global_ui->stacks.anchor);
     ui_stack_auto_pop(&global_ui->stacks.anchor_offset);
+    ui_stack_auto_pop(&global_ui->stacks.layer);
 
     return widget;
 }
@@ -1315,7 +1322,7 @@ static inline ui_draw_command_t* ui_push_draw_command(void)
     return draw_command;
 }
 
-static void ui_emit_draw_commands(ui_widget_t* widget, ui_rect_t clip_rect, vec2 scroll_offset)
+static void ui_emit_draw_commands(ui_widget_t* widget, ui_rect_t clip_rect, vec2 scroll_offset, i32 layer)
 {
     ui_rect_t rect =
     {
@@ -1331,7 +1338,7 @@ static void ui_emit_draw_commands(ui_widget_t* widget, ui_rect_t clip_rect, vec2
     {
         return;
     }
-    
+
     if (ui_is_flag_set(widget, UI_FLAG_BACKGROUND))
     {
         ui_draw_command_t* draw_command = ui_push_draw_command();
@@ -1341,6 +1348,8 @@ static void ui_emit_draw_commands(ui_widget_t* widget, ui_rect_t clip_rect, vec2
         draw_command->width = draw_rect.width;
         draw_command->height = draw_rect.height;
         draw_command->color = widget->color;
+        draw_command->layer = layer;
+        draw_command->z = widget->z;
     }
 
     if (ui_is_flag_set(widget, UI_FLAG_BORDER))
@@ -1366,17 +1375,9 @@ static void ui_emit_draw_commands(ui_widget_t* widget, ui_rect_t clip_rect, vec2
             draw_command->height = draw_border_rect.height;
             draw_command->color = widget->border.color;
             draw_command->thickness = widget->border.thickness;
+            draw_command->layer = layer;
+            draw_command->z = widget->z;
         }
-    }
-
-    if (ui_is_flag_set(widget, UI_FLAG_CUSTOM))
-    {
-        ui_draw_command_t* draw_command = ui_push_draw_command();
-        draw_command->kind = UI_DRAW_CUSTOM;
-        draw_command->x = draw_rect.x;
-        draw_command->y = draw_rect.y;
-        draw_command->width = draw_rect.width;
-        draw_command->height = draw_rect.height;
     }
 
     if (ui_is_flag_set(widget, UI_FLAG_TEXT))
@@ -1388,9 +1389,6 @@ static void ui_emit_draw_commands(ui_widget_t* widget, ui_rect_t clip_rect, vec2
             rect.width - widget->padding.x * 2.0f,
             rect.height - widget->padding.y * 2.0f
         };
-        
-        ui_rect_t text_clip = ui_is_flag_set(widget, UI_FLAG_ESCAPE_CLIP) ?
-            content_rect : ui_rect_intersect(clip_rect, content_rect);
         
         for (ui_text_line_t* text_line = widget->text_line_list.first; text_line; text_line = text_line->next)
         {
@@ -1417,17 +1415,24 @@ static void ui_emit_draw_commands(ui_widget_t* widget, ui_rect_t clip_rect, vec2
             draw_command->width = text_line->size[0];
             draw_command->height = text_line->size[1];
             draw_command->color = widget->font_color;
-            draw_command->clip = text_clip;
+            draw_command->clip = line_clip;
             draw_command->font = widget->font.font;
             draw_command->text = widget->text + text_line->offset;
             draw_command->length = text_line->length;
+            draw_command->layer = layer;
+            draw_command->z = widget->z;
         }
     }
 }
 
-static void ui_emit_subtree(ui_widget_t* root_widget, ui_rect_t clip_rect, vec2 scroll_offset)
+static void ui_emit_draw_pass(ui_widget_t* root_widget, ui_rect_t clip_rect, vec2 scroll_offset, i32 layer)
 {
-    ui_emit_draw_commands(root_widget, clip_rect, scroll_offset);
+    i32 own_layer = (root_widget->layer == UI_LAYER_UNSET ?
+                     (ui_is_flag_set(root_widget, UI_FLAG_FLOATING) ? UI_LAYER_FLOATING : UI_LAYER_NORMAL) :
+                     root_widget->layer);
+    i32 effective_layer = max(layer, own_layer);
+    
+    ui_emit_draw_commands(root_widget, clip_rect, scroll_offset, effective_layer);
 
     ui_rect_t child_clip_rect = ui_rect_intersect(clip_rect, root_widget->rect);
     vec2 child_scroll_offset =
@@ -1435,64 +1440,53 @@ static void ui_emit_subtree(ui_widget_t* root_widget, ui_rect_t clip_rect, vec2 
         scroll_offset.x + root_widget->scroll[UI_AXIS_X],
         scroll_offset.y + root_widget->scroll[UI_AXIS_Y]
     };
-    
+
     for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
     {
-        ui_emit_subtree(child_widget, child_clip_rect, ui_is_flag_set(child_widget, UI_FLAG_FLOATING) ? scroll_offset : child_scroll_offset);
+        vec2 scroll = ui_is_flag_set(child_widget, UI_FLAG_FLOATING) ? scroll_offset : child_scroll_offset;
+        ui_emit_draw_pass(child_widget, child_clip_rect, scroll, effective_layer);
     }
 }
 
-static void ui_emit_normal_pass(ui_widget_t* root_widget, ui_rect_t clip_rect, vec2 scroll_offset)
+static void ui_sort_draw_commands(void)
 {
-    if (ui_is_flag_set(root_widget, UI_FLAG_FLOATING))
+    ui_draw_command_list_t* draw_command_list = &global_ui->draw_command_list;
+    draw_command_list->commands = ma_push_size_zero(global_ui->frame_arena, global_ui->draw_command_count * sizeof(ui_draw_command_t*));
+    draw_command_list->command_count = 0;
+
+    ui_draw_command_iter_t iter = ui_draw_command_iter();
+
+    for (ui_draw_command_t* command = ui_draw_command_next(&iter);
+         command;
+         command = ui_draw_command_next(&iter))
     {
-        return;
+        draw_command_list->commands[draw_command_list->command_count++] = command;
     }
 
-    ui_emit_draw_commands(root_widget, clip_rect, scroll_offset);
+    assert(draw_command_list->command_count == global_ui->draw_command_count && "[UI] Draw command counts do not match.");
 
-    ui_rect_t child_clip_rect = ui_rect_intersect(clip_rect, root_widget->rect);
-    vec2 child_scroll_offset =
+    // NOTE: Stable insertion sort.
+    for (i32 i = 1; i < draw_command_list->command_count; ++i)
     {
-        scroll_offset.x + root_widget->scroll[UI_AXIS_X],
-        scroll_offset.y + root_widget->scroll[UI_AXIS_Y]
-    };
+        ui_draw_command_t* command_i = draw_command_list->commands[i];
+        i32 j = i - 1;
 
-    for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
-    {
-        ui_emit_normal_pass(child_widget, child_clip_rect, child_scroll_offset);
-    }
-}
+        while (j >= 0 && (draw_command_list->commands[j]->layer > command_i->layer ||
+                          (draw_command_list->commands[j]->layer == command_i->layer && draw_command_list->commands[j]->z > command_i->z)))
+        {
+            draw_command_list->commands[j + 1] = draw_command_list->commands[j];
+            --j;
+        }
 
-static void ui_emit_floating_pass(ui_widget_t* root_widget, ui_rect_t clip_rect, vec2 scroll_offset)
-{
-    if (ui_is_flag_set(root_widget, UI_FLAG_FLOATING))
-    {
-        ui_rect_t subtree_clip = ui_is_flag_set(root_widget, UI_FLAG_ESCAPE_CLIP)
-            ? global_ui->root_widget->rect
-            : clip_rect;
-        ui_emit_subtree(root_widget, subtree_clip, scroll_offset);
-        return;
-    }
-
-    ui_rect_t child_clip_rect = ui_rect_intersect(clip_rect, root_widget->rect);
-    vec2 child_scroll_offset =
-    {
-        scroll_offset.x + root_widget->scroll[UI_AXIS_X],
-        scroll_offset.y + root_widget->scroll[UI_AXIS_Y]
-    };
-    
-    for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
-    {
-        ui_emit_floating_pass(child_widget, child_clip_rect, ui_is_flag_set(child_widget, UI_FLAG_FLOATING) ? scroll_offset : child_scroll_offset);
+        draw_command_list->commands[j + 1] = command_i;
     }
 }
 
 static void ui_emit_all_draw_commands(ui_widget_t* root_widget)
 {
     ui_rect_t clip_rect = global_ui->root_widget->rect;
-    ui_emit_normal_pass(root_widget, clip_rect, v2(0.0f, 0.0f));
-    ui_emit_floating_pass(root_widget, clip_rect, v2(0.0f, 0.0f));
+    ui_emit_draw_pass(root_widget, clip_rect, v2(0.0f, 0.0f), 0);
+    ui_sort_draw_commands();
 }
 
 static void ui_init(memory_arena_t* memory_arena)
@@ -1504,23 +1498,6 @@ static void ui_init(memory_arena_t* memory_arena)
     global_ui = (ui_t*)ma_push_size_zero(ui_arena, sizeof(ui_t));
     global_ui->arena = ui_arena;
     global_ui->frame_arena = ui_frame_arena;
-
-    // IMPORTANT: We need to be sure to use correct types here because there is no way to 
-    // catch it reliably and it can silently corrupt stacks without visible error.
-    ui_stack_init(global_ui->arena, &global_ui->stacks.parent, sizeof(ui_widget_t*), UI_STACK_SIZE);
-    ui_stack_init(global_ui->arena, &global_ui->stacks.size_x, sizeof(ui_size_t), UI_STACK_SIZE);
-    ui_stack_init(global_ui->arena, &global_ui->stacks.size_y, sizeof(ui_size_t), UI_STACK_SIZE);
-    ui_stack_init(global_ui->arena, &global_ui->stacks.layout_axis, sizeof(ui_axis_t), UI_STACK_SIZE);
-    ui_stack_init(global_ui->arena, &global_ui->stacks.padding, sizeof(ui_padding_t), UI_STACK_SIZE);
-    ui_stack_init(global_ui->arena, &global_ui->stacks.color, sizeof(vec4), UI_STACK_SIZE);
-    ui_stack_init(global_ui->arena, &global_ui->stacks.border, sizeof(ui_border_t), UI_STACK_SIZE);
-    ui_stack_init(global_ui->arena, &global_ui->stacks.flags, sizeof(ui_flags_t), UI_STACK_SIZE);
-    ui_stack_init(global_ui->arena, &global_ui->stacks.anchor, sizeof(ui_anchor_t), UI_STACK_SIZE);
-    ui_stack_init(global_ui->arena, &global_ui->stacks.anchor_offset, sizeof(ui_anchor_offset_t), UI_STACK_SIZE);
-    ui_stack_init(global_ui->arena, &global_ui->stacks.font, sizeof(ui_font_t), UI_STACK_SIZE);
-    ui_stack_init(global_ui->arena, &global_ui->stacks.font_color, sizeof(vec4), UI_STACK_SIZE);
-    ui_stack_init(global_ui->arena, &global_ui->stacks.text_alignment, sizeof(ui_alignment_t), UI_STACK_SIZE);
-    ui_stack_init(global_ui->arena, &global_ui->stacks.text_wrap, sizeof(ui_text_wrap_t), UI_STACK_SIZE);
 }
 
 static inline f32 ui_widget_max_scroll(ui_widget_t* widget, ui_axis_t axis)
@@ -1707,6 +1684,11 @@ static void ui_resolve_active(void)
                 global_ui->focus_key = global_ui->hot_key;
             }
 
+            // if (ui_is_flag_set(widget, UI_FLAG_FLOATING))
+            // {
+            //     widget->z = global_ui->max_z++;
+            // }
+
             input_set_owner(global_ui->input, INPUT_OWNER_UI);
             input_consume_mouse_press(global_ui->input, KEY_MOUSE_LEFT);
         }
@@ -1817,11 +1799,35 @@ static void ui_resolve_interaction(void)
     ui_resolve_scrollable();
 }
 
+static void ui_stack_reset(void)
+{
+    // IMPORTANT: We need to be sure to use correct types here because there is no way to 
+    // catch it reliably and it can silently corrupt stacks without visible error.
+    ui_stack_init(global_ui->frame_arena, &global_ui->stacks.parent, sizeof(ui_widget_t*), UI_STACK_SIZE, 0);
+    ui_stack_init(global_ui->frame_arena, &global_ui->stacks.size_x, sizeof(ui_size_t), UI_STACK_SIZE, 0);
+    ui_stack_init(global_ui->frame_arena, &global_ui->stacks.size_y, sizeof(ui_size_t), UI_STACK_SIZE, 0);
+    ui_stack_init(global_ui->frame_arena, &global_ui->stacks.layout_axis, sizeof(ui_axis_t), UI_STACK_SIZE, 0);
+    ui_stack_init(global_ui->frame_arena, &global_ui->stacks.padding, sizeof(ui_padding_t), UI_STACK_SIZE, 0);
+    ui_stack_init(global_ui->frame_arena, &global_ui->stacks.color, sizeof(vec4), UI_STACK_SIZE, 0);
+    ui_stack_init(global_ui->frame_arena, &global_ui->stacks.border, sizeof(ui_border_t), UI_STACK_SIZE, 0);
+    ui_stack_init(global_ui->frame_arena, &global_ui->stacks.flags, sizeof(ui_flags_t), UI_STACK_SIZE, 0);
+    ui_stack_init(global_ui->frame_arena, &global_ui->stacks.anchor, sizeof(ui_anchor_t), UI_STACK_SIZE, 0);
+    ui_stack_init(global_ui->frame_arena, &global_ui->stacks.anchor_offset, sizeof(ui_anchor_offset_t), UI_STACK_SIZE, 0);
+    ui_stack_init(global_ui->frame_arena, &global_ui->stacks.layer, sizeof(i32), UI_STACK_SIZE, &(i32){ UI_LAYER_UNSET });
+    ui_stack_init(global_ui->frame_arena, &global_ui->stacks.font, sizeof(ui_font_t), UI_STACK_SIZE, 0);
+    ui_stack_init(global_ui->frame_arena, &global_ui->stacks.font_color, sizeof(vec4), UI_STACK_SIZE, 0);
+    ui_stack_init(global_ui->frame_arena, &global_ui->stacks.text_alignment, sizeof(ui_alignment_t), UI_STACK_SIZE, 0);
+    ui_stack_init(global_ui->frame_arena, &global_ui->stacks.text_wrap, sizeof(ui_text_wrap_t), UI_STACK_SIZE, 0);
+}
+
 static void ui_begin(graphics_t* graphics, input_t* input, f32 delta_time, f32 width, f32 height)
 {
     assert(global_ui && "[UI] Not initialized.");
     assert(input && "[UI] Input is required.");
     assert(graphics && "[UI] Graphics is required.");
+
+    // NOTE: This is for making sure that ui_end() is called at the end of previous frame.
+    assert(global_ui->stacks.parent.count == 0 && "[UI] Invalid parent stack count.");
 
     global_ui->graphics = graphics;
     global_ui->input = input;
@@ -1832,8 +1838,7 @@ static void ui_begin(graphics_t* graphics, input_t* input, f32 delta_time, f32 w
     global_ui->draw_commands_last = 0;
     global_ui->draw_command_count = 0;
 
-    // NOTE: This is for making sure that ui_end() is called at the end of previous frame.
-    assert(global_ui->stacks.parent.count == 0 && "[UI] Invalid parent stack count.");
+    ui_stack_reset();
 
     ui_stack_push(&global_ui->stacks.parent, &(void*){ 0 });
     ui_stack_push(&global_ui->stacks.size_x, &(ui_size_t){ 0 });
@@ -1845,6 +1850,7 @@ static void ui_begin(graphics_t* graphics, input_t* input, f32 delta_time, f32 w
     ui_stack_push(&global_ui->stacks.flags, &(void*){ 0 });
     ui_stack_push(&global_ui->stacks.anchor, &(ui_anchor_t){ 0 });
     ui_stack_push(&global_ui->stacks.anchor_offset, &(ui_anchor_offset_t){ 0 });
+    ui_stack_push(&global_ui->stacks.layer, &(i32){ 0 });
     ui_stack_push(&global_ui->stacks.font, &(ui_font_t){ 0 });
     ui_stack_push(&global_ui->stacks.font_color, &(vec4){ 0 });
     ui_stack_push(&global_ui->stacks.text_alignment, &(ui_alignment_t){ 0 });
@@ -1887,6 +1893,7 @@ static void ui_end(void)
     ui_pop_flags();
     ui_pop_anchor();
     ui_pop_anchor_offset();
+    ui_pop_layer();
     ui_pop_font();
     ui_pop_font_color();
     ui_pop_text_alignment();
@@ -1904,6 +1911,7 @@ static void ui_end(void)
     assert(global_ui->stacks.flags.count == 0 && "[UI] Invalid flags stack count.");
     assert(global_ui->stacks.anchor.count == 0 && "[UI] Invalid anchor stack count.");
     assert(global_ui->stacks.anchor_offset.count == 0 && "[UI] Invalid anchor offset stack count.");
+    assert(global_ui->stacks.layer.count == 0 && "[UI] Invalid layer stack count.");
     assert(global_ui->stacks.font.count == 0 && "[UI] Invalid font stack count.");
     assert(global_ui->stacks.font_color.count == 0 && "[UI] Invalid font_color stack count.");
     assert(global_ui->stacks.text_alignment.count == 0 && "[UI] Invalid text_alignment stack count.");
@@ -1938,4 +1946,11 @@ static ui_draw_command_t* ui_draw_command_next(ui_draw_command_iter_t* iter)
     }
 
     return draw_command;
+}
+
+static ui_draw_command_list_t* ui_draw_command_list(void)
+{
+    ui_draw_command_list_t* result = &global_ui->draw_command_list;
+
+    return result;
 }

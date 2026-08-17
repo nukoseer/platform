@@ -515,12 +515,10 @@ render_function(render)
 
     graphics->begin_draw();
     
-    ui_draw_command_iter_t iter = ui_draw_command_iter();
-        
-    for (ui_draw_command_t* command = ui_draw_command_next(&iter);
-         command;
-         command = ui_draw_command_next(&iter))
+    ui_draw_command_list_t* command_list = ui_draw_command_list();
+    for (i32 i = 0; i < command_list->command_count; ++i)
     {
+        ui_draw_command_t* command = command_list->commands[i];
         f32 x = command->x;
         f32 y = command->y;
         f32 width = command->width;
@@ -537,7 +535,6 @@ render_function(render)
             case UI_DRAW_BORDER:
             {
                 f32 thickness = command->thickness;
-
                 graphics->draw_rect(x, y, width, height, false, thickness, color.r, color.g, color.b, color.a);
             } break;
                 

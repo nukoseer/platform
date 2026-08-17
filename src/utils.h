@@ -20,11 +20,13 @@
 #define defer_loop(begin, end) for (u32 unique(_i_) = ((begin), 0); unique(_i_) == 0; (++unique(_i_), (end)))
 #define defer(x) defer_loop(0, x)
 
-
 #define KIBIBYTES(x) ((x) * (1024ULL))
 #define MIBIBYTES(x) ((KIBIBYTES(x)) * (1024ULL))
 #define GIBIBYTES(x) ((MIBIBYTES(x)) * (1024ULL))
 #define TIBIBYTES(x) ((GIBIBYTES(x)) * (1024ULL))
+
+#undef INT32_MIN
+#define INT32_MIN (i32)0x80000000
 
 static inline i32 string_find_leading_char(const char* string, i32 offset, i32 length, char c)
 {
