@@ -142,10 +142,13 @@ pushd ..\tools\build
 
 popd
 
+%compiler% %common_compiler_flags% ..\src\font_test.c %link_section% %common_linker_flags% %OUTPUT%font_test.exe
+
 %compiler% %common_compiler_flags% ..\src\platform.c %link_section% %common_linker_flags% %OUTPUT%platform.exe
 rem %compiler% %common_compiler_flags% ..\src\gfx.c -E -dD
 rem -MJ ../compile_commands.json
 %compiler% %common_compiler_flags% ..\src\game.c %link_section_dll% %common_linker_flags_dll% %export_symbol%:init %export_symbol%:update %export_symbol%:render %OUTPUT%game.dll
+
 
 popd
 
