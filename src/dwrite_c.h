@@ -5,6 +5,9 @@
 #pragma clang diagnostic ignored "-Wmicrosoft-flexible-array"
 #endif
 
+#include <combaseapi.h>
+#include <dcommon.h>
+
 /*******************************************************************************************************************/
 /* IMPORTANT: This is the C compatible version of dwrite.h. All of the enums, types and functions directly copied. */
 /*******************************************************************************************************************/
@@ -104,6 +107,28 @@ typedef enum DWRITE_FONT_SIMULATIONS
     DWRITE_FONT_SIMULATIONS_OBLIQUE = 0x0002
 } DWRITE_FONT_SIMULATIONS;
 
+typedef enum DWRITE_PIXEL_GEOMETRY
+{
+    DWRITE_PIXEL_GEOMETRY_FLAT,
+    DWRITE_PIXEL_GEOMETRY_RGB,
+    DWRITE_PIXEL_GEOMETRY_BGR
+} DWRITE_PIXEL_GEOMETRY;
+
+typedef enum DWRITE_RENDERING_MODE
+{
+    DWRITE_RENDERING_MODE_DEFAULT,
+    DWRITE_RENDERING_MODE_ALIASED,
+    DWRITE_RENDERING_MODE_GDI_CLASSIC,
+    DWRITE_RENDERING_MODE_GDI_NATURAL,
+    DWRITE_RENDERING_MODE_NATURAL,
+    DWRITE_RENDERING_MODE_NATURAL_SYMMETRIC,
+    DWRITE_RENDERING_MODE_OUTLINE,
+    DWRITE_RENDERING_MODE_CLEARTYPE_GDI_CLASSIC         = DWRITE_RENDERING_MODE_GDI_CLASSIC,
+    DWRITE_RENDERING_MODE_CLEARTYPE_GDI_NATURAL         = DWRITE_RENDERING_MODE_GDI_NATURAL,
+    DWRITE_RENDERING_MODE_CLEARTYPE_NATURAL             = DWRITE_RENDERING_MODE_NATURAL,
+    DWRITE_RENDERING_MODE_CLEARTYPE_NATURAL_SYMMETRIC   = DWRITE_RENDERING_MODE_NATURAL_SYMMETRIC
+} DWRITE_RENDERING_MODE;
+
 // NOTE: Types.
 
 typedef struct DWRITE_TEXT_METRICS
@@ -153,6 +178,8 @@ typedef struct IDWriteFactoryVtbl { void* table[]; } IDWriteFactoryVtbl;
 typedef struct IDWriteTextFormatVtbl { void* table[]; } IDWriteTextFormatVtbl;
 typedef struct IDWriteTextLayoutVtbl { void* table[]; } IDWriteTextLayoutVtbl;
 typedef struct IDWriteRenderingParamsVtbl { void* table[]; } IDWriteRenderingParamsVtbl;
+typedef struct IDWriteGdiInteropVtbl { void* table[]; } IDWriteGdiInteropVtbl;
+typedef struct IDWriteBitmapRenderTargetVtbl { void* table[]; } IDWriteBitmapRenderTargetVtbl;
 
 typedef struct IDWriteFont { IDWriteFontVtbl* vtbl; } IDWriteFont;
 typedef struct IDWriteFontFamily { IDWriteFontFamilyVtbl* vtbl; } IDWriteFontFamily;
@@ -163,6 +190,8 @@ typedef struct IDWriteFactory { IDWriteFactoryVtbl* vtbl; } IDWriteFactory;
 typedef struct IDWriteTextFormat { IDWriteTextFormatVtbl* vtbl; } IDWriteTextFormat;
 typedef struct IDWriteTextLayout { IDWriteTextLayoutVtbl* vtbl; } IDWriteTextLayout;
 typedef struct IDWriteRenderingParams { IDWriteRenderingParamsVtbl* vtbl; } IDWriteRenderingParams;
+typedef struct IDWriteGdiInterop { IDWriteGdiInteropVtbl* vtbl; } IDWriteGdiInterop;
+typedef struct IDWriteBitmapRenderTarget { IDWriteBitmapRenderTargetVtbl* vtbl; } IDWriteBitmapRenderTarget;
 
 static inline ULONG IDWriteFactory_Release(IDWriteFactory* self)
 {
@@ -182,9 +211,25 @@ static inline HRESULT IDWriteFactory_CreateTextFormat(IDWriteFactory* self,
     return ((HRESULT (WINAPI*)(IDWriteFactory*, WCHAR const*, IUnknown*, DWRITE_FONT_WEIGHT, DWRITE_FONT_STYLE, DWRITE_FONT_STRETCH, FLOAT, WCHAR const*, IDWriteTextFormat**))self->vtbl->table[15])(self, fontFamilyName, fontCollection, fontWeight, fontStyle, fontStretch, fontSize, localeName, textFormat);
 }
 
+static inline HRESULT IDWriteFactory_GetGdiInterop(IDWriteFactory* self, IDWriteGdiInterop** gdiInterop)
+{
+    return ((HRESULT (WINAPI*)(IDWriteFactory*, IDWriteGdiInterop**))self->vtbl->table[17])(self, gdiInterop);
+}
+
 static inline HRESULT IDWriteFactory_CreateRenderingParams(IDWriteFactory* self, IDWriteRenderingParams** renderingParams)
 {
     return ((HRESULT (WINAPI*)(IDWriteFactory*, IDWriteRenderingParams**))self->vtbl->table[10])(self, renderingParams);
+}
+
+static inline HRESULT IDWriteFactory_CreateCustomRenderingParams(IDWriteFactory* self,
+                                                                 FLOAT gamma,
+                                                                 FLOAT enhancedContrast,
+                                                                 FLOAT clearTypeLevel,
+                                                                 DWRITE_PIXEL_GEOMETRY pixelGeometry,
+                                                                 DWRITE_RENDERING_MODE renderingMode,
+                                                                 IDWriteRenderingParams** renderingParams)
+{
+    return ((HRESULT (WINAPI*)(IDWriteFactory*, FLOAT, FLOAT, FLOAT, DWRITE_PIXEL_GEOMETRY, DWRITE_RENDERING_MODE, IDWriteRenderingParams**))self->vtbl->table[12])(self, gamma, enhancedContrast, clearTypeLevel, pixelGeometry, renderingMode, renderingParams);
 }
 
 static inline HRESULT IDWriteFactory_CreateTextLayout(IDWriteFactory* self,
@@ -211,6 +256,16 @@ static inline HRESULT IDWriteFactory_CreateFontFace(IDWriteFactory* self, DWRITE
 static inline HRESULT IDWriteFactory_GetSystemFontCollection(IDWriteFactory* self, IDWriteFontCollection** fontCollection, BOOL checkForUpdates)
 {
     return ((HRESULT (WINAPI*)(IDWriteFactory*, IDWriteFontCollection**, BOOL))self->vtbl->table[3])(self, fontCollection, checkForUpdates);
+}
+
+static inline HRESULT IDWriteGdiInterop_CreateBitmapRenderTarget(IDWriteGdiInterop* self, HDC hdc, UINT32 width, UINT32 height, IDWriteBitmapRenderTarget** renderTarget)
+{
+    return ((HRESULT (WINAPI*)(IDWriteGdiInterop*, HDC, UINT32, UINT32, IDWriteBitmapRenderTarget**))self->vtbl->table[7])(self, hdc, width, height, renderTarget);
+}
+
+static inline HDC IDWriteBitmapRenderTarget_GetMemoryDC(IDWriteBitmapRenderTarget* self)
+{
+    return ((HDC (WINAPI*)(IDWriteBitmapRenderTarget*))self->vtbl->table[4])(self);
 }
 
 static inline ULONG IDWriteTextLayout_Release(IDWriteTextLayout* self)
@@ -243,9 +298,29 @@ static inline ULONG IDWriteTextFormat_Release(IDWriteTextFormat* self)
     return ((ULONG (WINAPI*)(IDWriteTextFormat*))self->vtbl->table[2])(self);
 }
 
+static inline FLOAT IDWriteRenderingParams_GetGamma(IDWriteRenderingParams* self)
+{
+    return ((FLOAT (WINAPI*)(IDWriteRenderingParams*))self->vtbl->table[3])(self);
+}
+
+static inline FLOAT IDWriteRenderingParams_GetEnhancedContrast(IDWriteRenderingParams* self)
+{
+    return ((FLOAT (WINAPI*)(IDWriteRenderingParams*))self->vtbl->table[4])(self);
+}
+
 static inline FLOAT IDWriteRenderingParams_GetClearTypeLevel(IDWriteRenderingParams* self)
 {
     return ((FLOAT (WINAPI*)(IDWriteRenderingParams*))self->vtbl->table[5])(self);
+}
+
+static inline FLOAT IDWriteRenderingParams_GetPixelGeometry(IDWriteRenderingParams* self)
+{
+    return ((DWRITE_PIXEL_GEOMETRY (WINAPI*)(IDWriteRenderingParams*))self->vtbl->table[6])(self);
+}
+
+static inline FLOAT IDWriteRenderingParams_GetRenderingMode(IDWriteRenderingParams* self)
+{
+    return ((DWRITE_RENDERING_MODE (WINAPI*)(IDWriteRenderingParams*))self->vtbl->table[7])(self);
 }
 
 static inline ULONG IDWriteRenderingParams_Release(IDWriteRenderingParams* self)
