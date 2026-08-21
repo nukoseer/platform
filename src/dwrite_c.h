@@ -5,6 +5,7 @@
 #pragma clang diagnostic ignored "-Wmicrosoft-flexible-array"
 #endif
 
+#include <initguid.h>
 #include <combaseapi.h>
 #include <dcommon.h>
 
@@ -169,6 +170,24 @@ typedef struct DWRITE_GLYPH_METRICS
     INT32 verticalOriginY;
 } DWRITE_GLYPH_METRICS;
 
+typedef struct DWRITE_GLYPH_OFFSET
+{
+    FLOAT advanceOffset;
+    FLOAT ascenderOffset;
+} DWRITE_GLYPH_OFFSET;
+
+typedef struct DWRITE_GLYPH_RUN
+{
+    struct IDWriteFontFace* fontFace;
+    FLOAT fontEmSize;
+    UINT32 glyphCount;
+    UINT16 const* glyphIndices;
+    FLOAT const* glyphAdvances;
+    DWRITE_GLYPH_OFFSET const* glyphOffsets;
+    BOOL isSideways;
+    UINT32 bidiLevel;
+} DWRITE_GLYPH_RUN;
+
 typedef struct IDWriteFontVtbl { void* table[]; } IDWriteFontVtbl;
 typedef struct IDWriteFontFamilyVtbl { void* table[]; } IDWriteFontFamilyVtbl;
 typedef struct IDWriteFontCollectionVtbl { void* table[]; } IDWriteFontCollectionVtbl;
@@ -261,6 +280,18 @@ static inline HRESULT IDWriteFactory_GetSystemFontCollection(IDWriteFactory* sel
 static inline HRESULT IDWriteGdiInterop_CreateBitmapRenderTarget(IDWriteGdiInterop* self, HDC hdc, UINT32 width, UINT32 height, IDWriteBitmapRenderTarget** renderTarget)
 {
     return ((HRESULT (WINAPI*)(IDWriteGdiInterop*, HDC, UINT32, UINT32, IDWriteBitmapRenderTarget**))self->vtbl->table[7])(self, hdc, width, height, renderTarget);
+}
+
+static inline HRESULT IDWriteBitmapRenderTarget_DrawGlyphRun(IDWriteBitmapRenderTarget* self,
+                                                             FLOAT baselineOriginX,
+                                                             FLOAT baselineOriginY,
+                                                             DWRITE_MEASURING_MODE measuringMode,
+                                                             DWRITE_GLYPH_RUN const* glyphRun,
+                                                             IDWriteRenderingParams* renderingParams,
+                                                             COLORREF textColor,
+                                                             RECT* blackBoxRect)
+{
+    return ((HRESULT (WINAPI*)(IDWriteBitmapRenderTarget*, FLOAT, FLOAT, DWRITE_MEASURING_MODE, DWRITE_GLYPH_RUN const*, IDWriteRenderingParams*, COLORREF, RECT*))self->vtbl->table[3])(self, baselineOriginX, baselineOriginY, measuringMode, glyphRun, renderingParams, textColor, blackBoxRect);
 }
 
 static inline HDC IDWriteBitmapRenderTarget_GetMemoryDC(IDWriteBitmapRenderTarget* self)
@@ -356,6 +387,11 @@ static inline HRESULT IDWriteFontCollection_FindFamilyName(IDWriteFontCollection
 static inline void IDWriteFontFace_GetMetrics(IDWriteFontFace* self, DWRITE_FONT_METRICS* fontMetrics)
 {
     ((void (WINAPI*)(IDWriteFontFace*, DWRITE_FONT_METRICS*))self->vtbl->table[8])(self, fontMetrics);
+}
+
+static inline UINT16 IDWriteFontFace_GetGlyphCount(IDWriteFontFace* self)
+{
+    return ((UINT16 (WINAPI*)(IDWriteFontFace*))self->vtbl->table[9])(self);
 }
 
 static inline HRESULT IDWriteFontFace_GetDesignGlyphMetrics(IDWriteFontFace* self, const UINT16* glyphIndices, UINT32 glyphCount, DWRITE_GLYPH_METRICS* glyphMetrics, BOOL isSideways)

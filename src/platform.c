@@ -1,7 +1,6 @@
 #define COBJMACROS
 #define WIN32_LEAN_AND_MEAN
 #define _CRT_SECURE_NO_WARNINGS
-#include <initguid.h>
 #include <windows.h>
 
 #include <d3d11.h>
