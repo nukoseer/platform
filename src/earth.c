@@ -849,7 +849,7 @@ static void earth_ui_update(input_t* input, const theme_t* theme, earth_t* earth
         }
         
         ui_next_size(ui_pixel(420.0f, 0.0f), ui_children(1.0f));
-        ui_next_flags(UI_FLAG_BACKGROUND | UI_FLAG_FLOATING);
+        ui_next_flags(UI_FLAG_BACKGROUND | UI_FLAG_FLOATING | UI_FLAG_CLICKABLE);
         earth_widget_card_group_begin("country-search", "COUNTRY.SEARCH", earth->width * 0.70f, 40.0f, theme);
         {
             ui_next_size(ui_percent(1.0f, 1.0f), ui_children(1.0f));

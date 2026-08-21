@@ -1322,7 +1322,7 @@ static inline ui_draw_command_t* ui_push_draw_command(void)
     return draw_command;
 }
 
-static void ui_emit_draw_commands(ui_widget_t* widget, ui_rect_t clip_rect, vec2 scroll_offset, i32 layer)
+static void ui_emit_draw_commands(ui_widget_t* widget, ui_rect_t clip_rect, vec2 scroll_offset, i32 layer, i32 z)
 {
     ui_rect_t rect =
     {
@@ -1349,7 +1349,7 @@ static void ui_emit_draw_commands(ui_widget_t* widget, ui_rect_t clip_rect, vec2
         draw_command->height = draw_rect.height;
         draw_command->color = widget->color;
         draw_command->layer = layer;
-        draw_command->z = widget->z;
+        draw_command->z = z;
     }
 
     if (ui_is_flag_set(widget, UI_FLAG_BORDER))
@@ -1376,7 +1376,7 @@ static void ui_emit_draw_commands(ui_widget_t* widget, ui_rect_t clip_rect, vec2
             draw_command->color = widget->border.color;
             draw_command->thickness = widget->border.thickness;
             draw_command->layer = layer;
-            draw_command->z = widget->z;
+            draw_command->z = z;
         }
     }
 
@@ -1420,19 +1420,20 @@ static void ui_emit_draw_commands(ui_widget_t* widget, ui_rect_t clip_rect, vec2
             draw_command->text = widget->text + text_line->offset;
             draw_command->length = text_line->length;
             draw_command->layer = layer;
-            draw_command->z = widget->z;
+            draw_command->z = z;
         }
     }
 }
 
-static void ui_emit_draw_pass(ui_widget_t* root_widget, ui_rect_t clip_rect, vec2 scroll_offset, i32 layer)
+static void ui_emit_draw_pass(ui_widget_t* root_widget, ui_rect_t clip_rect, vec2 scroll_offset, i32 layer, u32 z)
 {
     i32 own_layer = (root_widget->layer == UI_LAYER_UNSET ?
                      (ui_is_flag_set(root_widget, UI_FLAG_FLOATING) ? UI_LAYER_FLOATING : UI_LAYER_NORMAL) :
                      root_widget->layer);
     i32 effective_layer = max(layer, own_layer);
-    
-    ui_emit_draw_commands(root_widget, clip_rect, scroll_offset, effective_layer);
+    i32 effective_z = ui_is_flag_set(root_widget, UI_FLAG_FLOATING) ? root_widget->z : z;
+
+    ui_emit_draw_commands(root_widget, clip_rect, scroll_offset, effective_layer, effective_z);
 
     ui_rect_t child_clip_rect = ui_rect_intersect(clip_rect, root_widget->rect);
     vec2 child_scroll_offset =
@@ -1444,7 +1445,7 @@ static void ui_emit_draw_pass(ui_widget_t* root_widget, ui_rect_t clip_rect, vec
     for (ui_widget_t* child_widget = root_widget->child_list.first; child_widget; child_widget = child_widget->child_next)
     {
         vec2 scroll = ui_is_flag_set(child_widget, UI_FLAG_FLOATING) ? scroll_offset : child_scroll_offset;
-        ui_emit_draw_pass(child_widget, child_clip_rect, scroll, effective_layer);
+        ui_emit_draw_pass(child_widget, child_clip_rect, scroll, effective_layer, effective_z);
     }
 }
 
@@ -1485,7 +1486,7 @@ static void ui_sort_draw_commands(void)
 static void ui_emit_all_draw_commands(ui_widget_t* root_widget)
 {
     ui_rect_t clip_rect = global_ui->root_widget->rect;
-    ui_emit_draw_pass(root_widget, clip_rect, v2(0.0f, 0.0f), 0);
+    ui_emit_draw_pass(root_widget, clip_rect, v2(0.0f, 0.0f), root_widget->layer, 0);
     ui_sort_draw_commands();
 }
 
@@ -1666,7 +1667,7 @@ static void ui_resolve_hot(void)
 static void ui_resolve_active(void)
 {
     bool pressed = input_is_mouse_pressed(global_ui->input, KEY_MOUSE_LEFT);
-    bool released = input_is_mouse_released(global_ui->input, KEY_MOUSE_LEFT);;
+    bool released = input_is_mouse_released(global_ui->input, KEY_MOUSE_LEFT);
     
     if (pressed)
     {
@@ -1684,10 +1685,10 @@ static void ui_resolve_active(void)
                 global_ui->focus_key = global_ui->hot_key;
             }
 
-            // if (ui_is_flag_set(widget, UI_FLAG_FLOATING))
-            // {
-            //     widget->z = global_ui->max_z++;
-            // }
+            if (ui_is_flag_set(widget, UI_FLAG_FLOATING))
+            {
+                widget->z = ++global_ui->max_z;
+            }
 
             input_set_owner(global_ui->input, INPUT_OWNER_UI);
             input_consume_mouse_press(global_ui->input, KEY_MOUSE_LEFT);
@@ -1850,7 +1851,7 @@ static void ui_begin(graphics_t* graphics, input_t* input, f32 delta_time, f32 w
     ui_stack_push(&global_ui->stacks.flags, &(void*){ 0 });
     ui_stack_push(&global_ui->stacks.anchor, &(ui_anchor_t){ 0 });
     ui_stack_push(&global_ui->stacks.anchor_offset, &(ui_anchor_offset_t){ 0 });
-    ui_stack_push(&global_ui->stacks.layer, &(i32){ 0 });
+    ui_stack_push(&global_ui->stacks.layer, &(i32){ UI_LAYER_UNSET });
     ui_stack_push(&global_ui->stacks.font, &(ui_font_t){ 0 });
     ui_stack_push(&global_ui->stacks.font_color, &(vec4){ 0 });
     ui_stack_push(&global_ui->stacks.text_alignment, &(ui_alignment_t){ 0 });
