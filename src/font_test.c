@@ -5,31 +5,24 @@
 
 #include "utils.h"
 
+#define STB_RECT_PACK_IMPLEMENTATION
+#include "stb_rect_pack.h"
+
 #pragma comment(lib, "dwrite")
 #pragma comment(lib, "gdi32")
 
 #undef assert
 #define assert(x) do { if (!(x)) { fprintf(stderr, "%s\n", #x); __debugbreak(); } } while (0)
 
-static inline u32 next_power_of_two(u32 value)
-{
-    if (value == 0)
-    {
-        value = 1;
-    }
-    else
-    {
-        value--;
-        value |= value >> 1;
-        value |= value >> 2;
-        value |= value >> 4;
-        value |= value >> 8;
-        value |= value >> 16;
-        value++;
-    }
+typedef struct { u32 lo, hi; } codepoint_range_t;
 
-    return value;
-}
+static const codepoint_range_t global_latin_codepoint_ranges[] =
+{
+    { 0x0020, 0x007E }, // Basic Latin (printable ASCII)
+    { 0x00A0, 0x00FF }, // Latin-1 Supplement:  ö ü ç ó é ñ à ...
+    { 0x0100, 0x017F }, // Latin Extended-A:    ł ą ę ś ż ź ć ń  (Polish)
+                        //                      ğ ş İ ı          (Turkish)
+};
 
 static void create_font(const char* font_path, f32 point_size)
 {
@@ -130,12 +123,64 @@ static void create_font(const char* font_path, f32 point_size)
         SelectObject(device_context, original);
     }
 
-    i32 max_atlas_glyph_width = 0;
-    i32 max_atlas_glyph_height = 0;
+    u32 codepoints[512] = { 0 };
+    i32 codepoint_count = 0;
 
-    for (u16 i = 0; i < IDWriteFontFace_GetGlyphCount(font_face); ++i)
+    for (i32 i = 0; i < array_count(global_latin_codepoint_ranges); ++i)
     {
-        u16 glyph_index = i;
+        codepoint_range_t range = global_latin_codepoint_ranges[i];
+
+        for (u32 codepoint = range.lo; codepoint <= range.hi; ++codepoint)
+        {
+            codepoints[codepoint_count++] = codepoint;
+        }
+    }
+    assert(codepoint_count <= array_count(codepoints) && "[GFX2D] Codepoint buffer overflow.");
+
+    u16 glyph_indices[512] = { 0 };
+    result = IDWriteFontFace_GetGlyphIndices(font_face, codepoints, codepoint_count, glyph_indices);
+    assert(SUCCEEDED(result) && "[GFX2D] Failed to get glyph indices.");
+
+    // NOTE: Glyph index 0 is reserved for the missing glyph.
+    // Use bitset if this gets too large.
+    u16 seen_glyph_indices[65536] = { 0 };
+    u16 baked_glyph_indices[512] = { 0 };
+    i32 baked_glyph_count = 0;
+
+    baked_glyph_indices[baked_glyph_count++] = 0;
+
+    for (i32 i = 0; i < codepoint_count; ++i)
+    {
+        u16 glyph_index = glyph_indices[i];
+
+        if (glyph_index == 0)
+        {
+            continue;
+        }
+
+        
+        if (seen_glyph_indices[glyph_index])
+        {
+            continue;
+        }
+
+        seen_glyph_indices[glyph_index] = 1;
+        baked_glyph_indices[baked_glyph_count++] = glyph_index;
+    }
+    
+    i32 atlas_glyph_count = baked_glyph_count;
+    i32 num_rects = atlas_glyph_count;
+    stbrp_rect* rects = (stbrp_rect*)malloc(num_rects * sizeof(stbrp_rect));
+    memset(rects, 0, num_rects * sizeof(stbrp_rect));
+    
+    fprintf(stderr, "atlas_glyph_count: %d\n", atlas_glyph_count);
+
+    i32 padding = 1;
+    u64 total_area = 0;
+
+    for (u16 i = 0; i < atlas_glyph_count; ++i)
+    {
+        u16 glyph_index = baked_glyph_indices[i];
         DWRITE_GLYPH_RUN glyph_run =
         {
             .fontFace = font_face,
@@ -149,20 +194,63 @@ static void create_font(const char* font_path, f32 point_size)
                                                         foreground_color, &bounding_box);
         assert(SUCCEEDED(result) && "[GFX2D] Failed to draw glyph run.");
 
+        fprintf(stderr, "glyph_index: %u, bounding_box: (%d, %d, %d, %d)\n", glyph_index, bounding_box.left, bounding_box.top, bounding_box.right, bounding_box.bottom);
+        
         i32 glyph_width = bounding_box.right - bounding_box.left;
         i32 glyph_height = bounding_box.bottom - bounding_box.top;
+        stbrp_rect* rect = rects + i;
 
-        if (glyph_width > max_atlas_glyph_width)
-        {
-            max_atlas_glyph_width = glyph_width;
-        }
+        rect->id = i;
+        rect->w = glyph_width + padding * 2;
+        rect->h = glyph_height + padding * 2;
 
-        if (glyph_height > max_atlas_glyph_height)
+        total_area += (u64)rect->w * (u64)rect->h;
+    }
+    
+    i32 atlas_width = 128;
+    while ((u64)atlas_width * atlas_width < total_area)
+    {
+        atlas_width *= 2;
+    }
+    i32 atlas_height = atlas_width;
+
+    i32 num_nodes = atlas_width;
+    stbrp_node* nodes = (stbrp_node*)malloc(num_nodes * sizeof(stbrp_node));
+    memset(nodes, 0, num_nodes * sizeof(stbrp_node));
+    
+    stbrp_context context = { 0 };
+    stbrp_init_target(&context, atlas_width, atlas_height, nodes, num_nodes);
+    stbrp_setup_heuristic(&context, STBRP_HEURISTIC_Skyline_BL_sortHeight);
+
+    result = stbrp_pack_rects(&context, rects, num_rects);
+    assert(result && "[GFX2D] Failed to pack rectangles.");
+
+    i32 used_height = 0;
+
+    for (i32 i = 0; i < atlas_glyph_count; ++i)
+    {
+        stbrp_rect* rect = rects + i;
+        i32 bottom = rect->y + rect->h;
+
+        if (bottom > used_height)
         {
-            max_atlas_glyph_height = glyph_height;
+            used_height = bottom;
         }
     }
-    fprintf(stderr, "max_atlas_glyph_width: %d, max_atlas_glyph_height: %d\n", max_atlas_glyph_width, max_atlas_glyph_height);
+
+    i32 final_height = 1;
+    while (final_height < used_height)
+    {
+        final_height *= 2;
+    }
+    atlas_height = final_height;
+
+    fprintf(stderr, "atlas_width: %d, atlas_height: %d\n", atlas_width, atlas_height);
+
+    i32 bytes_per_pixel = 3;
+    i32 atlas_memory_size = atlas_width * atlas_height * bytes_per_pixel;
+    u8* atlas_memory = (u8*)malloc(atlas_memory_size);
+    memset(atlas_memory, 0, atlas_memory_size);
 
     // Clear render target
     {
@@ -174,36 +262,9 @@ static void create_font(const char* font_path, f32 point_size)
         SelectObject(device_context, original);
     }
 
-    // f32 ascent = (f32)font_metrics.ascent * pixel_per_design_unit;
-    // f32 descent = (f32)font_metrics.descent * pixel_per_design_unit;
-    // i32 cell_extent = (i32)ceilf(ascent + descent);
-    // i32 padding = 2;
-    // i32 atlas_glyph_width = cell_extent + 2 * padding;
-    // i32 atlas_glyph_height = cell_extent + 2 * padding;
-
-    i32 padding = 2;
-    i32 atlas_glyph_width = max_atlas_glyph_width + 2 * padding;
-    i32 atlas_glyph_height = max_atlas_glyph_height + 2 * padding;
-
-    fprintf(stderr, "atlas_glyph_width: %d, atlas_glyph_height: %d\n", atlas_glyph_width, atlas_glyph_height);
-
-    i32 bytes_per_pixel = 3;
-    i32 atlas_glyph_count = IDWriteFontFace_GetGlyphCount(font_face);
-    i32 atlas_glyph_column_count = (i32)(pow((f32)atlas_glyph_count, 0.5f) + 0.5f);
-    i32 atlas_per_glyph_size = atlas_glyph_width * atlas_glyph_height * bytes_per_pixel;
-    i32 atlas_glyph_row_count = ((atlas_glyph_count + atlas_glyph_column_count - 1) / atlas_glyph_column_count);
-    i32 atlas_memory_size = atlas_per_glyph_size * atlas_glyph_row_count * atlas_glyph_column_count;
-    u8* atlas_memory = (u8*)malloc(atlas_memory_size);
-    memset(atlas_memory, 0, atlas_memory_size);
-
     for (u16 i = 0; i < atlas_glyph_count; ++i)
     {
-        // u16 glyph_index = i + min_codepoint_index;
-        u16 glyph_index = i;
-        // u32 codepoint = i + 'a';
-        // IDWriteFontFace_GetGlyphIndices(font_face, &codepoint, 1, &glyph_index);
-        // fprintf(stderr, "glyph_index: %u\n", glyph_index);
-
+        u16 glyph_index = baked_glyph_indices[i];
         DWRITE_GLYPH_RUN glyph_run =
         {
             .fontFace = font_face,
@@ -219,36 +280,37 @@ static void create_font(const char* font_path, f32 point_size)
 
         i32 texture_width = bounding_box.right - bounding_box.left;
         i32 texture_height = bounding_box.bottom - bounding_box.top;
-        fprintf(stderr, "texture_width: %d, texture_height: %d\n", texture_width, texture_height);
+        // fprintf(stderr, "texture_width: %d, texture_height: %d\n", texture_width, texture_height);
 
         // Get bitmap
         HBITMAP bitmap = (HBITMAP)GetCurrentObject(device_context, OBJ_BITMAP);
         DIBSECTION dib = { 0 };
         GetObject(bitmap, sizeof(dib), &dib);
 
-        i32 x_index = i % atlas_glyph_column_count;
-        i32 y_index = i / atlas_glyph_column_count;
-        i32 x_offset = x_index * atlas_glyph_width * bytes_per_pixel;
-        i32 y_offset = y_index * (atlas_glyph_column_count * atlas_per_glyph_size);
-        u8* atlas_glyph_line = atlas_memory + x_offset + y_offset;
+        stbrp_rect* rect = rects + i;
+        u8* atlas_glyph_line = atlas_memory + rect->x * bytes_per_pixel + rect->y * atlas_width * bytes_per_pixel;
 
         assert(dib.dsBm.bmBitsPixel == 32);
-        int32_t in_pitch  = dib.dsBm.bmWidthBytes;
-        int32_t out_pitch = atlas_glyph_column_count * atlas_glyph_width * bytes_per_pixel;
-        uint8_t *in_line  = (uint8_t*)dib.dsBm.bmBits + bounding_box.left*4 + bounding_box.top*in_pitch;
-        uint8_t *out_line = atlas_glyph_line + padding * out_pitch + padding * bytes_per_pixel;
+        i32 in_pitch  = dib.dsBm.bmWidthBytes;
+        i32 out_pitch = atlas_width * bytes_per_pixel;
+        u8* in_line  = (u8*)dib.dsBm.bmBits + bounding_box.left * 4 + bounding_box.top * in_pitch;
+        u8* out_line = atlas_glyph_line + padding * out_pitch + padding * bytes_per_pixel;
 
-        for (int32_t y = 0; y < texture_height; y += 1)
+        for (i32 y = 0; y < texture_height; y += 1)
         {
-            uint8_t *in_pixel  = in_line;
-            uint8_t *out_pixel = out_line;            for (int32_t x = 0; x < texture_width; x += 1)
+            u8* in_pixel  = in_line;
+            u8* out_pixel = out_line;
+
+            for (i32 x = 0; x < texture_width; x += 1)
             {
                 out_pixel[0] = in_pixel[2];
                 out_pixel[1] = in_pixel[1];
                 out_pixel[2] = in_pixel[0];
+
                 in_pixel += 4;
                 out_pixel += 3;
             }
+
             in_line += in_pitch;
             out_line += out_pitch;
         }
@@ -269,8 +331,6 @@ static void create_font(const char* font_path, f32 point_size)
     FILE* ppm_file = fopen("font_atlas_test.ppm", "wb");
     assert(ppm_file && "[GFX2D] Failed to open ppm file");
 
-    i32 atlas_width = atlas_glyph_column_count * atlas_glyph_width;
-    i32 atlas_height = atlas_glyph_row_count * atlas_glyph_height;
     fprintf(ppm_file, "P3\n"
                       "%d %d\n"
                       "255\n",
