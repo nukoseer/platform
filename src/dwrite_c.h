@@ -299,6 +299,11 @@ static inline HDC IDWriteBitmapRenderTarget_GetMemoryDC(IDWriteBitmapRenderTarge
     return ((HDC (WINAPI*)(IDWriteBitmapRenderTarget*))self->vtbl->table[4])(self);
 }
 
+static inline ULONG IDWriteBitmapRenderTarget_Release(IDWriteBitmapRenderTarget* self)
+{
+    return ((ULONG (WINAPI*)(IDWriteBitmapRenderTarget*))self->vtbl->table[2])(self);
+}
+
 static inline ULONG IDWriteTextLayout_Release(IDWriteTextLayout* self)
 {
     return ((ULONG (WINAPI*)(IDWriteTextLayout*))self->vtbl->table[2])(self);
@@ -384,6 +389,11 @@ static inline HRESULT IDWriteFontCollection_FindFamilyName(IDWriteFontCollection
     return ((HRESULT (WINAPI*)(IDWriteFontCollection*, WCHAR const*, UINT32*, BOOL*))self->vtbl->table[5])(self, familyName, index, exists);
 }
 
+static inline ULONG IDWriteFontFile_Release(IDWriteFontFile* self)
+{
+    return ((ULONG (WINAPI*)(IDWriteFontFile*))self->vtbl->table[2])(self);
+}
+
 static inline void IDWriteFontFace_GetMetrics(IDWriteFontFace* self, DWRITE_FONT_METRICS* fontMetrics)
 {
     ((void (WINAPI*)(IDWriteFontFace*, DWRITE_FONT_METRICS*))self->vtbl->table[8])(self, fontMetrics);
@@ -402,6 +412,16 @@ static inline HRESULT IDWriteFontFace_GetDesignGlyphMetrics(IDWriteFontFace* sel
 static inline HRESULT IDWriteFontFace_GetGlyphIndices(IDWriteFontFace* self, const UINT32* codePoints, UINT32 codePointCount, UINT16* glyphIndices)
 {
     return ((HRESULT (WINAPI*)(IDWriteFontFace*, const UINT32*, UINT32, UINT16*))self->vtbl->table[11])(self, codePoints, codePointCount, glyphIndices);
+}
+
+static inline ULONG IDWriteFontFace_Release(IDWriteFontFace* self)
+{
+    return ((ULONG (WINAPI*)(IDWriteFontFace*))self->vtbl->table[2])(self);
+}
+
+static inline ULONG IDWriteGdiInterop_Release(IDWriteGdiInterop* self)
+{
+    return ((ULONG (WINAPI*)(IDWriteGdiInterop*))self->vtbl->table[2])(self);
 }
 
 EXTERN_C HRESULT DECLSPEC_IMPORT DWriteCreateFactory(DWRITE_FACTORY_TYPE factoryType, REFIID iid, IUnknown** factory);
