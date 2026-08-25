@@ -31,4 +31,7 @@ fxc.exe /nologo /T ps_5_0 /E ps /O3 /WX /Zpc /Ges /Fh composite_pixel_shader.h /
 fxc.exe /nologo /T vs_5_0 /E vs /O3 /WX /Zpc /Ges /Fh skybox_vertex_shader.h /Vn skybox_vshader /Qstrip_reflect /Qstrip_debug /Qstrip_priv skybox_shader.hlsl
 fxc.exe /nologo /T ps_5_0 /E ps /O3 /WX /Zpc /Ges /Fh skybox_pixel_shader.h /Vn skybox_pshader /Qstrip_reflect /Qstrip_debug /Qstrip_priv skybox_shader.hlsl
 
+fxc.exe /nologo /T vs_5_0 /E vs /O3 /WX /Zpc /Ges /Fh font_test_vertex_shader.h /Vn font_test_vshader /Qstrip_reflect /Qstrip_debug /Qstrip_priv font_test.hlsl
+fxc.exe /nologo /T ps_5_0 /E ps /O3 /WX /Zpc /Ges /Fh font_test_pixel_shader.h /Vn font_test_pshader /Qstrip_reflect /Qstrip_debug /Qstrip_priv font_test.hlsl
+
 popd
