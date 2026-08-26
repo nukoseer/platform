@@ -49,18 +49,13 @@ typedef struct codepoint_range_t
     u32 end;
 } codepoint_range_t;
 
-typedef struct glyph_metrics_t
+typedef struct glyph_info_t
 {
-    f32 x, y;
-    f32 offset_x, offset_y;
+    u16 x, y;
+    u16 width, height;
+    i16 offset_x, offset_y;
     f32 advance;
-    f32 width;
-    f32 height;
-    f32 uv_x;
-    f32 uv_y;
-    f32 uv_width;
-    f32 uv_height;
-} glyph_metrics_t;
+} glyph_info_t;
 
 typedef struct font_atlas_vertex_data_t
 {
@@ -82,10 +77,12 @@ typedef struct font_atlas_pass_t
 typedef struct font_atlas_t
 {
     IDWriteFontFace* face;
+    i32 width, height;
     ID3D11Texture2D* atlas;
     ID3D11ShaderResourceView* atlas_srv;
-    glyph_metrics_t* metrics;
-    u32 metrics_count;
+    glyph_info_t* glyph_infos;
+    u32 glyph_info_count;
+    u16 codepoint_to_glyph_index[0x17F + 1];
 
     font_atlas_pass_t pass;
 } font_atlas_t;
@@ -99,26 +96,6 @@ static const codepoint_range_t global_latin_codepoint_ranges[] =
 };
 
 static window_t global_window;
-
-static u32 font_atlas_calculate_glyph_metrics_index(u16 glyph_index)
-{
-    u32 glyph_metrics_index = 0;
-    
-    for (u32 i = 0; i < array_count(global_latin_codepoint_ranges); ++i)
-    {
-        codepoint_range_t codepoint_range = global_latin_codepoint_ranges[i];
-
-        if (glyph_index >= codepoint_range.start && glyph_index <= codepoint_range.end)
-        {
-            glyph_metrics_index = glyph_index - codepoint_range.start;
-            break;
-        }
-
-        glyph_metrics_index += codepoint_range.end - codepoint_range.start;
-    }
-
-    return glyph_metrics_index;
-}
 
 static void font_atlas_create_pass(font_atlas_pass_t* font_atlas_pass)
 {
@@ -152,7 +129,7 @@ static void font_atlas_create_pass(font_atlas_pass_t* font_atlas_pass)
     D3D11_RASTERIZER_DESC rasterizer_desc =
     {
         .FillMode = D3D11_FILL_SOLID,
-        .CullMode = D3D11_CULL_NONE,
+        .CullMode = D3D11_CULL_BACK,
         .FrontCounterClockwise = TRUE,
         .DepthClipEnable = FALSE,
     };
@@ -192,7 +169,7 @@ static font_atlas_t font_atlas_create(const char* font_path, f32 point_size)
     stbrp_rect* rects = 0;
     stbrp_node* nodes = 0;
     u8* atlas_memory = 0;
-    glyph_metrics_t* glyph_metrics = 0;
+    glyph_info_t* glyph_infos = 0;
     WCHAR font_path_wchar[128] = { 0 };
     i32 font_path_length = (i32)strlen(font_path);
 
@@ -310,9 +287,11 @@ static font_atlas_t font_atlas_create(const char* font_path, f32 point_size)
     font_atlas_cleanup_if_error(SUCCEEDED(result));
     assert(SUCCEEDED(result) && "[GFX2D] Failed to get glyph indices.");
 
-    // NOTE: Glyph index 0 is reserved for the missing glyph.
-    // Use bitset if this gets too large.
-    u16 seen_glyph_indices[65536] = { 0 };
+    DWRITE_GLYPH_METRICS design_glyph_metrics[512] = { 0 };
+    result = IDWriteFontFace_GetDesignGlyphMetrics(font_face, glyph_indices, codepoint_count, design_glyph_metrics, false);
+    font_atlas_cleanup_if_error(SUCCEEDED(result));
+    assert(SUCCEEDED(result) && "[GFX2D] Failed to get design glyph metrics.");
+
     u16 baked_glyph_indices[512] = { 0 };
     i32 baked_glyph_count = 0;
 
@@ -327,27 +306,25 @@ static font_atlas_t font_atlas_create(const char* font_path, f32 point_size)
             continue;
         }
 
-        if (seen_glyph_indices[glyph_index])
-        {
-            continue;
-        }
-
-        seen_glyph_indices[glyph_index] = 1;
         baked_glyph_indices[baked_glyph_count++] = glyph_index;
     }
 
-    i32 atlas_glyph_count = baked_glyph_count;
-    i32 num_rects = atlas_glyph_count;
+    for (i32 i = 0; i < codepoint_count; ++i)
+    {
+        font_atlas.codepoint_to_glyph_index[codepoints[i]] = glyph_indices[i];
+    }
+    
+    i32 num_rects = baked_glyph_count;
     rects = (stbrp_rect*)malloc(num_rects * sizeof(stbrp_rect));
     font_atlas_cleanup_if_error(rects);
     memset(rects, 0, num_rects * sizeof(stbrp_rect));
 
-    fprintf(stderr, "atlas_glyph_count: %d\n", atlas_glyph_count);
+    fprintf(stderr, "baked_glyph_count: %d\n", baked_glyph_count);
 
     i32 padding = 0;
     u64 total_area = 0;
 
-    for (u16 i = 0; i < atlas_glyph_count; ++i)
+    for (u16 i = 0; i < baked_glyph_count; ++i)
     {
         u16 glyph_index = baked_glyph_indices[i];
         DWRITE_GLYPH_RUN glyph_run =
@@ -396,7 +373,7 @@ static font_atlas_t font_atlas_create(const char* font_path, f32 point_size)
     assert(result && "[GFX2D] Failed to pack rectangles.");
 
     i32 used_height = 0;
-    for (i32 i = 0; i < atlas_glyph_count; ++i)
+    for (i32 i = 0; i < baked_glyph_count; ++i)
     {
         stbrp_rect* rect = rects + i;
         i32 bottom = rect->y + rect->h;
@@ -418,15 +395,16 @@ static font_atlas_t font_atlas_create(const char* font_path, f32 point_size)
 
     const i32 bytes_per_pixel = 4;
     i32 atlas_memory_size = atlas_width * atlas_height * bytes_per_pixel;
-    i32 glyph_metrics_size = atlas_glyph_count * sizeof(glyph_metrics_t);
+    i32 total_atlas_glyph_count = IDWriteFontFace_GetGlyphCount(font_face);
+    i32 glyph_infos_size = total_atlas_glyph_count * sizeof(glyph_info_t);
 
     atlas_memory = (u8*)malloc(atlas_memory_size);
     font_atlas_cleanup_if_error(atlas_memory);
     
-    glyph_metrics = (glyph_metrics_t*)malloc(glyph_metrics_size);
+    glyph_infos = (glyph_info_t*)malloc(glyph_infos_size);
 
     memset(atlas_memory, 0, atlas_memory_size);
-    memset(glyph_metrics, 0, glyph_metrics_size);
+    memset(glyph_infos, 0, glyph_infos_size);
 
     // Clear render target
     {
@@ -438,7 +416,7 @@ static font_atlas_t font_atlas_create(const char* font_path, f32 point_size)
         SelectObject(device_context, original);
     }
 
-    for (u16 i = 0; i < atlas_glyph_count; ++i)
+    for (u16 i = 0; i < baked_glyph_count; ++i)
     {
         u16 glyph_index = baked_glyph_indices[i];
         DWRITE_GLYPH_RUN glyph_run =
@@ -459,46 +437,33 @@ static font_atlas_t font_atlas_create(const char* font_path, f32 point_size)
         assert(bounding_box.right <= raster_width);
         assert(bounding_box.bottom <= raster_height);
 
-        stbrp_rect* rect = rects + i;
-        u8* atlas_glyph_line = atlas_memory + rect->x * bytes_per_pixel + rect->y * atlas_width * bytes_per_pixel;
-
-        u32 glyph_metrics_index = font_atlas_calculate_glyph_metrics_index(glyph_index);
-        glyph_metrics_t* metrics = glyph_metrics + glyph_metrics_index;
-
-        DWRITE_GLYPH_METRICS design_glyph_metrics = { 0 };
-        result = IDWriteFontFace_GetDesignGlyphMetrics(font_face, &glyph_index, 1, &design_glyph_metrics, false);
-        font_atlas_cleanup_if_error(SUCCEEDED(result));
-        assert(SUCCEEDED(result) && "[GFX2D] Failed to get design glyph metrics.");
-
         i32 glyph_width = bounding_box.right - bounding_box.left;
         i32 glyph_height = bounding_box.bottom - bounding_box.top;
+        
+        stbrp_rect* rect = rects + i;
 
-        metrics->x = (f32)rect->x;
-        metrics->y = (f32)rect->y;
-        metrics->offset_x = bounding_box.left - raster_x;
-        metrics->offset_y = bounding_box.top - raster_y;
-        metrics->advance = ceilf(design_glyph_metrics.advanceWidth * pixel_per_design_unit);
-        metrics->width = (f32)glyph_width;
-        metrics->height = (f32)glyph_height;
-        metrics->uv_x = (f32)rect->x / (f32)atlas_width;
-        metrics->uv_y = (f32)rect->y / (f32)atlas_height;
-        metrics->uv_width = (f32)glyph_width / (f32)atlas_width;
-        metrics->uv_height = (f32)glyph_height / (f32)atlas_height;
+        glyph_infos[glyph_index] = (glyph_info_t)
+        {
+            .x = (u16)(rect->x + padding),
+            .y = (u16)(rect->y + padding),
+            .width = (u16)glyph_width,
+            .height = (u16)glyph_height,
+            .offset_x = (i16)(bounding_box.left - raster_x),
+            .offset_y = (i16)(bounding_box.top - raster_y),
+            .advance = ceilf(design_glyph_metrics[i].advanceWidth * pixel_per_design_unit),
+        };
 
         if (glyph_index == 36)
         {
-        fprintf(stderr, "atlas: %u x %u\n", atlas_width, atlas_height);
-        fprintf(stderr, "rect: x=%d y=%d w=%d h=%d\n", rect->x, rect->y, rect->w, rect->h);
-        fprintf(stderr, "glyph_width=%d glyph_height=%d\n", glyph_width, glyph_height);
-        fprintf(stderr, "metrics->width=%f height=%f\n", metrics->width, metrics->height);
-        fprintf(stderr, "uv_width*atlas_w=%f uv_height*atlas_h=%f\n",
-                metrics->uv_width * atlas_width, metrics->uv_height * atlas_height);
+            fprintf(stderr, "offset_x: %d, offset_y: %d\n", glyph_infos[glyph_index].offset_x, glyph_infos[glyph_index].offset_y);
         }
-
+        
         HBITMAP bitmap = (HBITMAP)GetCurrentObject(device_context, OBJ_BITMAP);
         DIBSECTION dib = { 0 };
         GetObject(bitmap, sizeof(dib), &dib);
 
+        u8* atlas_glyph_line = atlas_memory + rect->x * bytes_per_pixel + rect->y * atlas_width * bytes_per_pixel;
+        
         font_atlas_cleanup_if_error(dib.dsBm.bmBitsPixel == 32);
         assert(dib.dsBm.bmBitsPixel == 32);
         i32 in_pitch  = dib.dsBm.bmWidthBytes;
@@ -559,23 +524,6 @@ static font_atlas_t font_atlas_create(const char* font_path, f32 point_size)
         fprintf(ppm_file, "\n");
     }
 
-    FILE* file = fopen("font_atlas_test.bin", "wb");
-    size_t file_result = 0;
-    file_result = fwrite(&atlas_width, sizeof(atlas_width), 1, file);
-    assert(file_result == 1);
-    file_result = fwrite(&atlas_height, sizeof(atlas_height), 1, file);
-    assert(file_result == 1);
-    file_result = fwrite(&bytes_per_pixel, sizeof(bytes_per_pixel), 1, file);
-    assert(file_result == 1);
-    file_result = fwrite(&atlas_memory_size, sizeof(atlas_memory_size), 1, file);
-    assert(file_result == 1);
-    file_result = fwrite(&atlas_glyph_count, sizeof(atlas_glyph_count), 1, file);
-    assert(file_result == 1);
-    file_result = fwrite(atlas_memory, atlas_memory_size, 1, file);
-    assert(file_result == 1);
-    file_result = fwrite(glyph_metrics, sizeof(glyph_metrics_t) * atlas_glyph_count, 1, file);
-    assert(file_result == 1);
-
     D3D11_TEXTURE2D_DESC atlas_desc =
     {
         .Width = atlas_width,
@@ -612,9 +560,12 @@ static font_atlas_t font_atlas_create(const char* font_path, f32 point_size)
     assert(SUCCEEDED(result) && "[GFX2D] Failed to create font atlas srv.");
     
     font_atlas.face = font_face;
+    font_atlas.width = atlas_width;
+    font_atlas.height = atlas_height;
     font_atlas.atlas = atlas;
     font_atlas.atlas_srv = atlas_srv;
-    font_atlas.metrics = glyph_metrics;
+    font_atlas.glyph_infos = glyph_infos;
+    font_atlas.glyph_info_count = baked_glyph_count;
 
  cleanup:
     if (font_file) IDWriteFontFile_Release(font_file);
@@ -627,112 +578,9 @@ static font_atlas_t font_atlas_create(const char* font_path, f32 point_size)
     if (nodes) free(nodes);
     // NOTE: Do not release these if there is no error.
     if (font_face && cleanup_error) IDWriteFontFace_Release(font_face);
-    if (glyph_metrics && cleanup_error) free(glyph_metrics);
+    if (glyph_infos && cleanup_error) free(glyph_infos);
     if (atlas && cleanup_error) ID3D11Texture2D_Release(atlas);
     if (atlas_srv && cleanup_error) ID3D11ShaderResourceView_Release(atlas);
-
-    return font_atlas;
-}
-
-static font_atlas_t font_atlas_create_from_file(const char* font_path, f32 point_size)
-{
-    font_atlas_t font_atlas = { 0 };
-    HRESULT result = S_OK;
-    bool cleanup_error = false;
-    IDWriteFontFile* font_file = 0;
-    IDWriteFontFace* font_face = 0;
-    WCHAR font_path_wchar[128] = { 0 };
-    i32 font_path_length = (i32)strlen(font_path);
-
-    i32 wchar_size = MultiByteToWideChar(CP_UTF8, 0, font_path, font_path_length, NULL, 0);
-    assert(wchar_size + 1 < array_count(font_path_wchar) && "[GFX2D] Failed to convert from UTF-8 to UTF-16.");
-
-    MultiByteToWideChar(CP_UTF8, 0, font_path, font_path_length, font_path_wchar, wchar_size);
-    font_path_wchar[wchar_size] = L'\0';
-
-    IDWriteFactory* factory = 0;
-    result = DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, &IID_IDWriteFactory, (IUnknown**)&factory);
-    assert(SUCCEEDED(result) && "[DWRITE] Failed to create factory.");
-
-    result = IDWriteFactory_CreateFontFileReference(factory, font_path_wchar, 0, &font_file);
-    assert(SUCCEEDED(result) && font_file && "[GFX2D] Failed to create font file.");
-
-    result = IDWriteFactory_CreateFontFace(factory, DWRITE_FONT_FACE_TYPE_TRUETYPE, 1, &font_file, 0, DWRITE_FONT_SIMULATIONS_NONE, &font_face);
-    assert(SUCCEEDED(result) && font_face && "[GFX2D] Failed to create font face.");
-    
-    FILE* file = fopen("font_atlas_test.bin", "rb");
-    size_t file_result = 0;
-    // fseek(file, 0, SEEK_END);
-    // i32 file_size = ftell(file);
-    // fseek(file, 0, SEEK_SET);
-    // fprintf(stderr, "file_size: %d\n", file_size);
-
-    i32 atlas_width = 0;
-    i32 atlas_height = 0;
-    i32 bytes_per_pixel = 0;
-    i32 atlas_memory_size = 0;
-    u32 metrics_count = 0;
-    
-    file_result = fread(&atlas_width, sizeof(atlas_width), 1, file);
-    assert(file_result == 1 && "fread: atlas_width");
-    file_result = fread(&atlas_height, sizeof(atlas_height), 1, file);
-    assert(file_result == 1 && "fread: atlas_height");
-    file_result = fread(&bytes_per_pixel, sizeof(bytes_per_pixel), 1, file);
-    assert(file_result == 1 && "fread: bytes_per_pixel");
-    file_result = fread(&atlas_memory_size, sizeof(atlas_memory_size), 1, file);
-    assert(file_result == 1 && "fread: atlas_memory_size");
-    file_result = fread(&metrics_count, sizeof(metrics_count), 1, file);
-    assert(file_result == 1 && "fread: metrics_count");
-
-    fprintf(stderr, "atlas_width: %d, atlas_height: %d, bytes_per_pixel: %d, atlas_memory_size: %d, metrics_count: %u\n",
-            atlas_width, atlas_height, bytes_per_pixel, atlas_memory_size, metrics_count);
-
-    u8* atlas_memory = malloc(atlas_memory_size);
-    glyph_metrics_t* glyph_metrics = malloc(metrics_count * sizeof(glyph_metrics_t));
-    
-    file_result = fread(atlas_memory, atlas_memory_size, 1, file);
-    assert(file_result == 1 && "fread: atlas_memory");
-    file_result = fread(glyph_metrics, metrics_count * sizeof(glyph_metrics_t), 1, file);
-    assert(file_result == 1 && "fread: glyph_metrics");
-    
-    D3D11_TEXTURE2D_DESC atlas_desc =
-    {
-        .Width = atlas_width,
-        .Height = atlas_height,
-        .MipLevels = 1,
-        .ArraySize = 1,
-        .Format = DXGI_FORMAT_R8G8B8A8_UNORM,
-        .SampleDesc = { .Count = 1, .Quality = 0, },
-        .Usage = D3D11_USAGE_DEFAULT,
-        .BindFlags = D3D11_BIND_SHADER_RESOURCE,
-    };
-
-    D3D11_SUBRESOURCE_DATA atlas_data =
-    {
-        .pSysMem = atlas_memory,
-        .SysMemPitch = bytes_per_pixel * atlas_width,
-    };
-
-    ID3D11Texture2D* atlas = 0;
-    result = ID3D11Device_CreateTexture2D(global_window.d3d11->device, &atlas_desc, &atlas_data, &atlas);
-    assert(SUCCEEDED(result) && "[GFX2D] Failed to create font atlas texture.");
-
-    D3D11_SHADER_RESOURCE_VIEW_DESC atlas_srv_desc = (D3D11_SHADER_RESOURCE_VIEW_DESC)
-    {
-        .Format = DXGI_FORMAT_R8G8B8A8_UNORM,
-        .ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D,
-        .Texture2D = { .MostDetailedMip = 0, .MipLevels = 1, },
-    };
-
-    ID3D11ShaderResourceView* atlas_srv = 0;
-    result = ID3D11Device_CreateShaderResourceView(global_window.d3d11->device, (ID3D11Resource*)atlas, &atlas_srv_desc, &atlas_srv);
-    assert(SUCCEEDED(result) && "[GFX2D] Failed to create font atlas srv.");
-
-    font_atlas.face = font_face;
-    font_atlas.atlas = atlas;
-    font_atlas.atlas_srv = atlas_srv;
-    font_atlas.metrics = glyph_metrics;
-    font_atlas.metrics_count = metrics_count;
 
     return font_atlas;
 }
@@ -742,41 +590,31 @@ static void font_atlas_draw_glyph(font_atlas_t* font_atlas)
     font_atlas_pass_t* font_atlas_pass = &font_atlas->pass;
 
     u32 codepoint = 'A';
-    u16 glyph_index = 0;
-    IDWriteFontFace_GetGlyphIndices(font_atlas->face, &codepoint, 1, &glyph_index);
-
-    glyph_metrics_t* metrics = font_atlas->metrics + font_atlas_calculate_glyph_metrics_index(glyph_index);
+    u16 glyph_index = codepoint < array_count(font_atlas->codepoint_to_glyph_index) ? font_atlas->codepoint_to_glyph_index[codepoint] : 0;
+    
+    glyph_info_t* glyph_info = font_atlas->glyph_infos + glyph_index;
 
     f32 pen_x = 100.0f;
     f32 pen_y = 100.0f;
 
-    f32 x0 = pen_x + metrics->offset_x;
-    f32 y0 = pen_y + metrics->offset_y;
-    f32 x1 = x0 + metrics->width;
-    f32 y1 = y0 + metrics->height;
+    f32 x0 = pen_x + glyph_info->offset_x;
+    f32 y0 = pen_y + glyph_info->offset_y;
+    f32 x1 = x0 + glyph_info->width;
+    f32 y1 = y0 + glyph_info->height;
+
+    f32 uv_x = (f32)glyph_info->x / font_atlas->width;
+    f32 uv_y = (f32)glyph_info->y / font_atlas->height;
+    f32 uv_w = (f32)glyph_info->width / font_atlas->width;
+    f32 uv_h = (f32)glyph_info->height / font_atlas->height;
     
-    f32 u0 = metrics->uv_x;
-    f32 v0 = metrics->uv_y;
-    f32 u1 = metrics->uv_x + metrics->uv_width;
-    f32 v1 = metrics->uv_y + metrics->uv_height;
+    f32 u0 = uv_x;
+    f32 v0 = uv_y;
+    f32 u1 = u0 + uv_w;
+    f32 v1 = v0 + uv_h;
 
     font_atlas_vertex_data_t vertex_data[6] =
     {
-        // { metrics->offset_x,                  metrics->offset_y,                   0.0f,                     0.0f },
-        // { metrics->offset_x,                  metrics->offset_y + metrics->height, 0.0f,                     0.5f + metrics->uv_height },
-        // { metrics->offset_x + metrics->width, metrics->offset_y + metrics->height, 0.5f + metrics->uv_width, 0.5f + metrics->uv_height},
-        // { metrics->offset_x + metrics->width, metrics->offset_y + metrics->height, 0.5f + metrics->uv_width, 0.5f + metrics->uv_height},
-        // { metrics->offset_x + metrics->width, metrics->offset_y,                   0.5f + metrics->uv_width, 0.0f },
-        // { metrics->offset_x,                  metrics->offset_y,                   0.0f,                     0.0f },
-        
-        // { metrics->offset_x,                  metrics->offset_y,                   u0, v0 },
-        // { metrics->offset_x,                  metrics->offset_y + metrics->height, u0, v1 },
-        // { metrics->offset_x + metrics->width, metrics->offset_y + metrics->height, u1, v1 },
-        // { metrics->offset_x + metrics->width, metrics->offset_y + metrics->height, u1, v1 },
-        // { metrics->offset_x + metrics->width, metrics->offset_y,                   u1, v0 },
-        // { metrics->offset_x,                  metrics->offset_y,                   u0, v0 },
-
-        { x0, x0, u0, v0 },
+        { x0, y0, u0, v0 },
         { x0, y1, u0, v1 },
         { x1, y1, u1, v1 },
         { x1, y1, u1, v1 },
@@ -880,7 +718,6 @@ static LRESULT CALLBACK window_proc(HWND hwnd, UINT message, WPARAM wparam, LPAR
         case WM_DESTROY:
         case WM_CLOSE:
         {
-            fprintf(stderr, "destroy\n");
             PostQuitMessage(0);
         } break;
         
@@ -1004,7 +841,6 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmdline, i
     global_window.swap_chain = d3d11_create_swap_chain(global_window.hwnd, global_window.d3d11);
     
     font_atlas_t font_atlas = font_atlas_create("C:\\Windows\\Fonts\\Arial.ttf", 12);
-    // font_atlas_t font_atlas = font_atlas_create_from_file("C:\\Windows\\Fonts\\Arial.ttf", 12);
     font_atlas_create_pass(&font_atlas.pass);
 
     while (!global_window.quit)
