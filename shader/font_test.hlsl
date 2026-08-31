@@ -19,6 +19,20 @@ cbuffer global_parameters : register(b0)
 Texture2D global_texture : register(t0);
 SamplerState global_point_sampler : register(s0);
 
+float linear_from_srgb_f32(float x)
+{
+    return x < 0.0404482362771082 ? x / 12.92 : pow(abs((x + 0.055) / 1.055), 2.4);
+}
+
+float4 linear_from_srgba(float4 v)
+{
+    float4 result = float4(linear_from_srgb_f32(v.x),
+                           linear_from_srgb_f32(v.y),
+                           linear_from_srgb_f32(v.z),
+                           v.w);
+  return result;
+}
+
 PS_INPUT vs(VS_INPUT input)
 {
     PS_INPUT output;
@@ -35,9 +49,8 @@ PS_INPUT vs(VS_INPUT input)
 
 float4 ps(PS_INPUT input) : SV_TARGET
 {
-    float3 glyph = global_texture.Sample(global_point_sampler, input.uv).rgb;
-    // NOTE: For testing.
-    float4 color = float4(glyph, 1.0f);
+    float4 glyph = linear_from_srgba(global_texture.Sample(global_point_sampler, input.uv).rgba);
+    float4 color = float4(glyph);
     
     return color;
 }

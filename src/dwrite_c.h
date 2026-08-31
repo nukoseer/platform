@@ -188,6 +188,16 @@ typedef struct DWRITE_GLYPH_RUN
     UINT32 bidiLevel;
 } DWRITE_GLYPH_RUN;
 
+typedef struct DWRITE_MATRIX
+{
+    FLOAT m11;
+    FLOAT m12;
+    FLOAT m21;
+    FLOAT m22;
+    FLOAT dx;
+    FLOAT dy;
+} DWRITE_MATRIX;
+
 typedef struct IDWriteFontVtbl { void* table[]; } IDWriteFontVtbl;
 typedef struct IDWriteFontFamilyVtbl { void* table[]; } IDWriteFontFamilyVtbl;
 typedef struct IDWriteFontCollectionVtbl { void* table[]; } IDWriteFontCollectionVtbl;
@@ -412,6 +422,19 @@ static inline HRESULT IDWriteFontFace_GetDesignGlyphMetrics(IDWriteFontFace* sel
 static inline HRESULT IDWriteFontFace_GetGlyphIndices(IDWriteFontFace* self, const UINT32* codePoints, UINT32 codePointCount, UINT16* glyphIndices)
 {
     return ((HRESULT (WINAPI*)(IDWriteFontFace*, const UINT32*, UINT32, UINT16*))self->vtbl->table[11])(self, codePoints, codePointCount, glyphIndices);
+}
+
+static inline HRESULT IDWriteFontFace_GetGdiCompatibleGlyphMetrics(IDWriteFontFace* self,
+                                                                   FLOAT emSize,
+                                                                   FLOAT pixelsPerDip,
+                                                                   DWRITE_MATRIX const* transform,
+                                                                   BOOL useGdiNatural,
+                                                                   UINT16 const* glyphIndices,
+                                                                   UINT32 glyphCount,
+                                                                   DWRITE_GLYPH_METRICS* glyphMetrics,
+                                                                   BOOL isSideways)
+{
+    return ((HRESULT (WINAPI*)(IDWriteFontFace*, FLOAT, FLOAT, DWRITE_MATRIX const*, BOOL, UINT16 const*, UINT32, DWRITE_GLYPH_METRICS*, BOOL))self->vtbl->table[17])(self, emSize, pixelsPerDip, transform, useGdiNatural, glyphIndices, glyphCount, glyphMetrics, isSideways);
 }
 
 static inline ULONG IDWriteFontFace_Release(IDWriteFontFace* self)
