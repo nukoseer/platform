@@ -277,8 +277,8 @@ static void init_shape_ui(const graphics_t* graphics, shape_info_ui_t* shape_inf
 
 static void init_themes(graphics_t* graphics, themes_t* themes)
 {
-    graphics_2d_font_t font_text = graphics->create_font("IosevkaTerm NFM", 12);
-    graphics_2d_font_t font_header = graphics->create_font("IosevkaTerm NFM", 16);
+    graphics_2d_font_t font_text = graphics->create_fontt("IosevkaTerm NFM", 12);
+    graphics_2d_font_t font_header = graphics->create_fontt("IosevkaTerm NFM", 16);
     
     // NOTE: Light and dark themes.
     theme_add(themes, &(theme_t)
@@ -392,8 +392,6 @@ static inline void init_graphics_state(graphics_t* graphics, graphics_state_t* g
     });
 }
 
-static graphics_2d_font_t global_font;
-
 init_function(init)
 {
     memory_t* memory = platform->memory;
@@ -410,8 +408,6 @@ init_function(init)
     init_themes(graphics, &game->themes);
     earth_init(memory_arena, graphics, &game->graphics_state, io, &game->earth);
     ui_init(memory_arena);
-
-    global_font = graphics->create_fontt("C:\\Users\\nukoseer\\AppData\\Local\\Microsoft\\Windows\\Fonts\\IosevkaTermNerdFontMono-Regular.ttf", 12);
 }
 
 update_function(update)
@@ -518,55 +514,58 @@ render_function(render)
     graphics->end_pass();
 
 #if FONT_ENABLE
-    graphics->begin_draw();
+    // graphics->begin_draw();
     
-    ui_draw_command_list_t* command_list = ui_draw_command_list();
-    for (i32 i = 0; i < command_list->command_count; ++i)
-    {
-        ui_draw_command_t* command = command_list->commands[i];
-        f32 x = command->x;
-        f32 y = command->y;
-        f32 width = command->width;
-        f32 height = command->height;
-        vec4 color = command->color;
+    // ui_draw_command_list_t* command_list = ui_draw_command_list();
+    // for (i32 i = 0; i < command_list->command_count; ++i)
+    // {
+    //     ui_draw_command_t* command = command_list->commands[i];
+    //     f32 x = command->x;
+    //     f32 y = command->y;
+    //     f32 width = command->width;
+    //     f32 height = command->height;
+    //     vec4 color = command->color;
 
-        switch (command->kind)
-        {
-            case UI_DRAW_RECT:
-            {
-                graphics->draw_rect(x, y, width, height, true, 0.0f, color.r, color.g, color.b, color.a);
-            } break;
+    //     switch (command->kind)
+    //     {
+    //         case UI_DRAW_RECT:
+    //         {
+    //             graphics->draw_rect(x, y, width, height, true, 0.0f, color.r, color.g, color.b, color.a);
+    //         } break;
                 
-            case UI_DRAW_BORDER:
-            {
-                f32 thickness = command->thickness;
-                graphics->draw_rect(x, y, width, height, false, thickness, color.r, color.g, color.b, color.a);
-            } break;
+    //         case UI_DRAW_BORDER:
+    //         {
+    //             f32 thickness = command->thickness;
+    //             graphics->draw_rect(x, y, width, height, false, thickness, color.r, color.g, color.b, color.a);
+    //         } break;
                 
-            case UI_DRAW_TEXT:
-            {
-                graphics_2d_font_t font = command->font;
-                const char* text = command->text;
-                u32 length = command->length;
-                ui_rect_t clip = command->clip;
+    //         case UI_DRAW_TEXT:
+    //         {
+    //             // graphics_2d_font_t font = command->font;
+    //             // const char* text = command->text;
+    //             // u32 length = command->length;
+    //             // ui_rect_t clip = command->clip;
                     
-                graphics->push_axis_aligned_clip(clip.x, clip.y, clip.width, clip.height);
-                graphics->draw_text(font, text, length, color.r, color.g, color.b, color.a,
-                                    TEXT_ALIGNMENT_LEADING, x, y, width, height);
-                graphics->pop_axis_aligned_clip();
-            } break;
+    //             // graphics->push_axis_aligned_clip(clip.x, clip.y, clip.width, clip.height);
+    //             // graphics->draw_text(font, text, length, color.r, color.g, color.b, color.a,
+    //             //                     TEXT_ALIGNMENT_LEADING, x, y, width, height);
+    //             // graphics->pop_axis_aligned_clip();
+    //             // (void)clip;
+    //             // graphics->draw_textt(font, text, length, x, y);
+    //         } break;
                 
-            default: 
-            {
-                assert(!"[UI] Invalid draw command.");
-            } break;
-        }
-    }
+    //         default: 
+    //         {
+    //             assert(!"[UI] Invalid draw command.");
+    //         } break;
+    //     }
+    // }
 
-    graphics->end_draw();
+    // graphics->end_draw();
 #endif
 
     const char* text = "Getting Started";
     size_t text_length = strlen(text);
-    graphics->draw_textt(global_font, text, text_length, 100, 20);
+    graphics->draw_textt(theme->font_text, text, text_length, 100, 20, 0.8f, 0.2f, 0.2f, 1.0f);
+    graphics->draw_rect(100, 100, 50, 50, true, 0.0f, 0.8f, 0.2f, 0.2f, 1.0f);
 }

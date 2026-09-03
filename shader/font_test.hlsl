@@ -2,12 +2,16 @@ struct VS_INPUT
 {
     float2 position : POSITION;
     float2 uv : TEXCOORD0;
+    float4 color : COLOR0;
+    float has_texture : HASTEXTURE0;
 };
 
 struct PS_INPUT
 {
     float4 position : SV_POSITION;
     float2 uv : TEXCOORD0;
+    float4 color : COLOR0;
+    nointerpolation float has_texture : HASTEXTURE0;
 };
 
 cbuffer global_parameters : register(b0)
@@ -43,14 +47,22 @@ PS_INPUT vs(VS_INPUT input)
 
     output.position = float4(normal_position, 0.0f, 1.0f);
     output.uv = input.uv;
+    output.color = input.color;
+    output.has_texture = input.has_texture;
 
     return output;
 }
 
 float4 ps(PS_INPUT input) : SV_TARGET
 {
-    float4 glyph = linear_from_srgba(global_texture.Sample(global_point_sampler, input.uv).rgba);
-    float4 color = float4(glyph);
+    float4 texture_sample = float4(1.0f, 1.0f, 1.0f, 1.0f);
+
+    if (input.has_texture > 0.0f)
+    {
+        texture_sample = linear_from_srgba(global_texture.Sample(global_point_sampler, input.uv).rgba);
+    }
+
+    float4 color = texture_sample * input.color;
     
     return color;
 }

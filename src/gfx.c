@@ -349,6 +349,11 @@ static DXGI_FORMAT map_dxgi_ia_format(graphics_format_t format)
             dxgi_format = DXGI_FORMAT_R32G32B32_FLOAT;
         } break;
 
+        case FORMAT_R32G32B32A32_FLOAT:
+        {
+            dxgi_format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+        } break;
+
         default:
         {
             assert(!"[GFX] Failed to map input assembler format.");

@@ -221,6 +221,8 @@ typedef struct font_atlas_vertex_data_t
 {
     vec2 position;
     vec2 uv;
+    vec4 color;
+    f32 has_texture;
 } font_atlas_vertex_data_t;
 
 typedef struct font_system_t
@@ -272,7 +274,7 @@ static void create_font_system_graphics(font_system_t* font_system)
 {
     graphics_buffer_t vertex_buffer = gfx_create_buffer(&(graphics_buffer_desc_t)
     {
-        .size = sizeof(font_atlas_vertex_data_t) * 6 * 256,
+        .size = MIBIBYTES(2),
         .usage = USAGE_DYNAMIC,
         .bind = BIND_VERTEX_BUFFER,
     });
@@ -305,9 +307,11 @@ static void create_font_system_graphics(font_system_t* font_system)
         .attributes = (graphics_vertex_attribute_t[])
         {
             { "POSITION", FORMAT_R32G32_FLOAT, offsetof(font_atlas_vertex_data_t, position), 0, 0, 0, 0 },
-            { "TEXCOORD", FORMAT_R32G32_FLOAT, offsetof(font_atlas_vertex_data_t, uv), 0, 0, 0, 0 }
+            { "TEXCOORD", FORMAT_R32G32_FLOAT, offsetof(font_atlas_vertex_data_t, uv), 0, 0, 0, 0 },
+            { "COLOR", FORMAT_R32G32B32A32_FLOAT, offsetof(font_atlas_vertex_data_t, color), 0, 0, 0, 0 },
+            { "HASTEXTURE", FORMAT_R32_FLOAT, offsetof(font_atlas_vertex_data_t, has_texture), 0, 0, 0, 0 }
         },
-        .attribute_count = 2,
+        .attribute_count = 4,
     });
 
     graphics_sampler_t sampler = gfx_create_sampler(&(graphics_sampler_desc_t)
@@ -347,7 +351,6 @@ static void create_font_from_path(font_t* font, const char* font_path, f32 point
     HRESULT result = 0;
     WCHAR font_path_wchar[128] = { 0 };
     i32 font_path_length = (i32)strlen(font_path);
-    IDWriteFontFile* font_file = 0;
     IDWriteFontFace* font_face = 0;
     IDWriteFactory* factory = global_d2d1.dwrite->factory;
 
@@ -356,13 +359,37 @@ static void create_font_from_path(font_t* font, const char* font_path, f32 point
 
     MultiByteToWideChar(CP_UTF8, 0, font_path, font_path_length, font_path_wchar, wchar_size);
     font_path_wchar[wchar_size] = L'\0';
+
+    IDWriteFontCollection* font_collection = 0;
+    result = IDWriteFactory_GetSystemFontCollection(global_d2d1.dwrite->factory, &font_collection, false);
     
-    result = IDWriteFactory_CreateFontFileReference(factory, font_path_wchar, 0, &font_file);
-    assert(SUCCEEDED(result) && font_file && "[GFX2D] Failed to create font file.");
+    u32 index = 0;
+    bool exists = 0;
+    result = IDWriteFontCollection_FindFamilyName(font_collection, font_path_wchar, &index, &exists);
 
-    result = IDWriteFactory_CreateFontFace(factory, DWRITE_FONT_FACE_TYPE_TRUETYPE, 1, &font_file, 0, DWRITE_FONT_SIMULATIONS_NONE, &font_face);
+    IDWriteFontFamily* font_family = 0;
+    result = IDWriteFontCollection_GetFontFamily(font_collection, index, &font_family);
+
+    if (font_family)
+    {
+        IDWriteFont* matching_font = 0;
+        result = IDWriteFontFamily_GetFirstMatchingFont(font_family, DWRITE_FONT_WEIGHT_REGULAR, DWRITE_FONT_STRETCH_NORMAL, DWRITE_FONT_STYLE_NORMAL, &matching_font);
+        assert(SUCCEEDED(result) && matching_font && "[GFX2D] Failed to get first matching font.");
+        
+        result = IDWriteFont_CreateFontFace(matching_font, &font_face);
+    }
+    else
+    {
+        IDWriteFontFile* font_file = 0;
+        result = IDWriteFactory_CreateFontFileReference(factory, font_path_wchar, 0, &font_file);
+        assert(SUCCEEDED(result) && font_file && "[GFX2D] Failed to create font file.");
+
+    
+        result = IDWriteFactory_CreateFontFace(factory, DWRITE_FONT_FACE_TYPE_TRUETYPE, 1, &font_file, 0, DWRITE_FONT_SIMULATIONS_NONE, &font_face);
+    }
+    
     assert(SUCCEEDED(result) && font_face && "[GFX2D] Failed to create font face.");
-
+    
     DWRITE_FONT_METRICS font_metrics = { 0 };
     IDWriteFontFace_GetMetrics(font_face, &font_metrics);
 
@@ -643,7 +670,7 @@ static graphics_2d_get_font_pixel_size_function(gfx_2d_get_font_pixel_size)
 {
     u32 font_generation = get_generation(font.platform);
     u32 font_index = get_index(font.platform);
-    gfx_2d_font_t* gfx_2d_font = global_fonts + font_index;
+    font_t* gfx_2d_font = global_fontts + font_index;
 
     if (font_generation != gfx_2d_font->generation)
     {
@@ -651,7 +678,7 @@ static graphics_2d_get_font_pixel_size_function(gfx_2d_get_font_pixel_size)
         return 0.0f;
     }
 
-    f32 pixel_size = gfx_2d_font->pixel_size;
+    f32 pixel_size = gfx_2d_font->pixel_per_em;
 
     return pixel_size;
 }
@@ -660,7 +687,7 @@ static graphics_2d_measure_text_width_function(gfx_2d_measure_text_width)
 {
     u32 font_generation = get_generation(font.platform);
     u32 font_index = get_index(font.platform);
-    gfx_2d_font_t* gfx_2d_font = global_fonts + font_index;
+    font_t* gfx_2d_font = global_fontts + font_index;
 
     if (font_generation != gfx_2d_font->generation)
     {
@@ -672,40 +699,14 @@ static graphics_2d_measure_text_width_function(gfx_2d_measure_text_width)
     
     if (text && text_length < (u32)-1)
     {
-        // IMPORTANT: This function measures character advance width per character and sums them up. This is not the same as measuring text width using text layout. For example, if we have a text "fi", the character advance width of 'f' and 'i' are different than the text width of "fi" because of kerning. So this function is not accurate for measuring text width. But it is fast and good enough for most cases.
-        text_width = measure_text_width_cached(gfx_2d_font, text, (u32)text_length);
-
-        // TODO: This is really inefficient. For each text we create a new text layout,
-        // get text metrics and release the layout. We also convert from UTF-8 to
-        // UTF-16. Probably this is still okay if we only have small amount of texts with
-        // small text length. Ideally, we at least need some kind of LRU cache structure.
-        // I believe if we generate font atlas at some point we can calculate text width
-        // without creating text layout.
-        if (text_width == 0.0f)
+        for (u32 index = 0; index < text_length; ++index)
         {
-            IDWriteTextLayout* text_layout = 0;
-            const f32 max_width = 10000.0f;
-            const f32 max_height = 10000.0f;
+            font_atlas_t* font_atlas = &gfx_2d_font->atlas;
+            u32 codepoint = text[index];
+            u16 glyph_index = codepoint < array_count(font_atlas->codepoint_to_glyph_index) ? font_atlas->codepoint_to_glyph_index[codepoint] : 0;
+            glyph_info_t* glyph_info = font_atlas->glyph_infos + glyph_index;
 
-            wchar_t wchar_text[256];
-            i32 wchar_size = MultiByteToWideChar(CP_UTF8, 0, text, (int)text_length, NULL, 0);
-            assert(wchar_size + 1 < array_count(wchar_text) && "[GFX2D] Failed to convert from UTF-8 to UTF-16.");
-
-            MultiByteToWideChar(CP_UTF8, 0, text, (i32)text_length, wchar_text, wchar_size);
-            wchar_text[wchar_size] = '\0';
-
-            HRESULT result = IDWriteFactory_CreateTextLayout(global_d2d1.dwrite->factory, wchar_text, wchar_size,
-                                                             gfx_2d_font->text_format,
-                                                             max_width, max_height, &text_layout);
-            assert(SUCCEEDED(result) && text_layout && "[GFX2D] Failed to create text layout.");
-
-            DWRITE_TEXT_METRICS text_metrics = { 0 };
-            IDWriteTextLayout_GetMetrics(text_layout, &text_metrics);
-
-            f32 text_width_dip = text_metrics.widthIncludingTrailingWhitespace;
-            text_width = text_width_dip * (global_d2d1.dpi / 96.0f);
-
-            IDWriteTextLayout_Release(text_layout);
+            text_width += glyph_info->advance;
         }
     }
     
@@ -716,7 +717,7 @@ static graphics_2d_get_line_height_function(gfx_2d_get_line_height)
 {
     u32 font_generation = get_generation(font.platform);
     u32 font_index = get_index(font.platform);
-    gfx_2d_font_t* gfx_2d_font = global_fonts + font_index;
+    font_t* gfx_2d_font = global_fontts + font_index;
 
     if (font_generation != gfx_2d_font->generation)
     {
@@ -724,7 +725,7 @@ static graphics_2d_get_line_height_function(gfx_2d_get_line_height)
         return 0.0f;
     }
 
-    return gfx_2d_font->line_height;
+    return gfx_2d_font->line_advance;
 }
 
 static graphics_2d_begin_draw_function(gfx_2d_begin_draw)
@@ -816,12 +817,12 @@ static graphics_2d_draw_textt_function(gfx_2d_draw_textt)
             f32 u1 = u0 + uv_w;
             f32 v1 = v0 + uv_h;
 
-            vertex_data[vertex_data_count + 0] = (font_atlas_vertex_data_t){ x0, y0, u0, v0 };
-            vertex_data[vertex_data_count + 1] = (font_atlas_vertex_data_t){ x0, y1, u0, v1 };
-            vertex_data[vertex_data_count + 2] = (font_atlas_vertex_data_t){ x1, y1, u1, v1 };
-            vertex_data[vertex_data_count + 3] = (font_atlas_vertex_data_t){ x1, y1, u1, v1 };
-            vertex_data[vertex_data_count + 4] = (font_atlas_vertex_data_t){ x1, y0, u1, v0 };
-            vertex_data[vertex_data_count + 5] = (font_atlas_vertex_data_t){ x0, y0, u0, v0 };
+            vertex_data[vertex_data_count + 0] = (font_atlas_vertex_data_t){ x0, y0, u0, v0, r, g, b, a, 1.0f };
+            vertex_data[vertex_data_count + 1] = (font_atlas_vertex_data_t){ x0, y1, u0, v1, r, g, b, a, 1.0f };
+            vertex_data[vertex_data_count + 2] = (font_atlas_vertex_data_t){ x1, y1, u1, v1, r, g, b, a, 1.0f };
+            vertex_data[vertex_data_count + 3] = (font_atlas_vertex_data_t){ x1, y1, u1, v1, r, g, b, a, 1.0f };
+            vertex_data[vertex_data_count + 4] = (font_atlas_vertex_data_t){ x1, y0, u1, v0, r, g, b, a, 1.0f };
+            vertex_data[vertex_data_count + 5] = (font_atlas_vertex_data_t){ x0, y0, u0, v0, r, g, b, a, 1.0f };
 
             vertex_data_count += vertex_per_glyph;
             layout_x += glyph_info->advance;
@@ -840,7 +841,6 @@ static graphics_2d_draw_textt_function(gfx_2d_draw_textt)
             gfx_set_pipeline(global_font_system.pipeline);
             gfx_set_srvs(STAGE_PIXEL_SHADER, &font_atlas->atlas, 1, 0);
             gfx_draw(TOPOLOGY_TRIANGLE_LIST, vertex_data_count, 0);
-            
         }
         gfx_end_pass();
     }
@@ -848,32 +848,62 @@ static graphics_2d_draw_textt_function(gfx_2d_draw_textt)
 
 static graphics_2d_draw_rect_function(gfx_2d_draw_rect)
 {
-    D2D1_RECT_F rect =
+    // D2D1_RECT_F rect =
+    // {
+    //     .left = x,
+    //     .top = y,
+    //     .right = x + width,
+    //     .bottom = y + height,
+    // };
+
+    // D2D1_COLOR_F color = { r, g, b, a };
+    // ID2D1SolidColorBrush_SetColor(global_d2d1.solid_color_brush, &color);
+
+    // if (fill)
+    // {
+    //     ID2D1RenderTarget_FillRectangle(global_d2d1.render_target, &rect, (ID2D1Brush*)global_d2d1.solid_color_brush);
+    // }
+    // else
+    // {
+    //     ID2D1RenderTarget_DrawRectangle(global_d2d1.render_target, &rect, (ID2D1Brush*)global_d2d1.solid_color_brush, thickness, 0);
+
+    //     // D2D1_ROUNDED_RECT rounded_rect =
+    //     // {
+    //     //     .rect = rect,
+    //     //     .radiusX = 16.0f, .radiusY = 16.0f,
+    //     // };
+    //     // ID2D1RenderTarget_DrawRoundedRectangle(global_d2d1.render_target, &rounded_rect, (ID2D1Brush*)global_d2d1.solid_color_brush, thickness, 0);
+    // }
+
+    f32 x0 = x;
+    f32 y0 = y;
+    f32 x1 = x + width;
+    f32 y1 = y + height;
+    
+    font_atlas_vertex_data_t vertex_data[] =
     {
-        .left = x,
-        .top = y,
-        .right = x + width,
-        .bottom = y + height,
+        { x0, y0, 0.0f, 0.0f, r, g, b, a, 0.0f },
+        { x0, y1, 0.0f, 0.0f, r, g, b, a, 0.0f },
+        { x1, y1, 0.0f, 0.0f, r, g, b, a, 0.0f },
+        { x1, y1, 0.0f, 0.0f, r, g, b, a, 0.0f },
+        { x1, y0, 0.0f, 0.0f, r, g, b, a, 0.0f },
+        { x0, y0, 0.0f, 0.0f, r, g, b, a, 0.0f },
     };
+    
+    graphics_target_t backbuffer = gfx_get_backbuffer_target();
 
-    D2D1_COLOR_F color = { r, g, b, a };
-    ID2D1SolidColorBrush_SetColor(global_d2d1.solid_color_brush, &color);
-
-    if (fill)
+    gfx_begin_pass(backbuffer, &(graphics_pass_desc_t){ 0 });
     {
-        ID2D1RenderTarget_FillRectangle(global_d2d1.render_target, &rect, (ID2D1Brush*)global_d2d1.solid_color_brush);
+        vec4 viewport_size = v4((f32)backbuffer.width, (f32)backbuffer.height, 0.0f, 0.0f);
+        gfx_update_buffer(global_font_system.parameter_buffer, &viewport_size, 0, sizeof(viewport_size));
+        gfx_update_buffer(global_font_system.vertex_buffer, vertex_data, 0, sizeof(font_atlas_vertex_data_t) * array_count(vertex_data));
+        gfx_set_buffer(global_font_system.parameter_buffer, STAGE_VERTEX_SHADER, 0, 0, 0);
+        gfx_set_vertex_buffer(global_font_system.vertex_buffer, 0, sizeof(font_atlas_vertex_data_t), 0);
+        gfx_set_program(global_font_system.program);
+        gfx_set_pipeline(global_font_system.pipeline);
+        gfx_draw(TOPOLOGY_TRIANGLE_LIST, array_count(vertex_data), 0);
     }
-    else
-    {
-        ID2D1RenderTarget_DrawRectangle(global_d2d1.render_target, &rect, (ID2D1Brush*)global_d2d1.solid_color_brush, thickness, 0);
-
-        // D2D1_ROUNDED_RECT rounded_rect =
-        // {
-        //     .rect = rect,
-        //     .radiusX = 16.0f, .radiusY = 16.0f,
-        // };
-        // ID2D1RenderTarget_DrawRoundedRectangle(global_d2d1.render_target, &rounded_rect, (ID2D1Brush*)global_d2d1.solid_color_brush, thickness, 0);
-    }
+    gfx_end_pass();
 }
 
 static graphics_2d_push_axis_aligned_clip_function(gfx_2d_push_axis_aligned_clip)
