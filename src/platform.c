@@ -33,6 +33,7 @@
 #pragma comment(lib, "dxguid")
 #pragma comment(lib, "dwrite")
 #pragma comment(lib, "d2d1")
+#pragma comment(lib, "gdi32")
 #pragma comment(lib, "winmm")
 
 #define PLATFORM_WINDOW_CLASS "platform_window"
@@ -642,6 +643,8 @@ static DWORD WINAPI main_thread(void* param)
     window->d2d1 = d2d1_init(get_window_dpi(window->hwnd));
     window->swap_chain = d3d11_create_swap_chain(window->hwnd, window->d3d11);
 
+    font_system_init();
+    
     resize_back_buffer(window);
 
     memory_t memory = { 0 };
@@ -689,6 +692,7 @@ static DWORD WINAPI main_thread(void* param)
         // NOTE: 2D functions for text rendering.
 
         .create_font = gfx_2d_create_font,
+        .create_fontt = gfx_2d_create_fontt,
         .delete_font = gfx_2d_delete_font,
         .get_font_point_size = gfx_2d_get_font_point_size,
         .get_font_pixel_size = gfx_2d_get_font_pixel_size,
@@ -697,6 +701,7 @@ static DWORD WINAPI main_thread(void* param)
         .begin_draw = gfx_2d_begin_draw,
         .end_draw = gfx_2d_end_draw,
         .draw_text = gfx_2d_draw_text,
+        .draw_textt = gfx_2d_draw_textt,
         .draw_rect = gfx_2d_draw_rect,
         .push_axis_aligned_clip = gfx_2d_push_axis_aligned_clip,
         .pop_axis_aligned_clip = gfx_2d_pop_axis_aligned_clip,

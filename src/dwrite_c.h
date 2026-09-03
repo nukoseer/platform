@@ -130,6 +130,13 @@ typedef enum DWRITE_RENDERING_MODE
     DWRITE_RENDERING_MODE_CLEARTYPE_NATURAL_SYMMETRIC   = DWRITE_RENDERING_MODE_NATURAL_SYMMETRIC
 } DWRITE_RENDERING_MODE;
 
+typedef enum DWRITE_GRID_FIT_MODE
+{
+    DWRITE_GRID_FIT_MODE_DEFAULT,
+    DWRITE_GRID_FIT_MODE_DISABLED,
+    DWRITE_GRID_FIT_MODE_ENABLED
+} DWRITE_GRID_FIT_MODE;
+
 // NOTE: Types.
 
 typedef struct DWRITE_TEXT_METRICS
@@ -203,24 +210,28 @@ typedef struct IDWriteFontFamilyVtbl { void* table[]; } IDWriteFontFamilyVtbl;
 typedef struct IDWriteFontCollectionVtbl { void* table[]; } IDWriteFontCollectionVtbl;
 typedef struct IDWriteFontFileVtbl { void* table[]; } IDWriteFontFileVtbl;
 typedef struct IDWriteFontFaceVtbl { void* table[]; } IDWriteFontFaceVtbl;
-typedef struct IDWriteFactoryVtbl { void* table[]; } IDWriteFactoryVtbl;
 typedef struct IDWriteTextFormatVtbl { void* table[]; } IDWriteTextFormatVtbl;
 typedef struct IDWriteTextLayoutVtbl { void* table[]; } IDWriteTextLayoutVtbl;
 typedef struct IDWriteRenderingParamsVtbl { void* table[]; } IDWriteRenderingParamsVtbl;
+typedef struct IDWriteRenderingParams2Vtbl { void* table[]; } IDWriteRenderingParams2Vtbl;
 typedef struct IDWriteGdiInteropVtbl { void* table[]; } IDWriteGdiInteropVtbl;
 typedef struct IDWriteBitmapRenderTargetVtbl { void* table[]; } IDWriteBitmapRenderTargetVtbl;
+typedef struct IDWriteFactoryVtbl { void* table[]; } IDWriteFactoryVtbl;
+typedef struct IDWriteFactory2Vtbl { void* table[]; } IDWriteFactory2Vtbl;
 
 typedef struct IDWriteFont { IDWriteFontVtbl* vtbl; } IDWriteFont;
 typedef struct IDWriteFontFamily { IDWriteFontFamilyVtbl* vtbl; } IDWriteFontFamily;
 typedef struct IDWriteFontCollection { IDWriteFontCollectionVtbl* vtbl; } IDWriteFontCollection;
 typedef struct IDWriteFontFile { IDWriteFontFileVtbl* vtbl; } IDWriteFontFile;
 typedef struct IDWriteFontFace { IDWriteFontFaceVtbl* vtbl; } IDWriteFontFace;
-typedef struct IDWriteFactory { IDWriteFactoryVtbl* vtbl; } IDWriteFactory;
 typedef struct IDWriteTextFormat { IDWriteTextFormatVtbl* vtbl; } IDWriteTextFormat;
 typedef struct IDWriteTextLayout { IDWriteTextLayoutVtbl* vtbl; } IDWriteTextLayout;
 typedef struct IDWriteRenderingParams { IDWriteRenderingParamsVtbl* vtbl; } IDWriteRenderingParams;
+typedef struct IDWriteRenderingParams2 { IDWriteRenderingParams2Vtbl* vtbl; } IDWriteRenderingParams2;
 typedef struct IDWriteGdiInterop { IDWriteGdiInteropVtbl* vtbl; } IDWriteGdiInterop;
 typedef struct IDWriteBitmapRenderTarget { IDWriteBitmapRenderTargetVtbl* vtbl; } IDWriteBitmapRenderTarget;
+typedef struct IDWriteFactory { IDWriteFactoryVtbl* vtbl; } IDWriteFactory;
+typedef struct IDWriteFactory2 { IDWriteFactory2Vtbl* vtbl; } IDWriteFactory2;
 
 static inline ULONG IDWriteFactory_Release(IDWriteFactory* self)
 {
@@ -260,6 +271,20 @@ static inline HRESULT IDWriteFactory_CreateCustomRenderingParams(IDWriteFactory*
 {
     return ((HRESULT (WINAPI*)(IDWriteFactory*, FLOAT, FLOAT, FLOAT, DWRITE_PIXEL_GEOMETRY, DWRITE_RENDERING_MODE, IDWriteRenderingParams**))self->vtbl->table[12])(self, gamma, enhancedContrast, clearTypeLevel, pixelGeometry, renderingMode, renderingParams);
 }
+
+static inline HRESULT IDWriteFactory2_CreateCustomRenderingParams2(IDWriteFactory2* self,
+                                                                   FLOAT gamma,
+                                                                   FLOAT enhancedContrast,
+                                                                   FLOAT grayscaleEnhancedContrast,
+                                                                   FLOAT clearTypeLevel,
+                                                                   DWRITE_PIXEL_GEOMETRY pixelGeometry,
+                                                                   DWRITE_RENDERING_MODE renderingMode,
+                                                                   DWRITE_GRID_FIT_MODE gridFitMode,
+                                                                   IDWriteRenderingParams2** renderingParams)
+{
+    return ((HRESULT (WINAPI*)(IDWriteFactory2*, FLOAT, FLOAT, FLOAT, FLOAT, DWRITE_PIXEL_GEOMETRY, DWRITE_RENDERING_MODE, DWRITE_GRID_FIT_MODE, IDWriteRenderingParams2**))self->vtbl->table[29])(self, gamma, enhancedContrast, grayscaleEnhancedContrast, clearTypeLevel, pixelGeometry, renderingMode, gridFitMode, renderingParams);
+}
+
 
 static inline HRESULT IDWriteFactory_CreateTextLayout(IDWriteFactory* self,
                                                       WCHAR const* string,
@@ -307,6 +332,16 @@ static inline HRESULT IDWriteBitmapRenderTarget_DrawGlyphRun(IDWriteBitmapRender
 static inline HDC IDWriteBitmapRenderTarget_GetMemoryDC(IDWriteBitmapRenderTarget* self)
 {
     return ((HDC (WINAPI*)(IDWriteBitmapRenderTarget*))self->vtbl->table[4])(self);
+}
+
+static inline FLOAT IDWriteBitmapRenderTarget_GetPixelsPerDip(IDWriteBitmapRenderTarget* self)
+{
+    return ((FLOAT (WINAPI*)(IDWriteBitmapRenderTarget*))self->vtbl->table[5])(self);
+}
+
+static inline HRESULT IDWriteBitmapRenderTarget_SetPixelsPerDip(IDWriteBitmapRenderTarget* self, FLOAT pixelsPerDip)
+{
+    return ((HRESULT (WINAPI*)(IDWriteBitmapRenderTarget*, FLOAT))self->vtbl->table[6])(self, pixelsPerDip);
 }
 
 static inline ULONG IDWriteBitmapRenderTarget_Release(IDWriteBitmapRenderTarget* self)
@@ -452,6 +487,7 @@ EXTERN_C HRESULT DECLSPEC_IMPORT DWriteCreateFactory(DWRITE_FACTORY_TYPE factory
 // NOTE: GUIDs.
 
 DEFINE_GUID(IID_IDWriteFactory, 0xb859ee5a, 0xd838, 0x4b5b, 0xa2, 0xe8, 0x1a, 0xdc, 0x7d, 0x93, 0xdb, 0x48);
+DEFINE_GUID(IID_IDWriteFactory2, 0x0439fc60, 0xca44, 0x4994, 0x8d, 0xee, 0x3a, 0x9a, 0xf7, 0xb7, 0x32, 0xec);
 
 #ifdef __clang__
 #pragma clang diagnostic pop

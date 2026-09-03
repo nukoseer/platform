@@ -15,7 +15,7 @@ static d2d1_t* d2d1_init(f32 dpi)
     d2d1->dwrite = dwrite;
     d2d1->dpi = dpi;
     
-    result = DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, &IID_IDWriteFactory, (IUnknown**)&d2d1->dwrite->factory);
+    result = DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, &IID_IDWriteFactory2, (IUnknown**)&d2d1->dwrite->factory);
     assert(SUCCEEDED(result) && "[DWRITE] Failed to create factory.");
 
 #ifdef _DEBUG

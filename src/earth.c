@@ -772,6 +772,7 @@ static void earth_country_search_input(input_t* input, ui_text_edit_t* text_edit
 
 static void earth_ui_update(input_t* input, const theme_t* theme, earth_t* earth)
 {
+#if FONT_ENABLE
     country_name_t country_hover = country_get_name(earth->country_hover_index);
     country_name_t country_selected = country_get_name(earth->country_selected_index);
 
@@ -925,6 +926,7 @@ static void earth_ui_update(input_t* input, const theme_t* theme, earth_t* earth
     ui_pop_font_color();
     ui_pop_font();
     ui_pop_color();
+#endif
 }
 
 static void earth_update(input_t* input, camera_t* camera, const theme_t* theme, f32 delta_time,

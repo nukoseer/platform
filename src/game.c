@@ -392,6 +392,8 @@ static inline void init_graphics_state(graphics_t* graphics, graphics_state_t* g
     });
 }
 
+static graphics_2d_font_t global_font;
+
 init_function(init)
 {
     memory_t* memory = platform->memory;
@@ -408,6 +410,8 @@ init_function(init)
     init_themes(graphics, &game->themes);
     earth_init(memory_arena, graphics, &game->graphics_state, io, &game->earth);
     ui_init(memory_arena);
+
+    global_font = graphics->create_fontt("C:\\Users\\nukoseer\\AppData\\Local\\Microsoft\\Windows\\Fonts\\IosevkaTermNerdFontMono-Regular.ttf", 12);
 }
 
 update_function(update)
@@ -513,6 +517,7 @@ render_function(render)
     }
     graphics->end_pass();
 
+#if FONT_ENABLE
     graphics->begin_draw();
     
     ui_draw_command_list_t* command_list = ui_draw_command_list();
@@ -559,4 +564,9 @@ render_function(render)
     }
 
     graphics->end_draw();
+#endif
+
+    const char* text = "Getting Started";
+    size_t text_length = strlen(text);
+    graphics->draw_textt(global_font, text, text_length, 100, 20);
 }

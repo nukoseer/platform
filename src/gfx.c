@@ -953,6 +953,8 @@ static graphics_create_target_function(gfx_create_target)
     gfx_target->generation = target_generation;
     
     graphics_target.platform = pack_generation_index(target_generation, target_index);
+    graphics_target.width = width;
+    graphics_target.height = height;
 
     return graphics_target;
 }
@@ -1566,6 +1568,8 @@ static graphics_get_backbuffer_target_function(gfx_get_backbuffer_target)
     gfx_target->height = global_d3d11.height;
 
     graphics_target.platform = target_index;
+    graphics_target.width = global_d3d11.width;
+    graphics_target.height = global_d3d11.height;
 
     return graphics_target;
 }

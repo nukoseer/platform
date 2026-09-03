@@ -478,6 +478,8 @@ typedef struct graphics_target_desc_t
 typedef struct graphics_target_t
 {
     u64 platform;
+    u32 width;
+    u32 height;
 } graphics_target_t;
 
 typedef struct graphics_pass_desc_t
@@ -628,6 +630,9 @@ typedef struct graphics_2d_font_t
 #define graphics_2d_create_font_function(name) graphics_2d_font_t name(const char* font_name, f32 point_size)
 typedef graphics_2d_create_font_function(graphics_2d_create_font_f);
 
+#define graphics_2d_create_fontt_function(name) graphics_2d_font_t name(const char* font_path, f32 point_size)
+typedef graphics_2d_create_fontt_function(graphics_2d_create_fontt_f);
+
 #define graphics_2d_delete_font_function(name) void name(graphics_2d_font_t font)
 typedef graphics_2d_delete_font_function(graphics_2d_delete_font_f);
 
@@ -651,6 +656,9 @@ typedef graphics_2d_end_draw_function(graphics_2d_end_draw_f);
 
 #define graphics_2d_draw_text_function(name) void name(graphics_2d_font_t font, const char* text, size_t text_length, f32 r, f32 g, f32 b, f32 a, graphics_2d_text_alignment_t alignment, f32 x, f32 y, f32 width, f32 height)
 typedef graphics_2d_draw_text_function(graphics_2d_draw_text_f);
+
+#define graphics_2d_draw_textt_function(name) void name(graphics_2d_font_t font, const char* text, size_t text_length, f32 x, f32 y)
+typedef graphics_2d_draw_textt_function(graphics_2d_draw_textt_f);
 
 #define graphics_2d_draw_rect_function(name) void name(f32 x, f32 y, f32 width, f32 height, bool fill, f32 thickness, f32 r, f32 g, f32 b, f32 a)
 typedef graphics_2d_draw_rect_function(graphics_2d_draw_rect_f);
@@ -713,6 +721,7 @@ typedef struct graphics_t
         struct graphics_2d_functions
         {
             graphics_2d_create_font_f* create_font;
+            graphics_2d_create_fontt_f* create_fontt;
             graphics_2d_delete_font_f* delete_font;
             graphics_2d_get_font_point_size_f* get_font_point_size;
             graphics_2d_get_font_pixel_size_f* get_font_pixel_size;
@@ -721,6 +730,7 @@ typedef struct graphics_t
             graphics_2d_begin_draw_f* begin_draw;
             graphics_2d_end_draw_f* end_draw;
             graphics_2d_draw_text_f* draw_text;
+            graphics_2d_draw_textt_f* draw_textt;
             graphics_2d_draw_rect_f* draw_rect;
             graphics_2d_push_axis_aligned_clip_f* push_axis_aligned_clip;
             graphics_2d_pop_axis_aligned_clip_f* pop_axis_aligned_clip;
