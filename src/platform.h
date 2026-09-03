@@ -305,6 +305,7 @@ typedef enum graphics_format_t
     FORMAT_R32_FLOAT,
     FORMAT_R32G32_FLOAT,
     FORMAT_R32G32B32_FLOAT,
+    FORMAT_R32G32B32A32_FLOAT,
     FORMAT_R16_UINT,
     FORMAT_R32_UINT,
     FORMAT_D24_UNORM_S8_UINT,
@@ -657,7 +658,7 @@ typedef graphics_2d_end_draw_function(graphics_2d_end_draw_f);
 #define graphics_2d_draw_text_function(name) void name(graphics_2d_font_t font, const char* text, size_t text_length, f32 r, f32 g, f32 b, f32 a, graphics_2d_text_alignment_t alignment, f32 x, f32 y, f32 width, f32 height)
 typedef graphics_2d_draw_text_function(graphics_2d_draw_text_f);
 
-#define graphics_2d_draw_textt_function(name) void name(graphics_2d_font_t font, const char* text, size_t text_length, f32 x, f32 y)
+#define graphics_2d_draw_textt_function(name) void name(graphics_2d_font_t font, const char* text, size_t text_length, f32 x, f32 y, f32 r, f32 g, f32 b, f32 a)
 typedef graphics_2d_draw_textt_function(graphics_2d_draw_textt_f);
 
 #define graphics_2d_draw_rect_function(name) void name(f32 x, f32 y, f32 width, f32 height, bool fill, f32 thickness, f32 r, f32 g, f32 b, f32 a)
