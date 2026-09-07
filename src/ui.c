@@ -1356,10 +1356,10 @@ static void ui_emit_draw_commands(ui_widget_t* widget, ui_rect_t clip_rect, vec2
     {
         ui_rect_t border_rect =
         {
-            draw_rect.x - widget->border.thickness * 0.5f,
-            draw_rect.y - widget->border.thickness * 0.5f,
-            draw_rect.width + widget->border.thickness,
-            draw_rect.height + widget->border.thickness,
+            draw_rect.x - widget->border.thickness,
+            draw_rect.y - widget->border.thickness,
+            draw_rect.width + widget->border.thickness * 2.0f,
+            draw_rect.height + widget->border.thickness * 2.0f,
         };
 
         ui_rect_t draw_border_rect = ui_is_flag_set(widget, UI_FLAG_ESCAPE_CLIP) ?
