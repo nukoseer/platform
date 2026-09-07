@@ -5,7 +5,9 @@ typedef struct font_atlas_vertex_data_t
 {
     vec2 position;
     vec2 uv;
+    vec2 size;
     vec4 color;
+    f32 border_thickness;
     f32 has_texture;
 } font_atlas_vertex_data_t;
 
@@ -317,10 +319,12 @@ static void create_font_system_graphics(font_system_t* font_system)
         {
             { "POSITION", FORMAT_R32G32_FLOAT, offsetof(font_atlas_vertex_data_t, position), 0, 0, 0, 0 },
             { "TEXCOORD", FORMAT_R32G32_FLOAT, offsetof(font_atlas_vertex_data_t, uv), 0, 0, 0, 0 },
+            { "SIZE", FORMAT_R32G32_FLOAT, offsetof(font_atlas_vertex_data_t, size), 0, 0, 0, 0 },
             { "COLOR", FORMAT_R32G32B32A32_FLOAT, offsetof(font_atlas_vertex_data_t, color), 0, 0, 0, 0 },
+            { "BORDERTHICKNESS", FORMAT_R32_FLOAT, offsetof(font_atlas_vertex_data_t, border_thickness), 0, 0, 0, 0 },
             { "HASTEXTURE", FORMAT_R32_FLOAT, offsetof(font_atlas_vertex_data_t, has_texture), 0, 0, 0, 0 }
         },
-        .attribute_count = 4,
+        .attribute_count = 6,
     });
 
     graphics_sampler_t sampler = gfx_create_sampler(&(graphics_sampler_desc_t)
@@ -839,12 +843,12 @@ static graphics_2d_draw_textt_function(gfx_2d_draw_textt)
             f32 u1 = u0 + uv_w;
             f32 v1 = v0 + uv_h;
 
-            vertex_data[vertex_data_count + 0] = (font_atlas_vertex_data_t){ x0, y0, u0, v0, r, g, b, a, 1.0f };
-            vertex_data[vertex_data_count + 1] = (font_atlas_vertex_data_t){ x0, y1, u0, v1, r, g, b, a, 1.0f };
-            vertex_data[vertex_data_count + 2] = (font_atlas_vertex_data_t){ x1, y1, u1, v1, r, g, b, a, 1.0f };
-            vertex_data[vertex_data_count + 3] = (font_atlas_vertex_data_t){ x1, y1, u1, v1, r, g, b, a, 1.0f };
-            vertex_data[vertex_data_count + 4] = (font_atlas_vertex_data_t){ x1, y0, u1, v0, r, g, b, a, 1.0f };
-            vertex_data[vertex_data_count + 5] = (font_atlas_vertex_data_t){ x0, y0, u0, v0, r, g, b, a, 1.0f };
+            vertex_data[vertex_data_count + 0] = (font_atlas_vertex_data_t){ x0, y0, u0, v0, 0.0f, 0.0f, r, g, b, a, 0.0f, 1.0f };
+            vertex_data[vertex_data_count + 1] = (font_atlas_vertex_data_t){ x0, y1, u0, v1, 0.0f, 0.0f, r, g, b, a, 0.0f, 1.0f };
+            vertex_data[vertex_data_count + 2] = (font_atlas_vertex_data_t){ x1, y1, u1, v1, 0.0f, 0.0f, r, g, b, a, 0.0f, 1.0f };
+            vertex_data[vertex_data_count + 3] = (font_atlas_vertex_data_t){ x1, y1, u1, v1, 0.0f, 0.0f, r, g, b, a, 0.0f, 1.0f };
+            vertex_data[vertex_data_count + 4] = (font_atlas_vertex_data_t){ x1, y0, u1, v0, 0.0f, 0.0f, r, g, b, a, 0.0f, 1.0f };
+            vertex_data[vertex_data_count + 5] = (font_atlas_vertex_data_t){ x0, y0, u0, v0, 0.0f, 0.0f, r, g, b, a, 0.0f, 1.0f };
 
             vertex_data_count += vertex_per_glyph;
             layout_x += glyph_info->advance;
@@ -868,12 +872,12 @@ static graphics_2d_draw_rect_function(gfx_2d_draw_rect)
     assert((vertex_data_count + vertex_per_rect) * sizeof(font_atlas_vertex_data_t) < MIBIBYTES(1) &&
         "[GFX2D] Rect vertex data is full.");
     
-    vertex_data[vertex_data_count++] = (font_atlas_vertex_data_t){ x0, y0, 0.0f, 0.0f, r, g, b, a, 0.0f };
-    vertex_data[vertex_data_count++] = (font_atlas_vertex_data_t){ x0, y1, 0.0f, 0.0f, r, g, b, a, 0.0f };
-    vertex_data[vertex_data_count++] = (font_atlas_vertex_data_t){ x1, y1, 0.0f, 0.0f, r, g, b, a, 0.0f };
-    vertex_data[vertex_data_count++] = (font_atlas_vertex_data_t){ x1, y1, 0.0f, 0.0f, r, g, b, a, 0.0f };
-    vertex_data[vertex_data_count++] = (font_atlas_vertex_data_t){ x1, y0, 0.0f, 0.0f, r, g, b, a, 0.0f };
-    vertex_data[vertex_data_count++] = (font_atlas_vertex_data_t){ x0, y0, 0.0f, 0.0f, r, g, b, a, 0.0f };
+    vertex_data[vertex_data_count++] = (font_atlas_vertex_data_t){ x0, y0, 0.0f, 0.0f, width, height, r, g, b, a, thickness, 0.0f };
+    vertex_data[vertex_data_count++] = (font_atlas_vertex_data_t){ x0, y1, 0.0f, 0.0f, width, height, r, g, b, a, thickness, 0.0f };
+    vertex_data[vertex_data_count++] = (font_atlas_vertex_data_t){ x1, y1, 0.0f, 0.0f, width, height, r, g, b, a, thickness, 0.0f };
+    vertex_data[vertex_data_count++] = (font_atlas_vertex_data_t){ x1, y1, 0.0f, 0.0f, width, height, r, g, b, a, thickness, 0.0f };
+    vertex_data[vertex_data_count++] = (font_atlas_vertex_data_t){ x1, y0, 0.0f, 0.0f, width, height, r, g, b, a, thickness, 0.0f };
+    vertex_data[vertex_data_count++] = (font_atlas_vertex_data_t){ x0, y0, 0.0f, 0.0f, width, height, r, g, b, a, thickness, 0.0f };
 
     global_font_system.rect_vertex_data_count = vertex_data_count;
 }

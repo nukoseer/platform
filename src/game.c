@@ -535,10 +535,10 @@ render_function(render)
                 
             case UI_DRAW_BORDER:
             {
-                // f32 thickness = command->thickness;
-                // graphics->draw_rect(x, y, width, height, false, thickness, color.r, color.g, color.b, color.a);
+                f32 thickness = command->thickness;
+                graphics->draw_rect(x, y, width, height, false, thickness, color.r, color.g, color.b, color.a);
             } break;
-                
+
             case UI_DRAW_TEXT:
             {
                 graphics_2d_font_t font = command->font;
@@ -550,7 +550,7 @@ render_function(render)
                 /* graphics->draw_text(font, text, length, color.r, color.g, color.b, color.a, */
                 /*                     TEXT_ALIGNMENT_LEADING, x, y, width, height); */
                 /* graphics->pop_axis_aligned_clip(); */
-                (void)clip;
+                (void)(font);(void)clip;
                 graphics->draw_textt(font, text, length, x, y, color.r, color.g, color.b, color.a);
             } break;
                 
