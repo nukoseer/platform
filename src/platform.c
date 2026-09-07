@@ -782,6 +782,8 @@ static DWORD WINAPI main_thread(void* param)
 
         module.render(&platform);
 
+        gfx_2d_submit_and_draw();
+            
         BOOL vsync = 0;
         result = IDXGISwapChain1_Present(window->swap_chain, vsync ? 1 : 0, 0);
 

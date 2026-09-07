@@ -941,9 +941,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmdline, i
     while (!global_window.quit)
     {
         resize_back_buffer(&global_window);
-        /* FLOAT clear_rgba[4] = { 0.34f, 0.3f, 0.34f, 1.0f }; */
-        /* FLOAT clear_rgba[4] = { 0.0f, 0.0f, 0.0f, 1.0f }; */
-        vec4 background = v4v(srgb_to_linear(v3(0.0705f, 0.0705f, 0.0705f)), 1.0f);
+        vec4 background = v4(0.0060f, 0.0060f, 0.0060f, 1.0f);
         FLOAT clear_rgba[4]= { background.r, background.g, background.b, background.a };
 
         ID3D11DeviceContext_ClearRenderTargetView(global_window.d3d11->context, global_window.d3d11->rt_view, clear_rgba);
