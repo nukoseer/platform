@@ -995,11 +995,11 @@ static void earth_render(const graphics_t* graphics, const graphics_state_t* gra
     graphics->begin_pass(earth_graphics->msaa_target, &(graphics_pass_desc_t)
     {
         .clear_color = true,
-        .clear_rgba = v4v(srgb_to_linear(theme->bg_color.rgb), theme->bg_color.a),
+        .clear_rgba = theme->bg_color,
         .clear_depth = true, .clear_depth_value = 1.0f
     });
     {
-        sphere_graphics->parameters.color = v4v(srgb_to_linear(theme->bg_color.rgb), earth->morph);
+        sphere_graphics->parameters.color = v4v(theme->bg_color.rgb, earth->morph);
         graphics->update_buffer(earth_graphics->transform_buffer, &earth_graphics->transform_parameters, 0, sizeof(earth_graphics->transform_parameters));
         graphics->update_buffer(sphere_graphics->parameter_buffer, &sphere_graphics->parameters, 0, sizeof(sphere_graphics->parameters));
         graphics->set_buffer(earth_graphics->transform_buffer, STAGE_VERTEX_SHADER | STAGE_PIXEL_SHADER, 0, 0, 0);
@@ -1055,7 +1055,7 @@ static void earth_render(const graphics_t* graphics, const graphics_state_t* gra
         graphics->set_vertex_buffer(country_mesh_data->vertex_buffer, 0, country_mesh_data->vertex_stride, 0);
         graphics->set_index_buffer(country_mesh_data->index_buffer, 0);
 
-        glow_graphics->mask_graphics.parameters.glow_color = srgb_to_linear(theme->fg_color.rgb);
+        glow_graphics->mask_graphics.parameters.glow_color = theme->fg_color.rgb;
         glow_graphics->mask_graphics.parameters.glow = theme->dark_mode ? 1.0f : 0.0f;
         
         graphics->update_buffer(glow_graphics->mask_graphics.parameter_buffer, &glow_graphics->mask_graphics.parameters, 0, sizeof(glow_graphics->mask_graphics.parameters));
@@ -1138,7 +1138,7 @@ static void earth_render(const graphics_t* graphics, const graphics_state_t* gra
     {
         country_mesh_data_t* country_mesh_data = &earth->country_data.mesh;
 
-        earth_parameters->color = v4v(srgb_to_linear(theme->fg_color.rgb), theme->fg_color.a);
+        earth_parameters->color = theme->fg_color;
         earth_parameters->line_thickness = 2.5f;
         
         graphics->update_buffer(earth_graphics->transform_buffer, &earth_graphics->transform_parameters, 0, sizeof(earth_graphics->transform_parameters));
@@ -1155,7 +1155,7 @@ static void earth_render(const graphics_t* graphics, const graphics_state_t* gra
         {
             earth_parameters->line_thickness = 4.0f;
             earth_parameters->lift = 0.01f;
-            earth_parameters->color = v4v(srgb_to_linear(theme->highlight_color.rgb), theme->highlight_color.a);
+            earth_parameters->color = theme->highlight_color;
 
             graphics->update_buffer(earth_graphics->parameter_buffer, &earth_graphics->parameters, 0, sizeof(earth_graphics->parameters));
             graphics->set_buffer(earth_graphics->parameter_buffer, STAGE_VERTEX_SHADER | STAGE_PIXEL_SHADER, 1, 0, 0);

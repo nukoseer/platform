@@ -1,6 +1,14 @@
 #include "../shader/font_test_vertex_shader.h"
 #include "../shader/font_test_pixel_shader.h"
 
+typedef struct font_atlas_vertex_data_t
+{
+    vec2 position;
+    vec2 uv;
+    vec4 color;
+    f32 has_texture;
+} font_atlas_vertex_data_t;
+
 typedef struct glyph_info_t
 {
     u16 x, y;
@@ -16,6 +24,10 @@ typedef struct font_atlas_t
     glyph_info_t* glyph_infos;
     u32 glyph_info_count;
     u16 codepoint_to_glyph_index[0x17F + 1];
+
+    graphics_buffer_t vertex_buffer;
+    font_atlas_vertex_data_t* vertex_data;
+    u32 vertex_data_count;
 } font_atlas_t;
 
 typedef struct font_t
@@ -217,19 +229,14 @@ static graphics_2d_create_font_function(gfx_2d_create_font)
     return font;
 }
 
-typedef struct font_atlas_vertex_data_t
-{
-    vec2 position;
-    vec2 uv;
-    vec4 color;
-    f32 has_texture;
-} font_atlas_vertex_data_t;
-
 typedef struct font_system_t
 {
     IDWriteRenderingParams* rendering_params;
     IDWriteGdiInterop* gdi_interop;
 
+    font_atlas_vertex_data_t* rect_vertex_data;
+    u32 rect_vertex_data_count;
+    
     graphics_buffer_t parameter_buffer;
     graphics_buffer_t vertex_buffer;
     graphics_shader_t vertex_shader;
@@ -272,9 +279,11 @@ static void create_font_system_dwrite_parameters(font_system_t* font_system)
 
 static void create_font_system_graphics(font_system_t* font_system)
 {
+    font_atlas_vertex_data_t* rect_vertex_data = malloc(MIBIBYTES(1));
+    
     graphics_buffer_t vertex_buffer = gfx_create_buffer(&(graphics_buffer_desc_t)
     {
-        .size = MIBIBYTES(2),
+        .size = MIBIBYTES(1),
         .usage = USAGE_DYNAMIC,
         .bind = BIND_VERTEX_BUFFER,
     });
@@ -331,6 +340,7 @@ static void create_font_system_graphics(font_system_t* font_system)
         .blend = BLEND_ALPHA,
     });
 
+    font_system->rect_vertex_data = rect_vertex_data;
     font_system->parameter_buffer = parameter_buffer;
     font_system->vertex_buffer = vertex_buffer;
     font_system->vertex_shader = vertex_shader;
@@ -603,11 +613,23 @@ static void create_font_atlas(font_t* font, i32 atlas_width, i32 atlas_height)
         .array_size = 1,
     }, &atlas_memory, &pitch);
 
+    graphics_buffer_t vertex_buffer = gfx_create_buffer(&(graphics_buffer_desc_t)
+    {
+        .size = MIBIBYTES(1),
+        .usage = USAGE_DYNAMIC,
+        .bind = BIND_VERTEX_BUFFER,
+    });
+
+    font_atlas_vertex_data_t* vertex_data = (font_atlas_vertex_data_t*)malloc(vertex_buffer.size);
+
     font_atlas->atlas = atlas;
     font_atlas->width = atlas_width;
     font_atlas->height = atlas_height;
     font_atlas->glyph_infos = glyph_infos;
     font_atlas->glyph_info_count = baked_glyph_count;
+    font_atlas->vertex_buffer = vertex_buffer;
+    font_atlas->vertex_data = vertex_data;
+    font_atlas->vertex_data_count = 0;
 }
 
 static graphics_2d_create_fontt_function(gfx_2d_create_fontt)
@@ -625,7 +647,7 @@ static graphics_2d_create_fontt_function(gfx_2d_create_fontt)
     graphics_2d_font_t fontt = { 0 };
     fontt.platform = pack_generation_index(font_generation, font_index);
     fontt.point_size = point_size;
-    fontt.pixel_size = point_size * font->pixel_per_em;
+    fontt.pixel_size = font->pixel_per_em;
 
     return fontt;
 }
@@ -777,25 +799,25 @@ static graphics_2d_draw_text_function(gfx_2d_draw_text)
 
 static graphics_2d_draw_textt_function(gfx_2d_draw_textt)
 {
-    u32 font_index = (u32)font.platform;
-    assert(font_index < array_count(global_fontts));
-
-    font_t* fontt = global_fontts + font_index;
-    
-    const u32 max_text_length = 256;
-    f32 layout_x = x;
-    f32 layout_y = y + fontt->ascent + fontt->line_gap;
-    
-    assert(text_length < max_text_length);
-
     if (text && text_length > 0)
     {
+        u32 font_index = (u32)font.platform;
+        assert(font_index < array_count(global_fontts));
+
+        font_t* fontt = global_fontts + font_index;
         font_atlas_t* font_atlas = &fontt->atlas;
-        // TODO: We just assume maximum text length is 256, until we use arena here.
         const u32 vertex_per_glyph = 6;
-        font_atlas_vertex_data_t vertex_data[256 * 6];
-        u32 vertex_data_count = 0;
+
+        f32 layout_x = x;
+        f32 layout_y = y + fontt->ascent + fontt->line_gap;
     
+        // TODO: We just assume maximum text length is 256, until we use arena here.
+        font_atlas_vertex_data_t* vertex_data = font_atlas->vertex_data;
+        u32 vertex_data_count = font_atlas->vertex_data_count;
+
+        assert((text_length * vertex_per_glyph + vertex_data_count) * sizeof(font_atlas_vertex_data_t) < MIBIBYTES(1) &&
+            "[GFX2D] Font vertex data is full.");
+
         for (u32 index = 0; index < text_length; ++index)
         {
             u32 codepoint = text[index];
@@ -828,82 +850,83 @@ static graphics_2d_draw_textt_function(gfx_2d_draw_textt)
             layout_x += glyph_info->advance;
         }
 
-        graphics_target_t backbuffer = gfx_get_backbuffer_target();
-
-        gfx_begin_pass(backbuffer, &(graphics_pass_desc_t){ 0 });
-        {
-            vec4 viewport_size = v4((f32)backbuffer.width, (f32)backbuffer.height, 0.0f, 0.0f);
-            gfx_update_buffer(global_font_system.parameter_buffer, &viewport_size, 0, sizeof(viewport_size));
-            gfx_update_buffer(global_font_system.vertex_buffer, vertex_data, 0, sizeof(font_atlas_vertex_data_t) * vertex_data_count);
-            gfx_set_buffer(global_font_system.parameter_buffer, STAGE_VERTEX_SHADER, 0, 0, 0);
-            gfx_set_vertex_buffer(global_font_system.vertex_buffer, 0, sizeof(font_atlas_vertex_data_t), 0);
-            gfx_set_program(global_font_system.program);
-            gfx_set_pipeline(global_font_system.pipeline);
-            gfx_set_srvs(STAGE_PIXEL_SHADER, &font_atlas->atlas, 1, 0);
-            gfx_draw(TOPOLOGY_TRIANGLE_LIST, vertex_data_count, 0);
-        }
-        gfx_end_pass();
+        font_atlas->vertex_data_count = vertex_data_count;
     }
 }
 
 static graphics_2d_draw_rect_function(gfx_2d_draw_rect)
 {
-    // D2D1_RECT_F rect =
-    // {
-    //     .left = x,
-    //     .top = y,
-    //     .right = x + width,
-    //     .bottom = y + height,
-    // };
-
-    // D2D1_COLOR_F color = { r, g, b, a };
-    // ID2D1SolidColorBrush_SetColor(global_d2d1.solid_color_brush, &color);
-
-    // if (fill)
-    // {
-    //     ID2D1RenderTarget_FillRectangle(global_d2d1.render_target, &rect, (ID2D1Brush*)global_d2d1.solid_color_brush);
-    // }
-    // else
-    // {
-    //     ID2D1RenderTarget_DrawRectangle(global_d2d1.render_target, &rect, (ID2D1Brush*)global_d2d1.solid_color_brush, thickness, 0);
-
-    //     // D2D1_ROUNDED_RECT rounded_rect =
-    //     // {
-    //     //     .rect = rect,
-    //     //     .radiusX = 16.0f, .radiusY = 16.0f,
-    //     // };
-    //     // ID2D1RenderTarget_DrawRoundedRectangle(global_d2d1.render_target, &rounded_rect, (ID2D1Brush*)global_d2d1.solid_color_brush, thickness, 0);
-    // }
-
     f32 x0 = x;
     f32 y0 = y;
     f32 x1 = x + width;
     f32 y1 = y + height;
+
+    const u32 vertex_per_rect = 6;
+    font_atlas_vertex_data_t* vertex_data = global_font_system.rect_vertex_data;
+    u32 vertex_data_count = global_font_system.rect_vertex_data_count;
+
+    assert((vertex_data_count + vertex_per_rect) * sizeof(font_atlas_vertex_data_t) < MIBIBYTES(1) &&
+        "[GFX2D] Rect vertex data is full.");
     
-    font_atlas_vertex_data_t vertex_data[] =
-    {
-        { x0, y0, 0.0f, 0.0f, r, g, b, a, 0.0f },
-        { x0, y1, 0.0f, 0.0f, r, g, b, a, 0.0f },
-        { x1, y1, 0.0f, 0.0f, r, g, b, a, 0.0f },
-        { x1, y1, 0.0f, 0.0f, r, g, b, a, 0.0f },
-        { x1, y0, 0.0f, 0.0f, r, g, b, a, 0.0f },
-        { x0, y0, 0.0f, 0.0f, r, g, b, a, 0.0f },
-    };
-    
+    vertex_data[vertex_data_count++] = (font_atlas_vertex_data_t){ x0, y0, 0.0f, 0.0f, r, g, b, a, 0.0f };
+    vertex_data[vertex_data_count++] = (font_atlas_vertex_data_t){ x0, y1, 0.0f, 0.0f, r, g, b, a, 0.0f };
+    vertex_data[vertex_data_count++] = (font_atlas_vertex_data_t){ x1, y1, 0.0f, 0.0f, r, g, b, a, 0.0f };
+    vertex_data[vertex_data_count++] = (font_atlas_vertex_data_t){ x1, y1, 0.0f, 0.0f, r, g, b, a, 0.0f };
+    vertex_data[vertex_data_count++] = (font_atlas_vertex_data_t){ x1, y0, 0.0f, 0.0f, r, g, b, a, 0.0f };
+    vertex_data[vertex_data_count++] = (font_atlas_vertex_data_t){ x0, y0, 0.0f, 0.0f, r, g, b, a, 0.0f };
+
+    global_font_system.rect_vertex_data_count = vertex_data_count;
+}
+
+static void gfx_2d_submit_and_draw(void)
+{
     graphics_target_t backbuffer = gfx_get_backbuffer_target();
 
+    font_atlas_vertex_data_t* vertex_data = global_font_system.rect_vertex_data;
+    u32 vertex_data_count = global_font_system.rect_vertex_data_count;
+    vec4 viewport_size = v4((f32)backbuffer.width, (f32)backbuffer.height, 0.0f, 0.0f);
+    
     gfx_begin_pass(backbuffer, &(graphics_pass_desc_t){ 0 });
     {
-        vec4 viewport_size = v4((f32)backbuffer.width, (f32)backbuffer.height, 0.0f, 0.0f);
         gfx_update_buffer(global_font_system.parameter_buffer, &viewport_size, 0, sizeof(viewport_size));
-        gfx_update_buffer(global_font_system.vertex_buffer, vertex_data, 0, sizeof(font_atlas_vertex_data_t) * array_count(vertex_data));
+        gfx_update_buffer(global_font_system.vertex_buffer, vertex_data, 0, sizeof(font_atlas_vertex_data_t) * vertex_data_count);
         gfx_set_buffer(global_font_system.parameter_buffer, STAGE_VERTEX_SHADER, 0, 0, 0);
         gfx_set_vertex_buffer(global_font_system.vertex_buffer, 0, sizeof(font_atlas_vertex_data_t), 0);
         gfx_set_program(global_font_system.program);
         gfx_set_pipeline(global_font_system.pipeline);
-        gfx_draw(TOPOLOGY_TRIANGLE_LIST, array_count(vertex_data), 0);
+        gfx_draw(TOPOLOGY_TRIANGLE_LIST, vertex_data_count, 0);
     }
     gfx_end_pass();
+
+    global_font_system.rect_vertex_data_count = 0;
+
+    for (u32 i = 1; i < array_count(global_fontts); ++i)
+    {
+        font_t* font = global_fontts + i;
+        font_atlas_t* font_atlas = &font->atlas;
+        
+        if (font->face && font_atlas->vertex_data_count)
+        {
+            font_atlas_vertex_data_t* vertex_data = font_atlas->vertex_data;
+            u32 vertex_data_count = font_atlas->vertex_data_count;
+            vec4 viewport_size = v4((f32)backbuffer.width, (f32)backbuffer.height, 0.0f, 0.0f);
+                
+            gfx_begin_pass(backbuffer, &(graphics_pass_desc_t){ 0 });
+            {
+                gfx_update_buffer(global_font_system.parameter_buffer, &viewport_size, 0, sizeof(viewport_size));
+                gfx_update_buffer(font_atlas->vertex_buffer, vertex_data, 0, sizeof(font_atlas_vertex_data_t) * vertex_data_count);
+                gfx_set_buffer(global_font_system.parameter_buffer, STAGE_VERTEX_SHADER, 0, 0, 0);
+                gfx_set_vertex_buffer(font_atlas->vertex_buffer, 0, sizeof(font_atlas_vertex_data_t), 0);
+                gfx_set_program(global_font_system.program);
+                gfx_set_pipeline(global_font_system.pipeline);
+                gfx_set_srvs(STAGE_PIXEL_SHADER, &font_atlas->atlas, 1, 0);
+                gfx_draw(TOPOLOGY_TRIANGLE_LIST, vertex_data_count, 0);
+            }
+            gfx_end_pass();
+
+            font_atlas->vertex_data_count = 0;
+        }
+    }
 }
 
 static graphics_2d_push_axis_aligned_clip_function(gfx_2d_push_axis_aligned_clip)

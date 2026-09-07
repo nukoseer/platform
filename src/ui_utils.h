@@ -432,7 +432,7 @@ static void ui_widget_scrollbar(ui_widget_t* parent_widget)
                 f32 thumb_y = ui_widget_rect_position(widget, UI_AXIS_Y) + fraction * track;
 
                 ui_next_flags(UI_FLAG_BACKGROUND | UI_FLAG_FLOATING | UI_FLAG_CLICKABLE);
-                ui_next_color(v4(0.5f, 0.5f, 0.5f, 0.5f));
+                ui_next_color(v4(0.2f, 0.2f, 0.2f, 0.5f));
                 ui_next_size(ui_pixel(thumb_width, 1.0f), ui_pixel(thumb_height, 1.0f));
                 ui_widget_t* thumb_widget = ui_widget_build_from_format_string("%s-scroll-y", widget->name);
                 thumb_widget->position.x = thumb_x;
@@ -467,7 +467,7 @@ static void ui_widget_scrollbar(ui_widget_t* parent_widget)
                 f32 thumb_y = ui_widget_rect_position(widget, UI_AXIS_Y) + ui_widget_rect_size(widget, UI_AXIS_Y) - thumb_height;
 
                 ui_next_flags(UI_FLAG_BACKGROUND | UI_FLAG_FLOATING | UI_FLAG_CLICKABLE);
-                ui_next_color(v4(0.5f, 0.5f, 0.5f, 0.5f));
+                ui_next_color(v4(0.2f, 0.2f, 0.2f, 0.5f));
                 ui_next_size(ui_pixel(thumb_width, 1.0f), ui_pixel(thumb_height, 1.0f));
                 ui_widget_t* thumb_widget = ui_widget_build_from_format_string("%s-scroll-x", widget->name);
                 thumb_widget->position.x = thumb_x;

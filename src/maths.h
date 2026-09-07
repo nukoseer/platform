@@ -743,24 +743,26 @@ static inline mat4x4 m4x4_mul(mat4x4 left, mat4x4 right)
     return result;
 }
 
-static inline vec3 srgb_to_linear(vec3 srgb)
+static inline vec4 srgb_to_linear(vec4 srgb)
 {
-    vec3 linear;
+    vec4 linear;
 
     linear.x = (srgb.x <= 0.04045f) ? (srgb.x / 12.92f) : powf((srgb.x + 0.055f) / 1.055f, 2.4f);
     linear.y = (srgb.y <= 0.04045f) ? (srgb.y / 12.92f) : powf((srgb.y + 0.055f) / 1.055f, 2.4f);
     linear.z = (srgb.z <= 0.04045f) ? (srgb.z / 12.92f) : powf((srgb.z + 0.055f) / 1.055f, 2.4f);
+    linear.w = srgb.w;
 
     return linear;
 }
 
-static inline vec3 linear_to_srgb(vec3 linear)
+static inline vec4 linear_to_srgb(vec4 linear)
 {
-    vec3 srgb;
+    vec4 srgb;
 
     srgb.x = (linear.x <= 0.0031308f) ? (linear.x * 12.92f) : (1.055f * powf(linear.x, 1.0f / 2.4f) - 0.055f);
     srgb.y = (linear.y <= 0.0031308f) ? (linear.y * 12.92f) : (1.055f * powf(linear.y, 1.0f / 2.4f) - 0.055f);
     srgb.z = (linear.z <= 0.0031308f) ? (linear.z * 12.92f) : (1.055f * powf(linear.z, 1.0f / 2.4f) - 0.055f);
-
+    srgb.w = linear.w;
+    
     return srgb;
 }
