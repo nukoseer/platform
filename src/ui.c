@@ -1060,7 +1060,7 @@ static void ui_resolve_sizes(ui_widget_t* root_widget, ui_axis_t axis)
             {
                 if (axis == UI_AXIS_X)
                 {
-                    f32 width = global_ui->graphics->measure_text_width(child_widget->font.font, child_widget->text, child_widget->text_length) + 0.5f;
+                    f32 width = roundf(global_ui->graphics->measure_text_width(child_widget->font.font, child_widget->text, child_widget->text_length));
                     child_widget->fixed_size[axis] = width + child_widget->padding.xy[axis] * 2.0f;
                 }
                 else if (axis == UI_AXIS_Y)

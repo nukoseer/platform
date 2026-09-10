@@ -513,9 +513,6 @@ render_function(render)
     }
     graphics->end_pass();
 
-#if FONT_ENABLE
-    // graphics->begin_draw();
-    
     ui_draw_command_list_t* command_list = ui_draw_command_list();
     for (i32 i = 0; i < command_list->command_count; ++i)
     {
@@ -530,13 +527,13 @@ render_function(render)
         {
             case UI_DRAW_RECT:
             {
-                graphics->draw_rect(x, y, width, height, true, 0.0f, color.r, color.g, color.b, color.a);
+                graphics->draw_rect(x, y, width, height, 0.0f, color);
             } break;
                 
             case UI_DRAW_BORDER:
             {
                 f32 thickness = command->thickness;
-                graphics->draw_rect(x, y, width, height, false, thickness, color.r, color.g, color.b, color.a);
+                graphics->draw_rect(x, y, width, height, thickness, color);
             } break;
 
             case UI_DRAW_TEXT:
@@ -544,14 +541,10 @@ render_function(render)
                 graphics_2d_font_t font = command->font;
                 const char* text = command->text;
                 u32 length = command->length;
-                ui_rect_t clip = command->clip;
+                ui_rect_t clip_rect = command->clip;
                     
-                /* graphics->push_axis_aligned_clip(clip.x, clip.y, clip.width, clip.height); */
-                /* graphics->draw_text(font, text, length, color.r, color.g, color.b, color.a, */
-                /*                     TEXT_ALIGNMENT_LEADING, x, y, width, height); */
-                /* graphics->pop_axis_aligned_clip(); */
-                (void)(font);(void)clip;
-                graphics->draw_textt(font, text, length, x, y, color.r, color.g, color.b, color.a);
+                vec4 clip = v4(clip_rect.x, clip_rect.y, clip_rect.width, clip_rect.height);
+                graphics->draw_textt(font, text, length, x, y, color, clip);
             } break;
                 
             default: 
@@ -560,12 +553,4 @@ render_function(render)
             } break;
         }
     }
-
-    // graphics->end_draw();
-#endif
-
-    const char* text = "Getting Started";
-    size_t text_length = strlen(text);
-    graphics->draw_textt(theme->font_text, text, text_length, 100, 20, 0.8f, 0.2f, 0.2f, 1.0f);
-    graphics->draw_rect(100, 100, 50, 50, true, 0.0f, 0.8f, 0.2f, 0.2f, 1.0f);
 }
