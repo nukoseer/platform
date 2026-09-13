@@ -661,7 +661,7 @@ static void earth_init(memory_arena_t* memory_arena, const graphics_t* graphics,
     init_earth_glow_mask_graphics(graphics, &earth->earth_graphics, &earth->glow_graphics.mask_graphics);
     init_earth_glow_merge_graphics(graphics, graphics_state->blur_graphics.vertex_shader, &earth->glow_graphics.merge_graphics);
 
-    country_data_init(memory_arena, graphics, io, &earth->country_data);
+    country_data_init(graphics, io, memory_arena, &earth->country_data);
     earth->memory_arena = memory_arena;
     earth->country_hover_index = COUNTRY_INVALID_INDEX;
     earth->country_selected_index = COUNTRY_INVALID_INDEX;

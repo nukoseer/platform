@@ -203,6 +203,13 @@ static inline vec2 v2(f32 x, f32 y)
     return result;
 }
 
+static inline vec2 v2_zero(void)
+{
+    vec2 result = { 0 };
+
+    return result;
+}
+
 static inline vec3 v3(f32 x, f32 y, f32 z)
 {
     vec3 result;
@@ -210,6 +217,13 @@ static inline vec3 v3(f32 x, f32 y, f32 z)
     result.x = x;
     result.y = y;
     result.z = z;
+
+    return result;
+}
+
+static inline vec3 v3_zero(void)
+{
+    vec3 result = { 0 };
 
     return result;
 }
@@ -232,6 +246,13 @@ static inline vec4 v4v(vec3 xyz, f32 w)
 
     result.xyz = xyz;
     result.w = w;
+
+    return result;
+}
+
+static inline vec4 v4_zero(void)
+{
+    vec4 result = { 0 };
 
     return result;
 }
