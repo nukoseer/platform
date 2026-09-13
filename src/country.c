@@ -275,7 +275,7 @@ static inline country_name_t country_get_name(u8 country_index)
     return name;
 }
 
-static void init_country_mesh_data(memory_arena_t* memory_arena, const graphics_t* graphics, const io_t* io, country_mesh_data_t* mesh_data)
+static void init_country_mesh_data(const graphics_t* graphics, const io_t* io, memory_arena_t* memory_arena, country_mesh_data_t* mesh_data)
 {
     io_file_read_result_t country_border_mesh_file_result = io->read_file("..\\tools\\build\\country_border_mesh.bin");
     assert(country_border_mesh_file_result.data && country_border_mesh_file_result.size > 0);
@@ -359,9 +359,9 @@ static void init_country_query_data(const io_t* io, country_query_data_t* query_
             query_data->border_point_count, query_data->border_part_range_count, query_data->range_count);
 }
 
-static void country_data_init(memory_arena_t* memory_arena, const graphics_t* graphics, const io_t* io, country_data_t* country_data)
+static void country_data_init(const graphics_t* graphics, const io_t* io, memory_arena_t* memory_arena, country_data_t* country_data)
 {
-    init_country_mesh_data(memory_arena, graphics, io, &country_data->mesh);
+    init_country_mesh_data(graphics, io, memory_arena, &country_data->mesh);
     init_country_query_data(io, &country_data->query);
     init_country_cells(memory_arena, &country_data->query);
 }

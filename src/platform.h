@@ -509,6 +509,8 @@ typedef enum graphics_topology_t
 /* IMPORTANT: This functions are defined in platform layer and called from game layer. */
 /****************************************************************************************/
 
+// NOTE: Graphics functions.
+
 #define graphics_create_buffer_function(name) graphics_buffer_t name(const graphics_buffer_desc_t* buffer_desc)
 typedef graphics_create_buffer_function(graphics_create_buffer_f);
 
@@ -611,70 +613,93 @@ typedef graphics_draw_instanced_function(graphics_draw_instanced_f);
 #define graphics_draw_indexed_instanced_function(name) void name(graphics_topology_t topology, u32 index_count, u32 instance_count, u32 start_index, u32 base_vertex, u32 start_instance)
 typedef graphics_draw_indexed_instanced_function(graphics_draw_indexed_instanced_f);
 
+// NOTE: Font functions.
 
-// NOTE: 2D graphics functions for text drawing.
-
-typedef enum graphics_2d_text_alignment_t
-{
-      TEXT_ALIGNMENT_LEADING,
-      TEXT_ALIGNMENT_TRAILING,
-      TEXT_ALIGNMENT_CENTER,
-} graphics_2d_text_alignment_t;
-
-typedef struct graphics_2d_font_t
+typedef struct font_t
 {
     u64 platform;
     f32 point_size;
     f32 pixel_size;
-} graphics_2d_font_t;
+} font_t;
 
-#define graphics_2d_create_font_function(name) graphics_2d_font_t name(const char* font_name, f32 point_size)
-typedef graphics_2d_create_font_function(graphics_2d_create_font_f);
+typedef struct font_info_t
+{
+    f32 ascent;
+    f32 descent;
+    f32 line_gap;
+    f32 line_advance;
+    f32 pixel_per_em;
+    f32 pixel_per_design_unit;
+} font_info_t;
 
-#define graphics_2d_create_fontt_function(name) graphics_2d_font_t name(const char* font_path, f32 point_size)
-typedef graphics_2d_create_fontt_function(graphics_2d_create_fontt_f);
+typedef struct glyph_info_t
+{
+    u16 x, y;
+    u16 width, height;
+    i16 offset_x, offset_y;
+    f32 advance;
+} glyph_info_t;
 
-#define graphics_2d_delete_font_function(name) void name(graphics_2d_font_t font)
-typedef graphics_2d_delete_font_function(graphics_2d_delete_font_f);
+#define font_create_function(name) font_t name(const char* font_path, f32 point_size)
+typedef font_create_function(font_create_f);
 
-#define graphics_2d_get_font_point_size_function(name) f32 name(graphics_2d_font_t font)
-typedef graphics_2d_get_font_point_size_function(graphics_2d_get_font_point_size_f);
+#define font_delete_function(name) void name(font_t font)
+typedef font_delete_function(font_delete_f);
 
-#define graphics_2d_get_font_pixel_size_function(name) f32 name(graphics_2d_font_t font)
-typedef graphics_2d_get_font_pixel_size_function(graphics_2d_get_font_pixel_size_f);
+#define font_get_atlas_function(name) graphics_texture_t name(font_t font)
+typedef font_get_atlas_function(font_get_atlas_f);
 
-#define graphics_2d_measure_text_width_function(name) f32 name(graphics_2d_font_t font, const char* text, size_t text_length)
-typedef graphics_2d_measure_text_width_function(graphics_2d_measure_text_width_f);
+#define font_get_font_info_function(name) font_info_t name(font_t font)
+typedef font_get_font_info_function(font_get_font_info_f);
 
-#define graphics_2d_get_line_height_function(name) f32 name(graphics_2d_font_t font)
-typedef graphics_2d_get_line_height_function(graphics_2d_get_line_height_f);
+#define font_get_point_size_function(name) f32 name(font_t font)
+typedef font_get_point_size_function(font_get_point_size_f);
 
-#define graphics_2d_begin_draw_function(name) void name(void)
-typedef graphics_2d_begin_draw_function(graphics_2d_begin_draw_f);
+#define font_get_pixel_size_function(name) f32 name(font_t font)
+typedef font_get_pixel_size_function(font_get_pixel_size_f);
 
-#define graphics_2d_end_draw_function(name) void name(void)
-typedef graphics_2d_end_draw_function(graphics_2d_end_draw_f);
+#define font_get_text_width_function(name) f32 name(font_t font, const char* text, size_t text_length)
+typedef font_get_text_width_function(font_get_text_width_f);
 
-#define graphics_2d_draw_text_function(name) void name(graphics_2d_font_t font, const char* text, size_t text_length, f32 r, f32 g, f32 b, f32 a, graphics_2d_text_alignment_t alignment, f32 x, f32 y, f32 width, f32 height)
-typedef graphics_2d_draw_text_function(graphics_2d_draw_text_f);
+#define font_get_line_height_function(name) f32 name(font_t font)
+typedef font_get_line_height_function(font_get_line_height_f);
 
-#define graphics_2d_draw_textt_function(name) void name(graphics_2d_font_t font, const char* text, size_t text_length, f32 x, f32 y, vec4 color, vec4 clip)
-typedef graphics_2d_draw_textt_function(graphics_2d_draw_textt_f);
+#define font_get_glyph_info_from_codepoint_function(name) glyph_info_t name(font_t font, u32 codepoint)
+typedef font_get_glyph_info_from_codepoint_function(font_get_glyph_info_from_codepoint_f);
 
-#define graphics_2d_draw_rect_function(name) void name(f32 x, f32 y, f32 width, f32 height, f32 thickness, vec4 color)
-typedef graphics_2d_draw_rect_function(graphics_2d_draw_rect_f);
+// NOTE: IO functions.
 
-#define graphics_2d_push_axis_aligned_clip_function(name) void name(f32 x, f32 y, f32 width, f32 height)
-typedef graphics_2d_push_axis_aligned_clip_function(graphics_2d_push_axis_aligned_clip_f);
+typedef struct io_file_read_result_t
+{
+    u8* data;
+    size_t size;
+} io_file_read_result_t;
 
-#define graphics_2d_pop_axis_aligned_clip_function(name) void name(void)
-typedef graphics_2d_pop_axis_aligned_clip_function(graphics_2d_pop_axis_aligned_clip_f);
+#define io_read_file_function(name) io_file_read_result_t name(const char* file_name)
+typedef io_read_file_function(io_read_file_f);
+
+#define io_release_file_memory_function(name) void name(u8* memory)
+typedef io_release_file_memory_function(io_release_file_memory_f);
+
+typedef struct thread_pool_queue_t
+{
+    u64 platform;
+} thread_pool_queue_t;
+
+#define thread_pool_entry_function(name) void name(void* parameter)
+typedef thread_pool_entry_function(thread_pool_entry_f);
+
+#define thread_pool_add_entry_function(name) void name(thread_pool_queue_t queue, thread_pool_entry_f* function, void* parameter)
+typedef thread_pool_add_entry_function(thread_pool_add_entry_f);
+
+#define thread_pool_complete_all_entries_function(name) void name(thread_pool_queue_t queue)
+typedef thread_pool_complete_all_entries_function(thread_pool_complete_all_entries_f);
 
 typedef struct graphics_t
 {
     union
     {
-        struct graphics_functions
+        struct graphics_functions_t
         {
             graphics_create_buffer_f* create_buffer;
             graphics_create_texture_2d_f* create_texture_2d;
@@ -714,74 +739,48 @@ typedef struct graphics_t
 
         // IMPORTANT: As far as I remember function pointers are not guaranteed
         // to be the same size as data pointers but what can I do?
-        void* functions[sizeof(struct graphics_functions) / sizeof(void*)];
-    };
-
-    union
-    {
-        struct graphics_2d_functions
-        {
-            graphics_2d_create_font_f* create_font;
-            graphics_2d_create_fontt_f* create_fontt;
-            graphics_2d_delete_font_f* delete_font;
-            graphics_2d_get_font_point_size_f* get_font_point_size;
-            graphics_2d_get_font_pixel_size_f* get_font_pixel_size;
-            graphics_2d_measure_text_width_f* measure_text_width;
-            graphics_2d_get_line_height_f* get_line_height;
-            graphics_2d_begin_draw_f* begin_draw;
-            graphics_2d_end_draw_f* end_draw;
-            graphics_2d_draw_text_f* draw_text;
-            graphics_2d_draw_textt_f* draw_textt;
-            graphics_2d_draw_rect_f* draw_rect;
-            graphics_2d_push_axis_aligned_clip_f* push_axis_aligned_clip;
-            graphics_2d_pop_axis_aligned_clip_f* pop_axis_aligned_clip;
-        };
-
-        void* functions_2d[sizeof(struct graphics_2d_functions) / sizeof(void*)];
+        void* functions[sizeof(struct graphics_functions_t) / sizeof(void*)];
     };
 } graphics_t;
 
-// NOTE: IO functions.
-
-typedef struct io_file_read_result_t
+typedef struct font_system_t
 {
-    u8* data;
-    size_t size;
-} io_file_read_result_t;
+    union
+    {
+        struct font_system_functions_t
+        {
+            font_create_f* create;
+            font_delete_f* delete;
+            font_get_atlas_f* get_atlas;
+            font_get_font_info_f* get_font_info;
+            font_get_point_size_f* get_point_size;
+            font_get_pixel_size_f* get_pixel_size;
+            font_get_text_width_f* get_text_width;
+            font_get_line_height_f* get_line_height;
+            font_get_glyph_info_from_codepoint_f* get_glyph_info_from_codepoint;
+        };
 
-#define io_read_file_function(name) io_file_read_result_t name(const char* file_name)
-typedef io_read_file_function(io_read_file_f);
-
-#define io_release_file_memory_function(name) void name(u8* memory)
-typedef io_release_file_memory_function(io_release_file_memory_f);
+        // IMPORTANT: As far as I remember function pointers are not guaranteed
+        // to be the same size as data pointers but what can I do?
+        void* functions[sizeof(struct font_system_functions_t) / sizeof(void*)];
+    };
+} font_system_t;
 
 typedef struct io_t
 {
     union
     {
-        struct io_functions
+        struct io_functions_t
         {
             io_read_file_f* read_file;
             io_release_file_memory_f* release_file_memory;
         };
 
-        void* functions[sizeof(struct io_functions) / sizeof(void*)];
+        // IMPORTANT: As far as I remember function pointers are not guaranteed
+        // to be the same size as data pointers but what can I do?
+        void* functions[sizeof(struct io_functions_t) / sizeof(void*)];
     };
 } io_t;
-
-typedef struct thread_pool_queue_t
-{
-    u64 platform;
-} thread_pool_queue_t;
-
-#define thread_pool_entry_function(name) void name(void* parameter)
-typedef thread_pool_entry_function(thread_pool_entry_f);
-
-#define thread_pool_add_entry_function(name) void name(thread_pool_queue_t queue, thread_pool_entry_f* function, void* parameter)
-typedef thread_pool_add_entry_function(thread_pool_add_entry_f);
-
-#define thread_pool_complete_all_entries_function(name) void name(thread_pool_queue_t queue)
-typedef thread_pool_complete_all_entries_function(thread_pool_complete_all_entries_f);
 
 typedef struct thread_pool_t
 {
@@ -789,13 +788,15 @@ typedef struct thread_pool_t
     
     union
     {
-        struct thread_pool_functions
+        struct thread_pool_functions_t
         {
             thread_pool_add_entry_f* add_entry;
             thread_pool_complete_all_entries_f* complete_all_entries;
         };
 
-        void* functions[sizeof(struct thread_pool_functions) / sizeof(void*)];
+        // IMPORTANT: As far as I remember function pointers are not guaranteed
+        // to be the same size as data pointers but what can I do?
+        void* functions[sizeof(struct thread_pool_functions_t) / sizeof(void*)];
     };
 } thread_pool_t;
 
@@ -804,6 +805,7 @@ typedef struct platform_t
     memory_t* memory;
     input_t* input;
     graphics_t* graphics;
+    font_system_t* font_system;
     io_t* io;
     thread_pool_t* thread_pool;
 

@@ -31,7 +31,15 @@ cbuffer global_parameters : register(b0)
 Texture2D global_texture : register(t0);
 SamplerState global_point_sampler : register(s0);
 
-static const uint corner_of_vert[6] = { 0, 1, 3, 3, 2, 0 };
+static const float2 corner_of_vert[6] =
+{
+    { 0.0f, 0.0f },
+    { 0.0f, 1.0f },
+    { 1.0f, 1.0f },
+    { 1.0f, 1.0f },
+    { 1.0f, 0.0f },
+    { 0.0f, 0.0f },
+};
 
 float linear_from_srgb_f32(float x)
 {
@@ -47,13 +55,11 @@ float4 linear_from_srgba(float4 v)
   return result;
 }
 
-
 float rect_sdf(float2 position, float2 half_extent, float radius)
 {
     float2 d = abs(position) - half_extent + radius;
     return min(max(d.x, d.y), 0.0f) + length(max(d, 0.0f)) - radius;
 }
-
 
 PS_INPUT vs(VS_INPUT input)
 {
@@ -62,14 +68,12 @@ PS_INPUT vs(VS_INPUT input)
     float2 normal_position = input.position / viewport_size * 2.0f - 1.0f;
     normal_position.y = -normal_position.y;
 
-    uint corner = corner_of_vert[input.vertex_id % 6];
-    float2 dst_verts_pct = float2((corner >> 1) ? 1.0f : 0.0f,
-                                  (corner & 1) ? 0.0f : 1.0f);
+    float2 corner = corner_of_vert[input.vertex_id % 6];
     
     output.position = float4(normal_position, 0.0f, 1.0f);
     output.uv = input.uv;
     output.half_size = input.size * 0.5f;
-    output.sdf_sample_position = (2.0f * dst_verts_pct - 1.0f) * output.half_size;
+    output.sdf_sample_position = (2.0f * corner - 1.0f) * output.half_size;
     output.color = input.color;
     output.clip = input.clip;
     output.border_thickness = input.border_thickness;

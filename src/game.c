@@ -20,6 +20,7 @@
 #include "theme.c"
 #include "ui.c"
 #include "fuzzy_match.c"
+#include "render_2d.c"
 
 typedef enum theme_type_t
 {
@@ -85,6 +86,8 @@ typedef struct shape_info_ui_t
 typedef struct game_t
 {
     memory_arena_t* memory_arena;
+    memory_arena_t* frame_arena;
+
     graphics_state_t graphics_state;
     
     camera_t camera;
@@ -275,10 +278,10 @@ static void init_shape_ui(const graphics_t* graphics, shape_info_ui_t* shape_inf
     });
 }
 
-static void init_themes(graphics_t* graphics, themes_t* themes)
+static void init_themes(font_system_t* font_system, themes_t* themes)
 {
-    graphics_2d_font_t font_text = graphics->create_fontt("IosevkaTerm NFM", 12);
-    graphics_2d_font_t font_header = graphics->create_fontt("IosevkaTerm NFM", 16);
+    font_t font_text = font_system->create("IosevkaTerm NFM", 12);
+    font_t font_header = font_system->create("IosevkaTerm NFM", 16);
     
     // NOTE: Light and dark themes.
     theme_add(themes, &(theme_t)
@@ -396,16 +399,19 @@ init_function(init)
 {
     memory_t* memory = platform->memory;
     graphics_t* graphics = platform->graphics;
+    font_system_t* font_system = platform->font_system;
     io_t* io = platform->io;
     thread_pool_t* thread_pool = platform->thread_pool;
     game_t* game = (game_t*)memory->permanent;
     memory_arena_t* memory_arena = ma_initialize(memory->permanent + sizeof(game_t), memory->permanent_size - sizeof(game_t));
+    memory_arena_t* frame_arena = ma_initialize(memory->transient, memory->transient_size);
     game->memory_arena = memory_arena;
+    game->frame_arena = frame_arena;
 
     init_graphics_state(graphics, &game->graphics_state);
     init_camera(&game->camera, v3(0.0f, 0.0f, 2.5f), v3(0.0f, 0.0f, 0.0f),
                 60.0f, (f32)platform->width / (f32)platform->height);
-    init_themes(graphics, &game->themes);
+    init_themes(font_system, &game->themes);
     earth_init(memory_arena, graphics, &game->graphics_state, io, &game->earth);
     ui_init(memory_arena);
 }
@@ -414,10 +420,13 @@ update_function(update)
 {
     memory_t* memory = platform->memory;
     graphics_t* graphics = platform->graphics;
+    font_system_t* font_system = platform->font_system;
     input_t* input = platform->input;
     game_t* game = (game_t*)memory->permanent;
     camera_t* camera = &game->camera;
     theme_t* theme = theme_get_current(&game->themes);
+
+    ma_reset(game->frame_arena);
 
     if (input_is_key_released(input, KEY_C, 0))
     {
@@ -426,7 +435,7 @@ update_function(update)
     
     update_camera(camera);
 
-    ui_begin(graphics, input, platform->delta_time, (f32)platform->width, (f32)platform->height);
+    ui_begin(font_system, input, platform->delta_time, (f32)platform->width, (f32)platform->height);
     {
         earth_ui_update(input, theme, &game->earth);
     }
@@ -490,6 +499,7 @@ render_function(render)
 {
     memory_t* memory = platform->memory;
     graphics_t* graphics = platform->graphics;
+    font_system_t* font_system = platform->font_system;
     game_t* game = (game_t*)memory->permanent;
     camera_t* camera = &game->camera;
     graphics_state_t* graphics_state = &game->graphics_state;
@@ -513,6 +523,8 @@ render_function(render)
     }
     graphics->end_pass();
 
+    render_2d_begin(graphics, font_system, game->frame_arena, MIBIBYTES(4));
+
     ui_draw_command_list_t* command_list = ui_draw_command_list();
     for (i32 i = 0; i < command_list->command_count; ++i)
     {
@@ -527,24 +539,23 @@ render_function(render)
         {
             case UI_DRAW_RECT:
             {
-                graphics->draw_rect(x, y, width, height, 0.0f, color);
+                render_2d_draw_rect(x, y, width, height, 0.0f, color, v4_zero());
             } break;
                 
             case UI_DRAW_BORDER:
             {
-                f32 thickness = command->thickness;
-                graphics->draw_rect(x, y, width, height, thickness, color);
+                render_2d_draw_rect(x, y, width, height, command->thickness, color, v4_zero());
             } break;
 
             case UI_DRAW_TEXT:
             {
-                graphics_2d_font_t font = command->font;
+                font_t font = command->font;
                 const char* text = command->text;
                 u32 length = command->length;
                 ui_rect_t clip_rect = command->clip;
-                    
                 vec4 clip = v4(clip_rect.x, clip_rect.y, clip_rect.width, clip_rect.height);
-                graphics->draw_textt(font, text, length, x, y, color, clip);
+                
+                render_2d_draw_text(font, text, length, x, y, color, clip);
             } break;
                 
             default: 
@@ -553,4 +564,6 @@ render_function(render)
             } break;
         }
     }
+
+    render_2d_end();
 }

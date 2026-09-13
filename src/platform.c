@@ -20,7 +20,7 @@
 #include "d3d11_gfx.c"
 #include "d2d1_gfx.c"
 #include "gfx.c"
-#include "gfx_2d.c"
+#include "font.c"
 
 #include "io.c"
 #include "thread_pool.c"
@@ -636,15 +636,10 @@ static DWORD WINAPI main_thread(void* param)
     HRESULT result = S_OK;
     window_t* window = (window_t*)param;
 
-    platform_thread_pool_queue_t thread_pool_queue = { 0 };
-    thread_pool_init(&thread_pool_queue, 8);
-
     window->d3d11 = d3d11_init();
     window->d2d1 = d2d1_init(get_window_dpi(window->hwnd));
     window->swap_chain = d3d11_create_swap_chain(window->hwnd, window->d3d11);
 
-    font_system_init();
-    
     resize_back_buffer(window);
 
     memory_t memory = { 0 };
@@ -652,8 +647,12 @@ static DWORD WINAPI main_thread(void* param)
 
     input_t input = { 0 };
 
-    graphics_t graphics =
+    platform_thread_pool_queue_t thread_pool_queue = { 0 };
+    thread_pool_init(&thread_pool_queue, 8);
+
+    graphics_t graphics = (graphics_t)
     {
+        // NOTE: Graphics functions.
         .create_buffer = gfx_create_buffer,
         .create_texture_2d = gfx_create_texture_2d,
         .resolve_texture = gfx_resolve_texture,
@@ -688,77 +687,77 @@ static DWORD WINAPI main_thread(void* param)
         .draw_indexed = gfx_draw_indexed,
         .draw_instanced = gfx_draw_instanced,
         .draw_indexed_instanced = gfx_draw_indexed_instanced,
-
-        // NOTE: 2D functions for text rendering.
-
-        .create_font = gfx_2d_create_font,
-        .create_fontt = gfx_2d_create_fontt,
-        .delete_font = gfx_2d_delete_font,
-        .get_font_point_size = gfx_2d_get_font_point_size,
-        .get_font_pixel_size = gfx_2d_get_font_pixel_size,
-        .measure_text_width = gfx_2d_measure_text_width,
-        .get_line_height = gfx_2d_get_line_height,
-        .begin_draw = gfx_2d_begin_draw,
-        .end_draw = gfx_2d_end_draw,
-        .draw_text = gfx_2d_draw_text,
-        .draw_textt = gfx_2d_draw_textt,
-        .draw_rect = gfx_2d_draw_rect,
-        .push_axis_aligned_clip = gfx_2d_push_axis_aligned_clip,
-        .pop_axis_aligned_clip = gfx_2d_pop_axis_aligned_clip,
     };
 
-    io_t io =
+    font_system_t font_system = (font_system_t)
     {
+        .create = font_create,
+        .delete = font_delete,
+        .get_atlas = font_get_atlas,
+        .get_font_info = font_get_font_info,
+        .get_point_size = font_get_point_size,
+        .get_pixel_size = font_get_pixel_size,
+        .get_text_width = font_get_text_width,
+        .get_line_height = font_get_line_height,
+        .get_glyph_info_from_codepoint = font_get_glyph_info_from_codepoint,
+    };
+
+    io_t io = (io_t)
+    {
+        // NOTE: IO functions.
         .read_file = io_read_file,
         .release_file_memory = io_release_file_memory,
     };
-
-    thread_pool_t thread_pool =
-    {
-        .queue = { .platform = (usize)&thread_pool_queue, },
-        .add_entry = thread_pool_add_entry,
-        .complete_all_entries = thread_pool_complete_all_entries,
-    };
-
-    platform_t platform =
-    {
-        .memory = &memory,
-        .input = &input,
-        .graphics = &graphics,
-        .io = &io,
-        .thread_pool = &thread_pool,
-        .width = window->width,
-        .height = window->height,
-    };
+ 
+   thread_pool_t thread_pool = (thread_pool_t)
+   {
+       .queue = { .platform = (usize)&thread_pool_queue, },
+       
+       // NOTE: Thread pool functions.
+       .add_entry = thread_pool_add_entry,
+       .complete_all_entries = thread_pool_complete_all_entries,
+   };
 
     for (u32 function_index = 0; function_index < array_count(graphics.functions); ++function_index)
     {
         void* function = graphics.functions[function_index];
 
-        fatal(function, "[PLATFORM] Unassigned graphics function.");
+        fatal(function, "[PLATFORM] Unassigned platform graphics function.");
     }
 
-    for (u32 function_index = 0; function_index < array_count(graphics.functions_2d); ++function_index)
+    for (u32 function_index = 0; function_index < array_count(font_system.functions); ++function_index)
     {
-        void* function = graphics.functions_2d[function_index];
+        void* function = font_system.functions[function_index];
 
-        fatal(function, "[PLATFORM] Unassigned 2D graphics function.");
+        fatal(function, "[PLATFORM] Unassigned platform font system function.");
     }
-
+    
     for (u32 function_index = 0; function_index < array_count(io.functions); ++function_index)
     {
         void* function = io.functions[function_index];
 
-        fatal(function, "[PLATFORM] Unassigned io function.");
+        fatal(function, "[PLATFORM] Unassigned platform io function.");
     }
 
     for (u32 function_index = 0; function_index < array_count(thread_pool.functions); ++function_index)
     {
         void* function = thread_pool.functions[function_index];
 
-        fatal(function, "[PLATFORM] Unassigned thread pool function.");
+        fatal(function, "[PLATFORM] Unassigned platform thread pool function.");
     }
 
+    platform_t platform =
+    {
+        .memory = &memory,
+        .input = &input,
+        .graphics = &graphics,
+        .font_system = &font_system,
+        .io = &io,
+        .thread_pool = &thread_pool,
+        .width = window->width,
+        .height = window->height,
+    };
+    
     // TODO: Does this take time?
     module_t module = load_module();
     module.init(&platform);
@@ -782,8 +781,6 @@ static DWORD WINAPI main_thread(void* param)
 
         module.render(&platform);
 
-        gfx_2d_submit_and_draw();
-            
         BOOL vsync = 0;
         result = IDXGISwapChain1_Present(window->swap_chain, vsync ? 1 : 0, 0);
 

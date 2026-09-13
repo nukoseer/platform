@@ -676,7 +676,7 @@ static i32 ui_text_index_from_screen_x(ui_widget_t* widget, ui_text_edit_t* text
 
         for (i32 i = line_start; i < line_end; ++i)
         {
-            f32 char_width = global_ui->graphics->measure_text_width(widget->font.font, text_edit->text + i, 1);
+            f32 char_width = global_ui->font_system->get_text_width(widget->font.font, text_edit->text + i, 1);
 
             if (local_x < total_width + char_width * 0.5f)
             {
@@ -775,8 +775,9 @@ static void ui_widget_text_edit_selection(ui_widget_t* widget, ui_text_edit_t* t
                 continue;
             }
 
-            f32 start_measure_x = global_ui->graphics->measure_text_width(widget->font.font, text_edit->text + text_line->offset, selection_start - text_line->offset);
-            f32 end_measure_x = global_ui->graphics->measure_text_width(widget->font.font, text_edit->text + text_line->offset, selection_end - text_line->offset);
+            font_system_t* font_system = global_ui->font_system;
+            f32 start_measure_x = font_system->get_text_width(widget->font.font, text_edit->text + text_line->offset, selection_start - text_line->offset);
+            f32 end_measure_x = font_system->get_text_width(widget->font.font, text_edit->text + text_line->offset, selection_end - text_line->offset);
             f32 start_x = text_line->position[UI_AXIS_X] + start_measure_x;
             f32 size_x = end_measure_x - start_measure_x;
 
@@ -803,8 +804,9 @@ static void ui_text_edit_update_scroll(ui_widget_t* widget, ui_text_edit_t* text
     
     if (widget->text_wrap == UI_TEXT_WRAP_NONE)
     {
-        f32 cursor_x = global_ui->graphics->measure_text_width(widget->font.font, text_edit->text, text_edit->cursor);
-        f32 text_width = global_ui->graphics->measure_text_width(widget->font.font, text_edit->text, text_edit->length);
+        font_system_t* font_system = global_ui->font_system;
+        f32 cursor_x = font_system->get_text_width(widget->font.font, text_edit->text, text_edit->cursor);
+        f32 text_width = font_system->get_text_width(widget->font.font, text_edit->text, text_edit->length);
         f32 view_width = ui_widget_rect_size(widget, UI_AXIS_X);
         f32 cursor_width = 1.0f;
         f32 scroll_x = ui_widget_scroll(widget, UI_AXIS_X);
@@ -887,7 +889,8 @@ static void ui_widget_text_edit_cursor(ui_widget_t* widget, ui_text_edit_t* text
         
         if (text_line)
         {
-            cursor_x = text_line->position[UI_AXIS_X] + global_ui->graphics->measure_text_width(widget->font.font, text_edit->text + text_line->offset, text_edit->cursor - text_line->offset);
+            font_system_t* font_system = global_ui->font_system;
+            cursor_x = text_line->position[UI_AXIS_X] + font_system->get_text_width(widget->font.font, text_edit->text + text_line->offset, text_edit->cursor - text_line->offset);
             cursor_y = text_line->position[UI_AXIS_Y];
         }
         else
