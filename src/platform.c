@@ -689,7 +689,7 @@ static DWORD WINAPI main_thread(void* param)
         .draw_indexed_instanced = gfx_draw_indexed_instanced,
     };
 
-    font_system_t font_system = (font_system_t)
+    font_t font = (font_t)
     {
         .create = font_create,
         .delete = font_delete,
@@ -725,11 +725,11 @@ static DWORD WINAPI main_thread(void* param)
         fatal(function, "[PLATFORM] Unassigned platform graphics function.");
     }
 
-    for (u32 function_index = 0; function_index < array_count(font_system.functions); ++function_index)
+    for (u32 function_index = 0; function_index < array_count(font.functions); ++function_index)
     {
-        void* function = font_system.functions[function_index];
+        void* function = font.functions[function_index];
 
-        fatal(function, "[PLATFORM] Unassigned platform font system function.");
+        fatal(function, "[PLATFORM] Unassigned platform font function.");
     }
     
     for (u32 function_index = 0; function_index < array_count(io.functions); ++function_index)
@@ -751,7 +751,7 @@ static DWORD WINAPI main_thread(void* param)
         .memory = &memory,
         .input = &input,
         .graphics = &graphics,
-        .font_system = &font_system,
+        .font = &font,
         .io = &io,
         .thread_pool = &thread_pool,
         .width = window->width,

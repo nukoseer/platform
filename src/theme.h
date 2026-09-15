@@ -8,8 +8,8 @@ typedef struct theme_t
     vec4 dim_color;
     vec4 border_color;
     
-    font_t font_text;
-    font_t font_header;
+    font_handle_t font_text;
+    font_handle_t font_header;
 
     bool dark_mode;
 } theme_t;

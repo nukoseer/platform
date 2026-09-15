@@ -342,7 +342,7 @@ static font_create_function(font_create)
     create_font_from_path(font_def, font_path, point_size);
     create_font_atlas(font_def, 1024, 512);
     
-    font_t font = { 0 };
+    font_handle_t font = { 0 };
     font.platform = pack_generation_index(font_generation, font_index);
     font.point_size = point_size;
     font.pixel_size = font_def->info.pixel_per_em;

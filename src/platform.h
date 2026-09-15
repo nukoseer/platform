@@ -615,12 +615,12 @@ typedef graphics_draw_indexed_instanced_function(graphics_draw_indexed_instanced
 
 // NOTE: Font functions.
 
-typedef struct font_t
+typedef struct font_handle_t
 {
     u64 platform;
     f32 point_size;
     f32 pixel_size;
-} font_t;
+} font_handle_t;
 
 typedef struct font_info_t
 {
@@ -640,31 +640,31 @@ typedef struct glyph_info_t
     f32 advance;
 } glyph_info_t;
 
-#define font_create_function(name) font_t name(const char* font_path, f32 point_size)
+#define font_create_function(name) font_handle_t name(const char* font_path, f32 point_size)
 typedef font_create_function(font_create_f);
 
-#define font_delete_function(name) void name(font_t font)
+#define font_delete_function(name) void name(font_handle_t font)
 typedef font_delete_function(font_delete_f);
 
-#define font_get_atlas_function(name) graphics_texture_t name(font_t font)
+#define font_get_atlas_function(name) graphics_texture_t name(font_handle_t font)
 typedef font_get_atlas_function(font_get_atlas_f);
 
-#define font_get_font_info_function(name) font_info_t name(font_t font)
+#define font_get_font_info_function(name) font_info_t name(font_handle_t font)
 typedef font_get_font_info_function(font_get_font_info_f);
 
-#define font_get_point_size_function(name) f32 name(font_t font)
+#define font_get_point_size_function(name) f32 name(font_handle_t font)
 typedef font_get_point_size_function(font_get_point_size_f);
 
-#define font_get_pixel_size_function(name) f32 name(font_t font)
+#define font_get_pixel_size_function(name) f32 name(font_handle_t font)
 typedef font_get_pixel_size_function(font_get_pixel_size_f);
 
-#define font_get_text_width_function(name) f32 name(font_t font, const char* text, size_t text_length)
+#define font_get_text_width_function(name) f32 name(font_handle_t font, const char* text, size_t text_length)
 typedef font_get_text_width_function(font_get_text_width_f);
 
-#define font_get_line_height_function(name) f32 name(font_t font)
+#define font_get_line_height_function(name) f32 name(font_handle_t font)
 typedef font_get_line_height_function(font_get_line_height_f);
 
-#define font_get_glyph_info_from_codepoint_function(name) glyph_info_t name(font_t font, u32 codepoint)
+#define font_get_glyph_info_from_codepoint_function(name) glyph_info_t name(font_handle_t font, u32 codepoint)
 typedef font_get_glyph_info_from_codepoint_function(font_get_glyph_info_from_codepoint_f);
 
 // NOTE: IO functions.
@@ -743,11 +743,11 @@ typedef struct graphics_t
     };
 } graphics_t;
 
-typedef struct font_system_t
+typedef struct font_t
 {
     union
     {
-        struct font_system_functions_t
+        struct font_functions_t
         {
             font_create_f* create;
             font_delete_f* delete;
@@ -762,9 +762,9 @@ typedef struct font_system_t
 
         // IMPORTANT: As far as I remember function pointers are not guaranteed
         // to be the same size as data pointers but what can I do?
-        void* functions[sizeof(struct font_system_functions_t) / sizeof(void*)];
+        void* functions[sizeof(struct font_functions_t) / sizeof(void*)];
     };
-} font_system_t;
+} font_t;
 
 typedef struct io_t
 {
@@ -805,7 +805,7 @@ typedef struct platform_t
     memory_t* memory;
     input_t* input;
     graphics_t* graphics;
-    font_system_t* font_system;
+    font_t* font;
     io_t* io;
     thread_pool_t* thread_pool;
 

@@ -278,10 +278,10 @@ static void init_shape_ui(const graphics_t* graphics, shape_info_ui_t* shape_inf
     });
 }
 
-static void init_themes(font_system_t* font_system, themes_t* themes)
+static void init_themes(font_t* font, themes_t* themes)
 {
-    font_t font_text = font_system->create("IosevkaTerm NFM", 12);
-    font_t font_header = font_system->create("IosevkaTerm NFM", 16);
+    font_handle_t font_text = font->create("IosevkaTerm NFM", 12);
+    font_handle_t font_header = font->create("IosevkaTerm NFM", 16);
     
     // NOTE: Light and dark themes.
     theme_add(themes, &(theme_t)
@@ -399,7 +399,7 @@ init_function(init)
 {
     memory_t* memory = platform->memory;
     graphics_t* graphics = platform->graphics;
-    font_system_t* font_system = platform->font_system;
+    font_t* font = platform->font;
     io_t* io = platform->io;
     thread_pool_t* thread_pool = platform->thread_pool;
     game_t* game = (game_t*)memory->permanent;
@@ -411,7 +411,7 @@ init_function(init)
     init_graphics_state(graphics, &game->graphics_state);
     init_camera(&game->camera, v3(0.0f, 0.0f, 2.5f), v3(0.0f, 0.0f, 0.0f),
                 60.0f, (f32)platform->width / (f32)platform->height);
-    init_themes(font_system, &game->themes);
+    init_themes(font, &game->themes);
     earth_init(memory_arena, graphics, &game->graphics_state, io, &game->earth);
     ui_init(memory_arena);
 }
@@ -420,7 +420,7 @@ update_function(update)
 {
     memory_t* memory = platform->memory;
     graphics_t* graphics = platform->graphics;
-    font_system_t* font_system = platform->font_system;
+    font_t* font = platform->font;
     input_t* input = platform->input;
     game_t* game = (game_t*)memory->permanent;
     camera_t* camera = &game->camera;
@@ -435,7 +435,7 @@ update_function(update)
     
     update_camera(camera);
 
-    ui_begin(font_system, input, platform->delta_time, (f32)platform->width, (f32)platform->height);
+    ui_begin(font, input, platform->delta_time, (f32)platform->width, (f32)platform->height);
     {
         earth_ui_update(input, theme, &game->earth);
     }
@@ -499,7 +499,7 @@ render_function(render)
 {
     memory_t* memory = platform->memory;
     graphics_t* graphics = platform->graphics;
-    font_system_t* font_system = platform->font_system;
+    font_t* font = platform->font;
     game_t* game = (game_t*)memory->permanent;
     camera_t* camera = &game->camera;
     graphics_state_t* graphics_state = &game->graphics_state;
@@ -523,7 +523,7 @@ render_function(render)
     }
     graphics->end_pass();
 
-    render_2d_begin(graphics, font_system, game->frame_arena, MIBIBYTES(4));
+    render_2d_begin(graphics, font, game->frame_arena, MIBIBYTES(4));
 
     ui_draw_command_list_t* command_list = ui_draw_command_list();
     for (i32 i = 0; i < command_list->command_count; ++i)
@@ -549,13 +549,10 @@ render_function(render)
 
             case UI_DRAW_TEXT:
             {
-                font_t font = command->font;
-                const char* text = command->text;
-                u32 length = command->length;
                 ui_rect_t clip_rect = command->clip;
                 vec4 clip = v4(clip_rect.x, clip_rect.y, clip_rect.width, clip_rect.height);
-                
-                render_2d_draw_text(font, text, length, x, y, color, clip);
+
+                render_2d_draw_text(command->font.font, command->text, command->length, x, y, color, clip);
             } break;
                 
             default: 

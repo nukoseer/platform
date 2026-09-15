@@ -15,7 +15,7 @@ typedef struct rect_vertex_data_t
 typedef struct render_2d_t
 {
     graphics_t* graphics;
-    font_system_t* font_system;
+    font_t* font;
     bool init;
     
     rect_vertex_data_t* vertex_data;
@@ -32,10 +32,10 @@ typedef struct render_2d_t
 
 static render_2d_t global_render_2d;
 
-static void render_2d_begin(graphics_t* graphics, font_system_t* font_system, memory_arena_t* memory_arena, usize max_size)
+static void render_2d_begin(graphics_t* graphics, font_t* font, memory_arena_t* memory_arena, usize max_size)
 {
     global_render_2d.graphics = graphics;
-    global_render_2d.font_system = font_system;
+    global_render_2d.font = font;
     global_render_2d.max_vertex_data_count = (u32)(max_size / sizeof(rect_vertex_data_t));
     global_render_2d.vertex_data = (rect_vertex_data_t*)ma_push_size(memory_arena, global_render_2d.max_vertex_data_count * sizeof(rect_vertex_data_t));
 
@@ -180,13 +180,13 @@ static void render_2d_draw_rect(f32 x, f32 y, f32 width, f32 height, f32 border_
     global_render_2d.vertex_data_count = vertex_data_count;
 }
 
-static void render_2d_draw_text(font_t font, const char* text, size_t text_length, f32 x, f32 y, vec4 color, vec4 clip)
+static void render_2d_draw_text(font_handle_t font_handle, const char* text, size_t text_length, f32 x, f32 y, vec4 color, vec4 clip)
 {
     if (text && text_length > 0)
     {
-        font_system_t* font_system = global_render_2d.font_system;
+        font_t* font = global_render_2d.font;
 
-        graphics_texture_t font_atlas = font_system->get_atlas(font);
+        graphics_texture_t font_atlas = font->get_atlas(font_handle);
         render_2d_set_texture(font_atlas);
         
         rect_vertex_data_t* vertex_data = global_render_2d.vertex_data;
@@ -196,7 +196,7 @@ static void render_2d_draw_text(font_t font, const char* text, size_t text_lengt
         assert(text_length * vertex_per_glyph + vertex_data_count < global_render_2d.max_vertex_data_count &&
             "[RENDER2D] Vertex data is full.");
 
-        font_info_t font_info = font_system->get_font_info(font);
+        font_info_t font_info = font->get_font_info(font_handle);
         f32 layout_x = x;
         f32 layout_y = y + font_info.ascent + font_info.line_gap;
 
@@ -209,7 +209,7 @@ static void render_2d_draw_text(font_t font, const char* text, size_t text_lengt
         
         for (u32 index = 0; index < text_length; ++index)
         {
-            glyph_info_t glyph_info = font_system->get_glyph_info_from_codepoint(font, text[index]);
+            glyph_info_t glyph_info = font->get_glyph_info_from_codepoint(font_handle, text[index]);
 
             f32 x0 = layout_x + glyph_info.offset_x;
             f32 y0 = layout_y + glyph_info.offset_y;

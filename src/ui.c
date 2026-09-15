@@ -36,7 +36,7 @@ typedef struct ui_stacks_t
 typedef struct ui_t
 {
     // NOTE: These are from platform layer.
-    font_system_t* font_system;
+    font_t* font;
     input_t* input;
 
     f32 delta_time;
@@ -662,7 +662,7 @@ static ui_widget_t* ui_widget(const char* widget_name)
 
 static void ui_equip_text(ui_widget_t* widget, const char* text, i32 text_length)
 {
-    font_system_t* font_system = global_ui->font_system;
+    font_t* font = global_ui->font;
 
     widget->font = ui_top_font();
     widget->font_color = ui_top_font_color();
@@ -676,10 +676,10 @@ static void ui_equip_text(ui_widget_t* widget, const char* text, i32 text_length
         memcpy(widget->text, text, text_length);
         widget->text[text_length] = '\0';
         widget->text_length = text_length;
-        widget->text_size[UI_AXIS_X] = font_system->get_text_width(widget->font.font, widget->text, widget->text_length);
+        widget->text_size[UI_AXIS_X] = font->get_text_width(widget->font.font, widget->text, widget->text_length);
     }
 
-    widget->text_size[UI_AXIS_Y] = font_system->get_line_height(widget->font.font);
+    widget->text_size[UI_AXIS_Y] = font->get_line_height(widget->font.font);
 
     ui_stack_auto_pop(&global_ui->stacks.font);
     ui_stack_auto_pop(&global_ui->stacks.font_color);
@@ -754,7 +754,7 @@ static void ui_resolve_text_lines(ui_widget_t* root_widget)
     
     if (root_widget->text)
     {
-        font_system_t* font_system = global_ui->font_system;
+        font_t* font = global_ui->font;
         
         f32 wrap_width = root_widget->fixed_size[UI_AXIS_X] - root_widget->padding.xy[UI_AXIS_X] * 2.0f;
         f32 max_width = 0.0f;
@@ -776,7 +776,7 @@ static void ui_resolve_text_lines(ui_widget_t* root_widget)
                 ui_text_line_t* text_line = ui_push_text_line(root_widget);
                 text_line->offset = 0;
                 text_line->length = root_widget->text_length;
-                text_line->size[UI_AXIS_X] = font_system->get_text_width(root_widget->font.font, root_widget->text, root_widget->text_length);
+                text_line->size[UI_AXIS_X] = font->get_text_width(root_widget->font.font, root_widget->text, root_widget->text_length);
                 text_line->size[UI_AXIS_Y] = root_widget->text_size[UI_AXIS_Y];
 
                 max_width = text_line->size[UI_AXIS_X];
@@ -794,7 +794,7 @@ static void ui_resolve_text_lines(ui_widget_t* root_widget)
                     
                     for (i32 i = start_offset; i < end_offset; ++i)
                     {
-                        f32 char_width = font_system->get_text_width(root_widget->font.font, root_widget->text + i, 1);
+                        f32 char_width = font->get_text_width(root_widget->font.font, root_widget->text + i, 1);
 
                         if (width + char_width > wrap_width)
                         {
@@ -837,7 +837,7 @@ static void ui_resolve_text_lines(ui_widget_t* root_widget)
 
                     while (word_end != -1 && word_start < end_offset)
                     {
-                        f32 word_width = font_system->get_text_width(root_widget->font.font, root_widget->text + word_start, word_end - word_start);
+                        f32 word_width = font->get_text_width(root_widget->font.font, root_widget->text + word_start, word_end - word_start);
 
                         if (line_width + word_width > wrap_width)
                         {
@@ -866,7 +866,7 @@ static void ui_resolve_text_lines(ui_widget_t* root_widget)
                         while (begin <= end)
                         {
                             i32 mid = begin + (end - begin) / 2;
-                            f32 width = font_system->get_text_width(root_widget->font.font, root_widget->text + start_offset, mid - start_offset);
+                            f32 width = font->get_text_width(root_widget->font.font, root_widget->text + start_offset, mid - start_offset);
 
                             if (width <= wrap_width)
                             {
@@ -1064,7 +1064,7 @@ static void ui_resolve_sizes(ui_widget_t* root_widget, ui_axis_t axis)
             {
                 if (axis == UI_AXIS_X)
                 {
-                    f32 width = roundf(global_ui->font_system->get_text_width(child_widget->font.font, child_widget->text, child_widget->text_length));
+                    f32 width = roundf(global_ui->font->get_text_width(child_widget->font.font, child_widget->text, child_widget->text_length));
                     child_widget->fixed_size[axis] = width + child_widget->padding.xy[axis] * 2.0f;
                 }
                 else if (axis == UI_AXIS_Y)
@@ -1420,7 +1420,7 @@ static void ui_emit_draw_commands(ui_widget_t* widget, ui_rect_t clip_rect, vec2
             draw_command->height = text_line->size[1];
             draw_command->color = widget->font_color;
             draw_command->clip = line_clip;
-            draw_command->font = widget->font.font;
+            draw_command->font = widget->font;
             draw_command->text = widget->text + text_line->offset;
             draw_command->length = text_line->length;
             draw_command->layer = layer;
@@ -1825,16 +1825,16 @@ static void ui_stack_reset(void)
     ui_stack_init(global_ui->frame_arena, &global_ui->stacks.text_wrap, sizeof(ui_text_wrap_t), UI_STACK_SIZE, 0);
 }
 
-static void ui_begin(font_system_t* font_system, input_t* input, f32 delta_time, f32 width, f32 height)
+static void ui_begin(font_t* font, input_t* input, f32 delta_time, f32 width, f32 height)
 {
     assert(global_ui && "[UI] Not initialized.");
     assert(input && "[UI] Input is required.");
-    assert(font_system && "[UI] Font system is required.");
+    assert(font && "[UI] Font is required.");
 
     // NOTE: This is for making sure that ui_end() is called at the end of previous frame.
     assert(global_ui->stacks.parent.count == 0 && "[UI] Invalid parent stack count.");
 
-    global_ui->font_system = font_system;
+    global_ui->font = font;
     global_ui->input = input;
     global_ui->delta_time = delta_time;
     

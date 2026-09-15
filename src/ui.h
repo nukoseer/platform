@@ -82,7 +82,7 @@ typedef struct ui_alignment_t
 
 typedef struct ui_font_t
 {
-    font_t font;
+    font_handle_t font;
     f32 pixel_size;
 } ui_font_t;
 
@@ -130,7 +130,7 @@ typedef struct ui_draw_command_t
     vec4 color;
     ui_rect_t clip;
     f32 thickness;
-    font_t font;
+    ui_font_t font;
     const char* text;
     u32 length;
     i32 layer;
@@ -332,7 +332,7 @@ static inline f32 ui_widget_rect_size(ui_widget_t* widget, ui_axis_t axis);
 static inline f32 ui_resolve_alignment(ui_widget_t* widget, f32 size, ui_axis_t axis);
 
 static void ui_init(memory_arena_t* memory_arena);
-static void ui_begin(font_system_t* font_system, input_t* input, f32 delta_time, f32 width, f32 height);
+static void ui_begin(font_t* font, input_t* input, f32 delta_time, f32 width, f32 height);
 static void ui_end(void);
 
 static ui_draw_command_iter_t ui_draw_command_iter(void);
