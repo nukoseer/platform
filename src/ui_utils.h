@@ -1049,6 +1049,28 @@ static ui_signal_t ui_widget_text_edit(const char* name, ui_text_edit_t* text_ed
     return signal;
 }
 
+static void ui_widget_slider(const char* name, ui_size_t width, ui_size_t height, f32 default_value, f32 min_value, f32 max_value)
+{
+    ui_next_flags(UI_FLAG_BACKGROUND | UI_FLAG_CLICKABLE);
+    ui_next_size(width, height);
+    ui_widget_t* slider_widget = ui_widget_build_from_format_string("%s-slider", name);
+
+    f32 clamped_value = clamp(min_value, default_value, max_value);
+    f32 value_percent = clamped_value / (max_value - min_value);
+
+    ui_push_parent(slider_widget);
+    {
+        f32 thumb_width = ui_widget_rect_size(slider_widget, UI_AXIS_X) * 0.025f;
+        f32 thumb_height = 20.0f;
+        ui_next_flags(UI_FLAG_BACKGROUND | UI_FLAG_FLOATING | UI_FLAG_ESCAPE_CLIP | UI_FLAG_CLICKABLE);
+        ui_next_color(v4(0.3f, 0.01f, 0.01f, 1.0f));
+        ui_next_size(ui_pixel(thumb_width, 1.0f), ui_pixel(thumb_height, 1.0f));
+        ui_widget_t* thumb_widget = ui_widget_build_from_format_string("%s-slider-thumb", name);
+        thumb_widget->position.x = ui_widget_rect_position(slider_widget, UI_AXIS_X) + ui_widget_rect_size(slider_widget, UI_AXIS_X) * value_percent;
+        thumb_widget->position.y = ui_widget_rect_position(slider_widget, UI_AXIS_Y) - (ui_widget_rect_size(thumb_widget, UI_AXIS_Y) - ui_widget_rect_size(slider_widget, UI_AXIS_Y)) * 0.5f;
+    }
+    ui_pop_parent();
+}
 
 #define H_UI_UTILS_H
 #endif

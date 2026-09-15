@@ -824,6 +824,11 @@ static void earth_ui_update(input_t* input, const theme_t* theme, earth_t* earth
                     earth_widget_text_row("country-area", "AREA: 643K km2");
                     earth_widget_text_row("country-gov", "GOV:  REPUBLIC");
                 }
+
+                ui_widget_spacer(ui_pixel(8.0f, 1.0f));
+                
+                ui_next_color(theme->border_color); 
+                ui_widget_slider("country-slider", ui_percent(1.0f, 1.0f), ui_pixel(8.0f, 1.0f), 9.0f, 0.0f, 10.0f);
             }
         }
         earth_widget_card_group_end();
