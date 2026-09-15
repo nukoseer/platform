@@ -454,14 +454,14 @@ static void resize_offscreen_buffer(platform_t* platform, game_t* game)
     if (is_valid && resized)
     {
         graphics->delete_target(graphics_state->offscreen_target_msaa);
-        graphics->delete_texture_2d(graphics_state->offscreen_scene_msaa);
-        graphics->delete_texture_2d(graphics_state->offscreen_depth_msaa);
-        graphics->delete_texture_2d(graphics_state->offscreen_scene);
+        graphics->delete_texture(graphics_state->offscreen_scene_msaa);
+        graphics->delete_texture(graphics_state->offscreen_depth_msaa);
+        graphics->delete_texture(graphics_state->offscreen_scene);
     }
 
     if (!is_valid || resized)
     {
-        graphics_state->offscreen_scene = graphics->create_texture_2d(&(graphics_texture_2d_desc_t)
+        graphics_state->offscreen_scene = graphics->create_texture(&(graphics_texture_desc_t)
         {
             .format = FORMAT_R16G16B16A16_FLOAT,
             .bind = BIND_SHADER_RESOURCE | BIND_RENDER_TARGET,
@@ -469,7 +469,7 @@ static void resize_offscreen_buffer(platform_t* platform, game_t* game)
             .height = platform->height,
         }, 0, 0);
 
-        graphics_state->offscreen_scene_msaa = graphics->create_texture_2d(&(graphics_texture_2d_desc_t)
+        graphics_state->offscreen_scene_msaa = graphics->create_texture(&(graphics_texture_desc_t)
         {
             .format = FORMAT_R16G16B16A16_FLOAT,
             .bind = BIND_SHADER_RESOURCE | BIND_RENDER_TARGET,
@@ -478,7 +478,7 @@ static void resize_offscreen_buffer(platform_t* platform, game_t* game)
             .sample_count = 8,
         }, 0, 0);
 
-        graphics_state->offscreen_depth_msaa = graphics->create_texture_2d(&(graphics_texture_2d_desc_t)
+        graphics_state->offscreen_depth_msaa = graphics->create_texture(&(graphics_texture_desc_t)
         {
             .format = FORMAT_D24_UNORM_S8_UINT,
             .bind = BIND_DEPTH_STENCIL,

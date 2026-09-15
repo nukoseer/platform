@@ -43,7 +43,7 @@ static bool thread_pool_execute_entry(platform_thread_pool_queue_t* thread_pool_
     return sleep;
 }
 
-thread_pool_add_entry_function(thread_pool_add_entry)
+static void thread_pool_add_entry(thread_pool_queue_t queue, thread_pool_entry_f* function, void* parameter)
 {
     platform_thread_pool_queue_t* thread_pool_queue = (platform_thread_pool_queue_t*)queue.platform;
 
@@ -59,7 +59,7 @@ thread_pool_add_entry_function(thread_pool_add_entry)
     ReleaseSemaphore(thread_pool_queue->semaphore_handle, 1, 0);
 }
 
-thread_pool_complete_all_entries_function(thread_pool_complete_all_entries)
+static void thread_pool_complete_all_entries(thread_pool_queue_t queue)
 {
     platform_thread_pool_queue_t* thread_pool_queue = (platform_thread_pool_queue_t*)queue.platform;
 

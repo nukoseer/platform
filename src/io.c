@@ -1,11 +1,11 @@
 
-static io_release_file_memory_function(io_release_file_memory)
+static void io_release_file_memory(u8* memory)
 {
     assert(memory && "[IO] File memory pointer is null.");
     VirtualFree(memory, 0, MEM_RELEASE);
 }
 
-static io_read_file_function(io_read_file)
+static io_file_read_result_t io_read_file(const char* file_name)
 {
     io_file_read_result_t io_file_read_result = { 0 };
 

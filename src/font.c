@@ -313,7 +313,7 @@ static void create_font_atlas(font_def_t* font, i32 atlas_width, i32 atlas_heigh
     }
 
     u32 pitch = atlas_width * bytes_per_pixel;
-    graphics_texture_t atlas = gfx_create_texture_2d(&(graphics_texture_2d_desc_t)
+    graphics_texture_t atlas = gfx_create_texture(&(graphics_texture_desc_t)
     {
         .format = FORMAT_R8G8B8A8_UNORM,
         .bind = BIND_SHADER_RESOURCE,
@@ -329,7 +329,7 @@ static void create_font_atlas(font_def_t* font, i32 atlas_width, i32 atlas_heigh
     font_atlas->height = atlas_height;
 }
 
-static font_create_function(font_create)
+static font_handle_t font_create(const char* font_path, f32 point_size)
 {
     u32 font_index = next_font_index();
     font_def_t* font_def = global_fonts + font_index;
@@ -350,7 +350,7 @@ static font_create_function(font_create)
     return font;
 }
 
-static font_delete_function(font_delete)
+static void font_delete(font_handle_t font)
 {
     u32 font_generation = get_generation(font.platform);
     u32 font_index = get_index(font.platform);
@@ -369,7 +369,7 @@ static font_delete_function(font_delete)
     free_font_index(font_index);
 }
 
-static font_get_glyph_info_from_codepoint_function(font_get_glyph_info_from_codepoint)
+static glyph_info_t font_get_glyph_info_from_codepoint(font_handle_t font, u32 codepoint)
 {
     u32 font_generation = get_generation(font.platform);
     u32 font_index = get_index(font.platform);
@@ -387,7 +387,7 @@ static font_get_glyph_info_from_codepoint_function(font_get_glyph_info_from_code
     return glyph_info;
 }
 
-static font_get_atlas_function(font_get_atlas)
+static graphics_texture_t font_get_atlas(font_handle_t font)
 {
     u32 font_generation = get_generation(font.platform);
     u32 font_index = get_index(font.platform);
@@ -404,7 +404,7 @@ static font_get_atlas_function(font_get_atlas)
     return atlas;
 }
 
-static font_get_font_info_function(font_get_font_info)
+static font_info_t font_get_font_info(font_handle_t font)
 {
     u32 font_generation = get_generation(font.platform);
     u32 font_index = get_index(font.platform);
@@ -421,7 +421,7 @@ static font_get_font_info_function(font_get_font_info)
     return font_info;
 }
 
-static font_get_point_size_function(font_get_point_size)
+static f32 font_get_point_size(font_handle_t font)
 {
     u32 font_generation = get_generation(font.platform);
     u32 font_index = get_index(font.platform);
@@ -438,7 +438,7 @@ static font_get_point_size_function(font_get_point_size)
     return point_size;
 }
 
-static font_get_pixel_size_function(font_get_pixel_size)
+static f32 font_get_pixel_size(font_handle_t font)
 {
     u32 font_generation = get_generation(font.platform);
     u32 font_index = get_index(font.platform);
@@ -455,7 +455,7 @@ static font_get_pixel_size_function(font_get_pixel_size)
     return pixel_size;
 }
 
-static font_get_text_width_function(font_get_text_width)
+static f32 font_get_text_width(font_handle_t font, const char* text, size_t text_length)
 {
     u32 font_generation = get_generation(font.platform);
     u32 font_index = get_index(font.platform);
@@ -484,7 +484,7 @@ static font_get_text_width_function(font_get_text_width)
     return text_width;
 }
 
-static font_get_line_height_function(font_get_line_height)
+static f32 font_get_line_height(font_handle_t font)
 {
     u32 font_generation = get_generation(font.platform);
     u32 font_index = get_index(font.platform);

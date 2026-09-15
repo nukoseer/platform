@@ -387,7 +387,7 @@ typedef struct graphics_buffer_t
     u32 size;
 } graphics_buffer_t;
 
-typedef struct graphics_texture_2d_desc_t
+typedef struct graphics_texture_desc_t
 {
     graphics_format_t format;
     graphics_bind_t bind;
@@ -396,7 +396,7 @@ typedef struct graphics_texture_2d_desc_t
     u32 sample_count;
     u32 array_size;
     graphics_misc_t misc;
-} graphics_texture_2d_desc_t;
+} graphics_texture_desc_t;
 
 typedef struct graphics_texture_t
 {
@@ -505,115 +505,76 @@ typedef enum graphics_topology_t
     TOPOLOGY_TRIANGLE_LIST_ADJ,
 } graphics_topology_t;
 
-/****************************************************************************************/
-/* IMPORTANT: This functions are defined in platform layer and called from game layer. */
-/****************************************************************************************/
+typedef struct graphics_t
+{
+    union
+    {
+        // NOTE: Graphics functions.
+        struct graphics_functions_t
+        {
+            graphics_buffer_t   (*create_buffer)(const graphics_buffer_desc_t* buffer_desc);
+            graphics_texture_t  (*create_texture)(const graphics_texture_desc_t* texture_desc, const void** initial_data, const u32* pitches);
+            void                (*resolve_texture)(graphics_texture_t dst_texture, graphics_texture_t src_texture);
+            void                (*copy_texture)(graphics_texture_t dst_texture, graphics_texture_t src_texture);
+            graphics_texture_t  (*texture_from_target)(graphics_target_t target);
+            graphics_sampler_t  (*create_sampler)(const graphics_sampler_desc_t* sampler_desc);
+            graphics_target_t   (*create_target)(const graphics_target_desc_t* target_desc);
+            graphics_shader_t   (*create_shader)(const graphics_shader_desc_t* shader_desc);
+            graphics_program_t  (*create_program)(const graphics_program_desc_t* program_desc);
+            graphics_pipeline_t (*create_pipeline)(const graphics_pipeline_desc_t* pipeline_desc);
+            void                (*update_buffer)(graphics_buffer_t buffer, const void* src, u32 offset, u32 size);
+            bool                (*is_valid_texture)(graphics_texture_t texture);
+            bool                (*is_valid_target)(graphics_target_t target);
+            void                (*delete_buffer)(graphics_buffer_t buffer);
+            void                (*delete_texture)(graphics_texture_t texture);
+            void                (*delete_target)(graphics_target_t target);
+            void                (*delete_shader)(graphics_shader_t shader);
+            void                (*delete_program)(graphics_program_t program);
+            void                (*set_buffer)(graphics_buffer_t buffer, graphics_stage_t stage, u32 slot, u32 stride, u32 offset);
+            void                (*set_vertex_buffer)(graphics_buffer_t buffer, u32 slot, u32 stride, u32 offset);
+            void                (*set_index_buffer)(graphics_buffer_t buffer, u32 offset);
+            void                (*set_program)(graphics_program_t program);
+            void                (*set_pipeline)(graphics_pipeline_t pipeline);
+            void                (*set_samplers)(graphics_stage_t stage, const graphics_sampler_t* samplers, u32 count, u32 first_slot);
+            void                (*set_srvs)(graphics_stage_t stage, const graphics_texture_t* textures, u32 count, u32 first_slot);
+            graphics_target_t   (*get_backbuffer_target)(void);
+            void                (*get_target_size)(graphics_target_t target, u32* width, u32* height);
+            void                (*set_viewport)(f32 x, f32 y, f32 width, f32 height);
+            void                (*begin_pass)(graphics_target_t target, const graphics_pass_desc_t* pass_desc);
+            void                (*end_pass)(void);
+            void                (*draw)(graphics_topology_t topology, u32 vertex_count, u32 start_vertex);
+            void                (*draw_indexed)(graphics_topology_t topology, u32 index_count, u32 start_index, u32 base_vertex);
+            void                (*draw_instanced)(graphics_topology_t topology, u32 vertex_count, u32 instance_count, u32 start_vertex, u32 start_instance);
+            void                (*draw_indexed_instanced)(graphics_topology_t topology, u32 index_count, u32 instance_count, u32 start_index, u32 base_vertex, u32 start_instance);
+        };
 
-// NOTE: Graphics functions.
+        // IMPORTANT: As far as I remember function pointers are not guaranteed
+        // to be the same size as data pointers but what can I do?
+        void* functions[sizeof(struct graphics_functions_t) / sizeof(void*)];
+    };
+} graphics_t;
 
-#define graphics_create_buffer_function(name) graphics_buffer_t name(const graphics_buffer_desc_t* buffer_desc)
-typedef graphics_create_buffer_function(graphics_create_buffer_f);
+typedef struct io_file_read_result_t
+{
+    u8* data;
+    size_t size;
+} io_file_read_result_t;
 
-#define graphics_create_texture_2d_function(name) graphics_texture_t name(const graphics_texture_2d_desc_t* texture_2d_desc, const void** initial_data, const u32* pitches)
-typedef graphics_create_texture_2d_function(graphics_create_texture_2d_f);
+typedef struct io_t
+{
+    union
+    {
+        struct io_functions_t
+        {
+            io_file_read_result_t (*read_file)(const char* file_name);
+            void                  (*release_file_memory)(u8* memory);
+        };
 
-#define graphics_resolve_texture_function(name) void name(graphics_texture_t dst_texture, graphics_texture_t src_texture)
-typedef graphics_resolve_texture_function(graphics_resolve_texture_f);
-
-#define graphics_copy_texture_function(name) void name(graphics_texture_t dst_texture, graphics_texture_t src_texture)
-typedef graphics_copy_texture_function(graphics_copy_texture_f);
-
-#define graphics_texture_from_target_function(name) graphics_texture_t name(graphics_target_t target)
-typedef graphics_texture_from_target_function(graphics_texture_from_target_f);
-
-#define graphics_create_sampler_function(name) graphics_sampler_t name(const graphics_sampler_desc_t* sampler_desc)
-typedef graphics_create_sampler_function(graphics_create_sampler_f);
-
-#define graphics_create_target_function(name) graphics_target_t name(const graphics_target_desc_t* target_desc)
-typedef graphics_create_target_function(graphics_create_target_f);
-
-#define graphics_create_shader_function(name) graphics_shader_t name(const graphics_shader_desc_t* shader_desc)
-typedef graphics_create_shader_function(graphics_create_shader_f);
-
-#define graphics_create_program_function(name) graphics_program_t name(const graphics_program_desc_t* program_desc)
-typedef graphics_create_program_function(graphics_create_program_f);
-
-#define graphics_create_pipeline_function(name) graphics_pipeline_t name(const graphics_pipeline_desc_t* pipeline_desc)
-typedef graphics_create_pipeline_function(graphics_create_pipeline_f);
-
-#define graphics_update_buffer_function(name) void name(graphics_buffer_t buffer, const void* src, u32 offset, u32 size)
-typedef graphics_update_buffer_function(graphics_update_buffer_f);
-
-#define graphics_is_valid_texture_2d_function(name) bool name(graphics_texture_t texture)
-typedef graphics_is_valid_texture_2d_function(graphics_is_valid_texture_2d_f);
-
-#define graphics_is_valid_target_function(name) bool name(graphics_target_t target)
-typedef graphics_is_valid_target_function(graphics_is_valid_target_f);
-
-#define graphics_delete_buffer_function(name) void name(graphics_buffer_t buffer)
-typedef graphics_delete_buffer_function(graphics_delete_buffer_f);
-
-#define graphics_delete_texture_2d_function(name) void name(graphics_texture_t texture)
-typedef graphics_delete_texture_2d_function(graphics_delete_texture_2d_f);
-
-#define graphics_delete_target_function(name) void name(graphics_target_t target)
-typedef graphics_delete_target_function(graphics_delete_target_f);
-
-#define graphics_delete_shader_function(name) void name(graphics_shader_t shader)
-typedef graphics_delete_shader_function(graphics_delete_shader_f);
-
-#define graphics_delete_program_function(name) void name(graphics_program_t program)
-typedef graphics_delete_program_function(graphics_delete_program_f);
-
-#define graphics_set_buffer_function(name) void name(graphics_buffer_t buffer, graphics_stage_t stage, u32 slot, u32 stride, u32 offset)
-typedef graphics_set_buffer_function(graphics_set_buffer_f);
-
-#define graphics_set_vertex_buffer_function(name) void name(graphics_buffer_t buffer, u32 slot, u32 stride, u32 offset)
-typedef graphics_set_vertex_buffer_function(graphics_set_vertex_buffer_f);
-
-#define graphics_set_index_buffer_function(name) void name(graphics_buffer_t buffer, u32 offset)
-typedef graphics_set_index_buffer_function(graphics_set_index_buffer_f);
-
-#define graphics_set_program_function(name) void name(graphics_program_t program)
-typedef graphics_set_program_function(graphics_set_program_f);
-
-#define graphics_set_pipeline_function(name) void name(graphics_pipeline_t pipeline)
-typedef graphics_set_pipeline_function(graphics_set_pipeline_f);
-
-#define graphics_set_samplers_function(name) void name(graphics_stage_t stage, const graphics_sampler_t* samplers, u32 count, u32 first_slot)
-typedef graphics_set_samplers_function(graphics_set_samplers_f);
-
-#define graphics_set_srvs_function(name) void name(graphics_stage_t stage, const graphics_texture_t* textures, u32 count, u32 first_slot)
-typedef graphics_set_srvs_function(graphics_set_srvs_f);
-
-#define graphics_get_backbuffer_target_function(name) graphics_target_t name(void)
-typedef graphics_get_backbuffer_target_function(graphics_get_backbuffer_target_f);
-
-#define graphics_get_target_size_function(name) void name(graphics_target_t target, u32* width, u32* height)
-typedef graphics_get_target_size_function(graphics_get_target_size_f);
-
-#define graphics_set_viewport_function(name) void name(f32 x, f32 y, f32 width, f32 height)
-typedef graphics_set_viewport_function(graphics_set_viewport_f);
-
-#define graphics_begin_pass_function(name) void name(graphics_target_t target, const graphics_pass_desc_t* pass_desc)
-typedef graphics_begin_pass_function(graphics_begin_pass_f);
-
-#define graphics_end_pass_function(name) void name(void)
-typedef graphics_end_pass_function(graphics_end_pass_f);
-
-#define graphics_draw_function(name) void name(graphics_topology_t topology, u32 vertex_count, u32 start_vertex)
-typedef graphics_draw_function(graphics_draw_f);
-
-#define graphics_draw_indexed_function(name) void name(graphics_topology_t topology, u32 index_count, u32 start_index, u32 base_vertex)
-typedef graphics_draw_indexed_function(graphics_draw_indexed_f);
-
-#define graphics_draw_instanced_function(name) void name(graphics_topology_t topology, u32 vertex_count, u32 instance_count, u32 start_vertex, u32 start_instance)
-typedef graphics_draw_instanced_function(graphics_draw_instanced_f);
-
-#define graphics_draw_indexed_instanced_function(name) void name(graphics_topology_t topology, u32 index_count, u32 instance_count, u32 start_index, u32 base_vertex, u32 start_instance)
-typedef graphics_draw_indexed_instanced_function(graphics_draw_indexed_instanced_f);
-
-// NOTE: Font functions.
+        // IMPORTANT: As far as I remember function pointers are not guaranteed
+        // to be the same size as data pointers but what can I do?
+        void* functions[sizeof(struct io_functions_t) / sizeof(void*)];
+    };
+} io_t;
 
 typedef struct font_handle_t
 {
@@ -640,46 +601,28 @@ typedef struct glyph_info_t
     f32 advance;
 } glyph_info_t;
 
-#define font_create_function(name) font_handle_t name(const char* font_path, f32 point_size)
-typedef font_create_function(font_create_f);
-
-#define font_delete_function(name) void name(font_handle_t font)
-typedef font_delete_function(font_delete_f);
-
-#define font_get_atlas_function(name) graphics_texture_t name(font_handle_t font)
-typedef font_get_atlas_function(font_get_atlas_f);
-
-#define font_get_font_info_function(name) font_info_t name(font_handle_t font)
-typedef font_get_font_info_function(font_get_font_info_f);
-
-#define font_get_point_size_function(name) f32 name(font_handle_t font)
-typedef font_get_point_size_function(font_get_point_size_f);
-
-#define font_get_pixel_size_function(name) f32 name(font_handle_t font)
-typedef font_get_pixel_size_function(font_get_pixel_size_f);
-
-#define font_get_text_width_function(name) f32 name(font_handle_t font, const char* text, size_t text_length)
-typedef font_get_text_width_function(font_get_text_width_f);
-
-#define font_get_line_height_function(name) f32 name(font_handle_t font)
-typedef font_get_line_height_function(font_get_line_height_f);
-
-#define font_get_glyph_info_from_codepoint_function(name) glyph_info_t name(font_handle_t font, u32 codepoint)
-typedef font_get_glyph_info_from_codepoint_function(font_get_glyph_info_from_codepoint_f);
-
-// NOTE: IO functions.
-
-typedef struct io_file_read_result_t
+typedef struct font_t
 {
-    u8* data;
-    size_t size;
-} io_file_read_result_t;
+    union
+    {
+        struct font_functions_t
+        {
+            font_handle_t      (*create)(const char* font_path, f32 point_size);
+            void               (*delete)(font_handle_t font);
+            graphics_texture_t (*get_atlas)(font_handle_t font);
+            font_info_t        (*get_font_info)(font_handle_t font);
+            f32                (*get_point_size)(font_handle_t font);
+            f32                (*get_pixel_size)(font_handle_t font);
+            f32                (*get_text_width)(font_handle_t font, const char* text, size_t text_length);
+            f32                (*get_line_height)(font_handle_t font);
+            glyph_info_t       (*get_glyph_info_from_codepoint)(font_handle_t font, u32 codepoint);
+        };
 
-#define io_read_file_function(name) io_file_read_result_t name(const char* file_name)
-typedef io_read_file_function(io_read_file_f);
-
-#define io_release_file_memory_function(name) void name(u8* memory)
-typedef io_release_file_memory_function(io_release_file_memory_f);
+        // IMPORTANT: As far as I remember function pointers are not guaranteed
+        // to be the same size as data pointers but what can I do?
+        void* functions[sizeof(struct font_functions_t) / sizeof(void*)];
+    };
+} font_t;
 
 typedef struct thread_pool_queue_t
 {
@@ -689,99 +632,6 @@ typedef struct thread_pool_queue_t
 #define thread_pool_entry_function(name) void name(void* parameter)
 typedef thread_pool_entry_function(thread_pool_entry_f);
 
-#define thread_pool_add_entry_function(name) void name(thread_pool_queue_t queue, thread_pool_entry_f* function, void* parameter)
-typedef thread_pool_add_entry_function(thread_pool_add_entry_f);
-
-#define thread_pool_complete_all_entries_function(name) void name(thread_pool_queue_t queue)
-typedef thread_pool_complete_all_entries_function(thread_pool_complete_all_entries_f);
-
-typedef struct graphics_t
-{
-    union
-    {
-        struct graphics_functions_t
-        {
-            graphics_create_buffer_f* create_buffer;
-            graphics_create_texture_2d_f* create_texture_2d;
-            graphics_resolve_texture_f* resolve_texture;
-            graphics_copy_texture_f* copy_texture;
-            graphics_texture_from_target_f* texture_from_target;
-            graphics_create_sampler_f* create_sampler;
-            graphics_create_target_f* create_target;
-            graphics_create_shader_f* create_shader;
-            graphics_create_program_f* create_program;
-            graphics_create_pipeline_f* create_pipeline;
-            graphics_update_buffer_f* update_buffer;
-            graphics_is_valid_texture_2d_f* is_valid_texture_2d;
-            graphics_is_valid_target_f* is_valid_target;
-            graphics_delete_buffer_f* delete_buffer;
-            graphics_delete_texture_2d_f* delete_texture_2d;
-            graphics_delete_target_f* delete_target;
-            graphics_delete_shader_f* delete_shader;
-            graphics_delete_program_f* delete_program;
-            graphics_set_buffer_f* set_buffer;
-            graphics_set_vertex_buffer_f* set_vertex_buffer;
-            graphics_set_index_buffer_f* set_index_buffer;
-            graphics_set_srvs_f* set_srvs;
-            graphics_set_samplers_f* set_samplers;
-            graphics_set_program_f* set_program;
-            graphics_set_pipeline_f* set_pipeline;
-            graphics_get_backbuffer_target_f* get_backbuffer_target;
-            graphics_get_target_size_f* get_target_size;
-            graphics_set_viewport_f* set_viewport;
-            graphics_begin_pass_f* begin_pass;
-            graphics_end_pass_f* end_pass;
-            graphics_draw_f* draw;
-            graphics_draw_indexed_f* draw_indexed;
-            graphics_draw_instanced_f* draw_instanced;
-            graphics_draw_indexed_instanced_f* draw_indexed_instanced;
-        };
-
-        // IMPORTANT: As far as I remember function pointers are not guaranteed
-        // to be the same size as data pointers but what can I do?
-        void* functions[sizeof(struct graphics_functions_t) / sizeof(void*)];
-    };
-} graphics_t;
-
-typedef struct font_t
-{
-    union
-    {
-        struct font_functions_t
-        {
-            font_create_f* create;
-            font_delete_f* delete;
-            font_get_atlas_f* get_atlas;
-            font_get_font_info_f* get_font_info;
-            font_get_point_size_f* get_point_size;
-            font_get_pixel_size_f* get_pixel_size;
-            font_get_text_width_f* get_text_width;
-            font_get_line_height_f* get_line_height;
-            font_get_glyph_info_from_codepoint_f* get_glyph_info_from_codepoint;
-        };
-
-        // IMPORTANT: As far as I remember function pointers are not guaranteed
-        // to be the same size as data pointers but what can I do?
-        void* functions[sizeof(struct font_functions_t) / sizeof(void*)];
-    };
-} font_t;
-
-typedef struct io_t
-{
-    union
-    {
-        struct io_functions_t
-        {
-            io_read_file_f* read_file;
-            io_release_file_memory_f* release_file_memory;
-        };
-
-        // IMPORTANT: As far as I remember function pointers are not guaranteed
-        // to be the same size as data pointers but what can I do?
-        void* functions[sizeof(struct io_functions_t) / sizeof(void*)];
-    };
-} io_t;
-
 typedef struct thread_pool_t
 {
     thread_pool_queue_t queue;
@@ -790,8 +640,8 @@ typedef struct thread_pool_t
     {
         struct thread_pool_functions_t
         {
-            thread_pool_add_entry_f* add_entry;
-            thread_pool_complete_all_entries_f* complete_all_entries;
+            void (*add_entry)(thread_pool_queue_t queue, thread_pool_entry_f* function, void* parameter);
+            void (*complete_all_entries)(thread_pool_queue_t queue);
         };
 
         // IMPORTANT: As far as I remember function pointers are not guaranteed

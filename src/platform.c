@@ -654,7 +654,7 @@ static DWORD WINAPI main_thread(void* param)
     {
         // NOTE: Graphics functions.
         .create_buffer = gfx_create_buffer,
-        .create_texture_2d = gfx_create_texture_2d,
+        .create_texture = gfx_create_texture,
         .resolve_texture = gfx_resolve_texture,
         .copy_texture = gfx_copy_texture,
         .texture_from_target = gfx_texture_from_target,
@@ -664,10 +664,10 @@ static DWORD WINAPI main_thread(void* param)
         .create_program = gfx_create_program,
         .create_pipeline = gfx_create_pipeline,
         .update_buffer = gfx_update_buffer,
-        .is_valid_texture_2d = gfx_is_valid_texture_2d,
+        .is_valid_texture = gfx_is_valid_texture,
         .is_valid_target = gfx_is_valid_target,
         .delete_buffer = gfx_delete_buffer,
-        .delete_texture_2d = gfx_delete_texture_2d,
+        .delete_texture = gfx_delete_texture,
         .delete_target = gfx_delete_target,
         .delete_shader = gfx_delete_shader,
         .delete_program = gfx_delete_program,

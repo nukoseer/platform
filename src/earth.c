@@ -521,16 +521,16 @@ static void resize_earth_graphics(const graphics_t* graphics, f32 width, f32 hei
             graphics->delete_target(glow_graphics->x_target);
             graphics->delete_target(glow_graphics->y_target);
 
-            graphics->delete_texture_2d(earth_graphics->texture);
-            graphics->delete_texture_2d(earth_graphics->msaa_texture);
-            graphics->delete_texture_2d(earth_graphics->msaa_depth_texture);
+            graphics->delete_texture(earth_graphics->texture);
+            graphics->delete_texture(earth_graphics->msaa_texture);
+            graphics->delete_texture(earth_graphics->msaa_depth_texture);
 
-            graphics->delete_texture_2d(glow_graphics->x_texture);
-            graphics->delete_texture_2d(glow_graphics->y_texture);
-            graphics->delete_texture_2d(glow_graphics->merge_graphics.msaa_texture);
-            graphics->delete_texture_2d(glow_graphics->merge_graphics.texture);
-            graphics->delete_texture_2d(glow_graphics->mask_graphics.msaa_texture);
-            graphics->delete_texture_2d(glow_graphics->mask_graphics.texture);
+            graphics->delete_texture(glow_graphics->x_texture);
+            graphics->delete_texture(glow_graphics->y_texture);
+            graphics->delete_texture(glow_graphics->merge_graphics.msaa_texture);
+            graphics->delete_texture(glow_graphics->merge_graphics.texture);
+            graphics->delete_texture(glow_graphics->mask_graphics.msaa_texture);
+            graphics->delete_texture(glow_graphics->mask_graphics.texture);
         }
 
         earth->prev_width = width;
@@ -538,7 +538,7 @@ static void resize_earth_graphics(const graphics_t* graphics, f32 width, f32 hei
         earth->width = width;
         earth->height = height;
 
-        earth_graphics->texture = graphics->create_texture_2d(&(graphics_texture_2d_desc_t)
+        earth_graphics->texture = graphics->create_texture(&(graphics_texture_desc_t)
         {
             .format = FORMAT_R16G16B16A16_FLOAT,
             .bind = BIND_SHADER_RESOURCE | BIND_RENDER_TARGET,
@@ -546,7 +546,7 @@ static void resize_earth_graphics(const graphics_t* graphics, f32 width, f32 hei
             .height = (u32)height,
         }, 0, 0);
         
-        earth_graphics->msaa_texture = graphics->create_texture_2d(&(graphics_texture_2d_desc_t)
+        earth_graphics->msaa_texture = graphics->create_texture(&(graphics_texture_desc_t)
         {
             .format = FORMAT_R16G16B16A16_FLOAT,
             .bind = BIND_SHADER_RESOURCE | BIND_RENDER_TARGET,
@@ -555,7 +555,7 @@ static void resize_earth_graphics(const graphics_t* graphics, f32 width, f32 hei
             .sample_count = 8,
         }, 0, 0);
 
-        earth_graphics->msaa_depth_texture = graphics->create_texture_2d(&(graphics_texture_2d_desc_t)
+        earth_graphics->msaa_depth_texture = graphics->create_texture(&(graphics_texture_desc_t)
         {
             .format = FORMAT_D24_UNORM_S8_UINT,
             .bind = BIND_DEPTH_STENCIL,
@@ -564,7 +564,7 @@ static void resize_earth_graphics(const graphics_t* graphics, f32 width, f32 hei
             .sample_count = 8,
         }, 0, 0);
 
-        glow_graphics->mask_graphics.msaa_texture = graphics->create_texture_2d(&(graphics_texture_2d_desc_t)
+        glow_graphics->mask_graphics.msaa_texture = graphics->create_texture(&(graphics_texture_desc_t)
         {
             .format = FORMAT_R16G16B16A16_FLOAT,
             .bind = BIND_SHADER_RESOURCE | BIND_RENDER_TARGET,
@@ -573,7 +573,7 @@ static void resize_earth_graphics(const graphics_t* graphics, f32 width, f32 hei
             .sample_count = 8,
         }, 0, 0);
 
-        glow_graphics->mask_graphics.texture = graphics->create_texture_2d(&(graphics_texture_2d_desc_t)
+        glow_graphics->mask_graphics.texture = graphics->create_texture(&(graphics_texture_desc_t)
         {
             .format = FORMAT_R16G16B16A16_FLOAT,
             .bind = BIND_SHADER_RESOURCE | BIND_RENDER_TARGET,
@@ -581,7 +581,7 @@ static void resize_earth_graphics(const graphics_t* graphics, f32 width, f32 hei
             .height = (u32)height,
         }, 0, 0);
 
-        glow_graphics->merge_graphics.msaa_texture = graphics->create_texture_2d(&(graphics_texture_2d_desc_t)
+        glow_graphics->merge_graphics.msaa_texture = graphics->create_texture(&(graphics_texture_desc_t)
         {
             .format = FORMAT_R16G16B16A16_FLOAT,
             .bind = BIND_SHADER_RESOURCE | BIND_RENDER_TARGET,
@@ -590,7 +590,7 @@ static void resize_earth_graphics(const graphics_t* graphics, f32 width, f32 hei
             .sample_count = 8,
         }, 0, 0);
 
-        glow_graphics->merge_graphics.texture = graphics->create_texture_2d(&(graphics_texture_2d_desc_t)
+        glow_graphics->merge_graphics.texture = graphics->create_texture(&(graphics_texture_desc_t)
         {
             .format = FORMAT_R16G16B16A16_FLOAT,
             .bind = BIND_SHADER_RESOURCE | BIND_RENDER_TARGET,
@@ -598,7 +598,7 @@ static void resize_earth_graphics(const graphics_t* graphics, f32 width, f32 hei
             .height = (u32)height,
         }, 0, 0);
 
-        glow_graphics->x_texture = graphics->create_texture_2d(&(graphics_texture_2d_desc_t)
+        glow_graphics->x_texture = graphics->create_texture(&(graphics_texture_desc_t)
         {
             .format = FORMAT_R16G16B16A16_FLOAT,
             .bind = BIND_SHADER_RESOURCE | BIND_RENDER_TARGET,
@@ -606,7 +606,7 @@ static void resize_earth_graphics(const graphics_t* graphics, f32 width, f32 hei
             .height = (u32)(height * 0.5f),
         }, 0, 0);
 
-        glow_graphics->y_texture = graphics->create_texture_2d(&(graphics_texture_2d_desc_t)
+        glow_graphics->y_texture = graphics->create_texture(&(graphics_texture_desc_t)
         {
             .format = FORMAT_R16G16B16A16_FLOAT,
             .bind = BIND_SHADER_RESOURCE | BIND_RENDER_TARGET,

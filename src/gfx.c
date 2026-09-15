@@ -565,7 +565,7 @@ static gfx_target_t* get_gfx_target(usize target_index)
     return gfx_target;
 }
 
-static graphics_create_buffer_function(gfx_create_buffer)
+static graphics_buffer_t gfx_create_buffer(const graphics_buffer_desc_t* buffer_desc)
 {
     graphics_buffer_t graphics_buffer = { 0 };
     D3D11_USAGE usage = map_usage(buffer_desc->usage);
@@ -628,20 +628,20 @@ static graphics_create_buffer_function(gfx_create_buffer)
     return graphics_buffer;
 }
 
-static graphics_create_texture_2d_function(gfx_create_texture_2d)
+static graphics_texture_t gfx_create_texture(const graphics_texture_desc_t* texture_desc, const void** initial_data, const u32* pitches)
 {
-    assert(texture_2d_desc->width > 0 && texture_2d_desc->height > 0 && "[GFX] Invalid texture size.");
-    assert(texture_2d_desc->bind != BIND_NULL && "[GFX] Texture must have at least one bind flag.");
-    assert(!((texture_2d_desc->bind & BIND_DEPTH_STENCIL) && (texture_2d_desc->bind & BIND_RENDER_TARGET)) &&
+    assert(texture_desc->width > 0 && texture_desc->height > 0 && "[GFX] Invalid texture size.");
+    assert(texture_desc->bind != BIND_NULL && "[GFX] Texture must have at least one bind flag.");
+    assert(!((texture_desc->bind & BIND_DEPTH_STENCIL) && (texture_desc->bind & BIND_RENDER_TARGET)) &&
         "[GFX] Texture cannot be both depth stencil and render target.");
 
     UINT quality_levels = 0;
     
-    if (texture_2d_desc->sample_count > 1)
+    if (texture_desc->sample_count > 1)
     {
         HRESULT result = ID3D11Device_CheckMultisampleQualityLevels(global_d3d11.device,
-                                                                    map_dxgi_resource_format(texture_2d_desc->format),
-                                                                    texture_2d_desc->sample_count,
+                                                                    map_dxgi_resource_format(texture_desc->format),
+                                                                    texture_desc->sample_count,
                                                                     &quality_levels);
         assert(SUCCEEDED(result) && quality_levels > 0 && "[GFX] Invalid sample count for texture.");
    }
@@ -649,33 +649,33 @@ static graphics_create_texture_2d_function(gfx_create_texture_2d)
     graphics_texture_t graphics_texture = { 0 };
     D3D11_TEXTURE2D_DESC desc =
     {
-        .Width = texture_2d_desc->width,
-        .Height = texture_2d_desc->height,
+        .Width = texture_desc->width,
+        .Height = texture_desc->height,
         .MipLevels = 1,
-        .ArraySize = texture_2d_desc->array_size ? texture_2d_desc->array_size : 1,
-        .Format = map_dxgi_resource_format(texture_2d_desc->format),
+        .ArraySize = texture_desc->array_size ? texture_desc->array_size : 1,
+        .Format = map_dxgi_resource_format(texture_desc->format),
         // NOTE: No AA.
         .SampleDesc =
         {
-            .Count = texture_2d_desc->sample_count > 1 ? texture_2d_desc->sample_count : 1,
-            .Quality = texture_2d_desc->sample_count > 1 ? quality_levels - 1 : 0,
+            .Count = texture_desc->sample_count > 1 ? texture_desc->sample_count : 1,
+            .Quality = texture_desc->sample_count > 1 ? quality_levels - 1 : 0,
         },
         .Usage = D3D11_USAGE_DEFAULT,
-        .BindFlags = map_bind(texture_2d_desc->bind),
+        .BindFlags = map_bind(texture_desc->bind),
         .CPUAccessFlags = 0,
-        .MiscFlags = map_resource_misc(texture_2d_desc->misc),
+        .MiscFlags = map_resource_misc(texture_desc->misc),
     };
     
     D3D11_SUBRESOURCE_DATA initials[16] = { 0 };
     D3D11_SUBRESOURCE_DATA* ptr_initial = 0;
 
-    assert(texture_2d_desc->array_size < array_count(initials) && "[GFX] Invalid texture array size.");
+    assert(texture_desc->array_size < array_count(initials) && "[GFX] Invalid texture array size.");
 
     if (initial_data)
     {
         ptr_initial = initials;
 
-        for (u32 i = 0; i < texture_2d_desc->array_size; ++i)
+        for (u32 i = 0; i < texture_desc->array_size; ++i)
         {
             assert(initial_data[i] && pitches[i] && "[GFX] Invalid initial data for texture.");
 
@@ -684,8 +684,8 @@ static graphics_create_texture_2d_function(gfx_create_texture_2d)
         }
     }
     
-    ID3D11Texture2D* texture_2d = 0;
-    HRESULT result = ID3D11Device_CreateTexture2D(global_d3d11.device, &desc, ptr_initial, &texture_2d);
+    ID3D11Texture2D* texture = 0;
+    HRESULT result = ID3D11Device_CreateTexture2D(global_d3d11.device, &desc, ptr_initial, &texture);
     // TODO: Probably we should think about failure cases.
     assert(SUCCEEDED(result) && "[GFX] Failed to create texture 2d.");
 
@@ -696,26 +696,26 @@ static graphics_create_texture_2d_function(gfx_create_texture_2d)
     *gfx_texture = (gfx_texture_t)
     {
         .generation = texture_generation,
-        .texture = texture_2d,
+        .texture = texture,
         .srv = 0,
-        .format = texture_2d_desc->format,
-        .bind = texture_2d_desc->bind,
+        .format = texture_desc->format,
+        .bind = texture_desc->bind,
         .width = desc.Width,
         .height = desc.Height,
-        .array_size = texture_2d_desc->array_size,
-        .sample_count = texture_2d_desc->sample_count,
-        .misc = texture_2d_desc->misc,
+        .array_size = texture_desc->array_size,
+        .sample_count = texture_desc->sample_count,
+        .misc = texture_desc->misc,
     };
 
-    if (texture_2d_desc->bind & BIND_SHADER_RESOURCE)
+    if (texture_desc->bind & BIND_SHADER_RESOURCE)
     {
         D3D11_SHADER_RESOURCE_VIEW_DESC srv_desc = { 0 };
 
-        if (texture_2d_desc->misc == MISC_TEXTURE_CUBE && texture_2d_desc->array_size > 0)
+        if (texture_desc->misc == MISC_TEXTURE_CUBE && texture_desc->array_size > 0)
         {
             srv_desc = (D3D11_SHADER_RESOURCE_VIEW_DESC)
             {
-                .Format = map_dxgi_srv_format(texture_2d_desc->format),
+                .Format = map_dxgi_srv_format(texture_desc->format),
                 .ViewDimension = D3D11_SRV_DIMENSION_TEXTURECUBE,
                 .TextureCube =
                 {
@@ -724,26 +724,26 @@ static graphics_create_texture_2d_function(gfx_create_texture_2d)
                 },
             };
         }
-        else if (texture_2d_desc->array_size > 0)
+        else if (texture_desc->array_size > 0)
         {
             srv_desc = (D3D11_SHADER_RESOURCE_VIEW_DESC)
             {
-                .Format = map_dxgi_srv_format(texture_2d_desc->format),
+                .Format = map_dxgi_srv_format(texture_desc->format),
                 .ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2DARRAY,
                 .Texture2DArray =
                 {
                     .MostDetailedMip = 0,
                     .MipLevels = 1,
                     .FirstArraySlice = 0,
-                    .ArraySize = texture_2d_desc->array_size
+                    .ArraySize = texture_desc->array_size
                 },
             };
         }
-        else if (texture_2d_desc->sample_count > 1)
+        else if (texture_desc->sample_count > 1)
         {
             srv_desc = (D3D11_SHADER_RESOURCE_VIEW_DESC)
             {
-                .Format = map_dxgi_srv_format(texture_2d_desc->format),
+                .Format = map_dxgi_srv_format(texture_desc->format),
                 .ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2DMS,
             };
         }
@@ -751,13 +751,13 @@ static graphics_create_texture_2d_function(gfx_create_texture_2d)
         {
             srv_desc = (D3D11_SHADER_RESOURCE_VIEW_DESC)
             {
-                .Format = map_dxgi_srv_format(texture_2d_desc->format),
+                .Format = map_dxgi_srv_format(texture_desc->format),
                 .ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D,
                 .Texture2D = { .MostDetailedMip = 0, .MipLevels = 1, },
             };   
         }
 
-        result = ID3D11Device_CreateShaderResourceView(global_d3d11.device, (ID3D11Resource*)texture_2d, &srv_desc, &gfx_texture->srv);
+        result = ID3D11Device_CreateShaderResourceView(global_d3d11.device, (ID3D11Resource*)texture, &srv_desc, &gfx_texture->srv);
         // TODO: Maybe this is not fatal but leave it for checking.
         assert(SUCCEEDED(result) && "[GFX] Failed to create shader resource view.");
     }
@@ -769,7 +769,7 @@ static graphics_create_texture_2d_function(gfx_create_texture_2d)
     return graphics_texture;
 }
 
-static graphics_resolve_texture_function(gfx_resolve_texture)
+static void gfx_resolve_texture(graphics_texture_t dst_texture, graphics_texture_t src_texture)
 {
     u32 src_texture_generation = get_generation(src_texture.platform);
     u32 src_texture_index = get_index(src_texture.platform);
@@ -797,7 +797,7 @@ static graphics_resolve_texture_function(gfx_resolve_texture)
                                            map_dxgi_resource_format(gfx_src_texture->format));
 }
 
-static graphics_copy_texture_function(gfx_copy_texture)
+static void gfx_copy_texture(graphics_texture_t dst_texture, graphics_texture_t src_texture)
 {
     u32 src_texture_generation = get_generation(src_texture.platform);
     u32 src_texture_index = get_index(src_texture.platform);
@@ -824,7 +824,7 @@ static graphics_copy_texture_function(gfx_copy_texture)
                                      (ID3D11Resource*)gfx_src_texture->texture);
 }
 
-static graphics_texture_from_target_function(gfx_texture_from_target)
+static graphics_texture_t gfx_texture_from_target(graphics_target_t target)
 {
     u32 target_generation = get_generation(target.platform);
     u32 target_index = get_index(target.platform);
@@ -846,7 +846,7 @@ static graphics_texture_from_target_function(gfx_texture_from_target)
     return graphics_texture;
 }
 
-static graphics_create_target_function(gfx_create_target)
+static graphics_target_t gfx_create_target(const graphics_target_desc_t* target_desc)
 {
     u32 color_texture_generation = get_generation(target_desc->color.platform);
     u32 color_texture_index = get_index(target_desc->color.platform);
@@ -964,7 +964,7 @@ static graphics_create_target_function(gfx_create_target)
     return graphics_target;
 }
 
-static graphics_create_sampler_function(gfx_create_sampler)
+static graphics_sampler_t gfx_create_sampler(const graphics_sampler_desc_t* sampler_desc)
 {
     graphics_sampler_t graphics_sampler = { 0 };
     usize sampler_index = global_sampler_count++;
@@ -991,7 +991,7 @@ static graphics_create_sampler_function(gfx_create_sampler)
     return graphics_sampler;
 }
 
-static graphics_create_shader_function(gfx_create_shader)
+static graphics_shader_t gfx_create_shader(const graphics_shader_desc_t* shader_desc)
 {
     graphics_shader_t graphics_shader = { 0 };
     u32 shader_index = next_shader_index();
@@ -1028,7 +1028,7 @@ static graphics_create_shader_function(gfx_create_shader)
     return graphics_shader;
 }
 
-static graphics_create_program_function(gfx_create_program)
+static graphics_program_t gfx_create_program(const graphics_program_desc_t* program_desc)
 {
     graphics_program_t graphics_program = { 0 };
     u32 program_index = next_program_index();
@@ -1095,7 +1095,7 @@ static graphics_create_program_function(gfx_create_program)
     return graphics_program;
 }
 
-static graphics_create_pipeline_function(gfx_create_pipeline)
+static graphics_pipeline_t gfx_create_pipeline(const graphics_pipeline_desc_t* pipeline_desc)
 {
     graphics_pipeline_t graphics_pipeline = { 0 };
     usize pipeline_index = global_pipeline_count++;
@@ -1179,7 +1179,7 @@ static graphics_create_pipeline_function(gfx_create_pipeline)
     return graphics_pipeline;
 }
 
-static graphics_update_buffer_function(gfx_update_buffer)
+static void gfx_update_buffer(graphics_buffer_t buffer, const void* src, u32 offset, u32 size)
 {
     usize buffer_index = (usize)buffer.platform;
     gfx_buffer_t* gfx_buffer = global_buffers + buffer_index;
@@ -1199,7 +1199,7 @@ static graphics_update_buffer_function(gfx_update_buffer)
     }
 }
 
-static graphics_is_valid_texture_2d_function(gfx_is_valid_texture_2d)
+static bool gfx_is_valid_texture(graphics_texture_t texture)
 {
     u32 texture_generation = get_generation(texture.platform);
     u32 texture_index = get_index(texture.platform);
@@ -1209,7 +1209,7 @@ static graphics_is_valid_texture_2d_function(gfx_is_valid_texture_2d)
     return is_valid;
 }
 
-static graphics_is_valid_target_function(gfx_is_valid_target)
+static bool gfx_is_valid_target(graphics_target_t target)
 {
     u32 target_generation = get_generation(target.platform);
     u32 target_index = get_index(target.platform);
@@ -1219,7 +1219,7 @@ static graphics_is_valid_target_function(gfx_is_valid_target)
     return is_valid;
 }
 
-static graphics_delete_buffer_function(gfx_delete_buffer)
+static void gfx_delete_buffer(graphics_buffer_t buffer)
 {
     u32 buffer_generation = get_generation(buffer.platform);
     u32 buffer_index = get_index(buffer.platform);
@@ -1246,8 +1246,7 @@ static graphics_delete_buffer_function(gfx_delete_buffer)
     free_buffer_index(buffer_index);
 }
 
-// TODO: We need some kind of generation counter to handle deleted objects.
-static graphics_delete_texture_2d_function(gfx_delete_texture_2d)
+static void gfx_delete_texture(graphics_texture_t texture)
 {
     u32 texture_generation = get_generation(texture.platform);
     u32 texture_index = get_index(texture.platform);
@@ -1280,7 +1279,7 @@ static graphics_delete_texture_2d_function(gfx_delete_texture_2d)
     free_texture_index(texture_index);
 }
 
-static graphics_delete_target_function(gfx_delete_target)
+static void gfx_delete_target(graphics_target_t target)
 {
     u32 target_generation = get_generation(target.platform);
     u32 target_index = get_index(target.platform);
@@ -1309,7 +1308,7 @@ static graphics_delete_target_function(gfx_delete_target)
     free_target_index(target_index);
 }
 
-static graphics_delete_shader_function(gfx_delete_shader)
+static void gfx_delete_shader(graphics_shader_t shader)
 {
     u32 shader_generation = get_generation(shader.platform);
     u32 shader_index = get_index(shader.platform);
@@ -1345,7 +1344,7 @@ static graphics_delete_shader_function(gfx_delete_shader)
     free_target_index(shader_index);
 }
 
-static graphics_delete_program_function(gfx_delete_program)
+static void gfx_delete_program(graphics_program_t program)
 {
     u32 program_generation = get_generation(program.platform);
     u32 program_index = get_index(program.platform);
@@ -1376,7 +1375,7 @@ static graphics_delete_program_function(gfx_delete_program)
     free_target_index(program_index);
 }
 
-static graphics_set_buffer_function(gfx_set_buffer)
+static void gfx_set_buffer(graphics_buffer_t buffer, graphics_stage_t stage, u32 slot, u32 stride, u32 offset)
 {
     u32 buffer_generation = get_generation(buffer.platform);
     u32 buffer_index = get_index(buffer.platform);
@@ -1416,7 +1415,7 @@ static graphics_set_buffer_function(gfx_set_buffer)
     }
 }
 
-static graphics_set_vertex_buffer_function(gfx_set_vertex_buffer)
+static void gfx_set_vertex_buffer(graphics_buffer_t buffer, u32 slot, u32 stride, u32 offset)
 {
     u32 buffer_generation = get_generation(buffer.platform);
     u32 buffer_index = get_index(buffer.platform);
@@ -1434,7 +1433,7 @@ static graphics_set_vertex_buffer_function(gfx_set_vertex_buffer)
     ID3D11DeviceContext_IASetVertexBuffers(global_d3d11.context, slot, 1, &gfx_buffer->buffer, &stride, &offset);
 }
 
-static graphics_set_index_buffer_function(gfx_set_index_buffer)
+static void gfx_set_index_buffer(graphics_buffer_t buffer, u32 offset)
 {
     u32 buffer_generation = get_generation(buffer.platform);
     u32 buffer_index = get_index(buffer.platform);
@@ -1452,7 +1451,7 @@ static graphics_set_index_buffer_function(gfx_set_index_buffer)
     ID3D11DeviceContext_IASetIndexBuffer(global_d3d11.context, gfx_buffer->buffer, map_dxgi_ib_format(gfx_buffer->index_format), offset);
 }
 
-static graphics_set_program_function(gfx_set_program)
+static void gfx_set_program(graphics_program_t program)
 {
     u32 program_index = get_index(program.platform);
     u32 program_generation = get_generation(program.platform);
@@ -1470,7 +1469,7 @@ static graphics_set_program_function(gfx_set_program)
     ID3D11DeviceContext_IASetInputLayout(global_d3d11.context, gfx_program->input_layout);
 }
 
-static graphics_set_pipeline_function(gfx_set_pipeline)
+static void gfx_set_pipeline(graphics_pipeline_t pipeline)
 {
     usize pipeline_index = (usize)pipeline.platform;
     gfx_pipeline_t* gfx_pipeline = global_pipelines + pipeline_index;
@@ -1480,7 +1479,7 @@ static graphics_set_pipeline_function(gfx_set_pipeline)
     ID3D11DeviceContext_OMSetBlendState(global_d3d11.context, gfx_pipeline->blend_state, 0, ~0U);
 }
 
-static graphics_set_samplers_function(gfx_set_samplers)
+static void gfx_set_samplers(graphics_stage_t stage, const graphics_sampler_t* samplers, u32 count, u32 first_slot)
 {
     // NOTE: This is just a made up limit.
     ID3D11SamplerState* samplers_states[16] = { 0 };
@@ -1517,7 +1516,7 @@ static graphics_set_samplers_function(gfx_set_samplers)
     }
 }
 
-static graphics_set_srvs_function(gfx_set_srvs)
+static void gfx_set_srvs(graphics_stage_t stage, const graphics_texture_t* textures, u32 count, u32 first_slot)
 {
     // NOTE: This is just a made up limit.
     ID3D11ShaderResourceView* srvs[16] = { 0 };
@@ -1561,7 +1560,7 @@ static graphics_set_srvs_function(gfx_set_srvs)
     }
 }
 
-static graphics_get_backbuffer_target_function(gfx_get_backbuffer_target)
+static graphics_target_t gfx_get_backbuffer_target(void)
 {
     graphics_target_t graphics_target = { 0 };
     usize target_index = GFX_BACKBUFFER_TARGET_INDEX;
@@ -1579,7 +1578,7 @@ static graphics_get_backbuffer_target_function(gfx_get_backbuffer_target)
     return graphics_target;
 }
 
-static graphics_get_target_size_function(gfx_get_target_size)
+static void gfx_get_target_size(graphics_target_t target, u32* width, u32* height)
 {
     u32 target_generation = get_generation(target.platform);
     u32 target_index = get_index(target.platform);
@@ -1597,7 +1596,7 @@ static graphics_get_target_size_function(gfx_get_target_size)
     *height = (u32)gfx_target->height;
 }
 
-static graphics_set_viewport_function(gfx_set_viewport)
+static void gfx_set_viewport(f32 x, f32 y, f32 width, f32 height)
 {
     D3D11_VIEWPORT viewport =
     {
@@ -1611,7 +1610,7 @@ static graphics_set_viewport_function(gfx_set_viewport)
     ID3D11DeviceContext_RSSetViewports(global_d3d11.context, 1, &viewport);
 }
 
-static graphics_begin_pass_function(gfx_begin_pass)
+static void gfx_begin_pass(graphics_target_t target, const graphics_pass_desc_t* pass_desc)
 {
     u32 target_generation = get_generation(target.platform);
     u32 target_index = get_index(target.platform);
@@ -1663,7 +1662,7 @@ static graphics_begin_pass_function(gfx_begin_pass)
     ++global_pass_count;
 }
 
-static graphics_end_pass_function(gfx_end_pass)
+static void gfx_end_pass(void)
 {
     assert(global_pass_count == 1 && "[GFX] Multiple begin pass.");
     --global_pass_count;
@@ -1689,25 +1688,25 @@ static graphics_end_pass_function(gfx_end_pass)
     // ID3D11DeviceContext_IASetVertexBuffers(global_d3d11.context, 0, 1, &null_buffer, &stride, &offset);
 }
 
-static graphics_draw_function(gfx_draw)
+static void gfx_draw(graphics_topology_t topology, u32 vertex_count, u32 start_vertex)
 {
     ID3D11DeviceContext_IASetPrimitiveTopology(global_d3d11.context, map_primitive_topology(topology));
     ID3D11DeviceContext_Draw(global_d3d11.context, vertex_count, start_vertex);
 }
 
-static graphics_draw_indexed_function(gfx_draw_indexed)
+static void gfx_draw_indexed(graphics_topology_t topology, u32 index_count, u32 start_index, u32 base_vertex)
 {
     ID3D11DeviceContext_IASetPrimitiveTopology(global_d3d11.context, map_primitive_topology(topology));
     ID3D11DeviceContext_DrawIndexed(global_d3d11.context, index_count, start_index, base_vertex);
 }
 
-static graphics_draw_instanced_function(gfx_draw_instanced)
+static void gfx_draw_instanced(graphics_topology_t topology, u32 vertex_count, u32 instance_count, u32 start_vertex, u32 start_instance)
 {
     ID3D11DeviceContext_IASetPrimitiveTopology(global_d3d11.context, map_primitive_topology(topology));
     ID3D11DeviceContext_DrawInstanced(global_d3d11.context, vertex_count, instance_count, start_vertex, start_instance);
 }
 
-static graphics_draw_indexed_instanced_function(gfx_draw_indexed_instanced)
+static void gfx_draw_indexed_instanced(graphics_topology_t topology, u32 index_count, u32 instance_count, u32 start_index, u32 base_vertex, u32 start_instance)
 {
     ID3D11DeviceContext_IASetPrimitiveTopology(global_d3d11.context, map_primitive_topology(topology));
     ID3D11DeviceContext_DrawIndexedInstanced(global_d3d11.context, index_count, instance_count, start_index, base_vertex, start_instance);
