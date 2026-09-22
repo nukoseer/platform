@@ -826,9 +826,14 @@ static void earth_ui_update(input_t* input, const theme_t* theme, earth_t* earth
                 }
 
                 ui_widget_spacer(ui_pixel(8.0f, 1.0f));
+
+                static f32 default_value = 0.0f;
+                ui_widget_slider("country-slider", ui_percent(1.0f, 1.0f), ui_em(1.5f, 1.0f), theme->border_color, &default_value, 0.0f, 100.0f);
+
+                ui_widget_spacer(ui_pixel(8.0f, 1.0f));
                 
-                ui_next_color(theme->border_color); 
-                ui_widget_slider("country-slider", ui_percent(1.0f, 1.0f), ui_pixel(8.0f, 1.0f), 9.0f, 0.0f, 10.0f);
+                static f32 default_value1 = 0.0f;
+                ui_widget_slider("countrysf-dsfsdfslider", ui_percent(1.0f, 1.0f), ui_em(1.5f, 1.0f), theme->border_color, &default_value1, 0.0f, 10.0f);
             }
         }
         earth_widget_card_group_end();

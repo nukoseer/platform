@@ -291,6 +291,7 @@ typedef struct ui_signal_t
 } ui_signal_t;
 
 static inline ui_size_t ui_pixel(f32 pixel, f32 strictness);
+static inline ui_size_t ui_em(f32 coefficient, f32 strictness);
 static inline ui_size_t ui_percent(f32 parent_percent, f32 strictness);
 static inline ui_size_t ui_content(f32 strictness);
 static inline ui_size_t ui_children(f32 strictness);

@@ -519,15 +519,6 @@ static ui_widget_t* ui_widget_build_from_key(ui_key_t key)
     widget->fixed_size[UI_AXIS_X] = 0.0f;
     widget->fixed_size[UI_AXIS_Y] = 0.0f;
 
-    // NOTE: The root widget does not have parent.
-    ui_widget_t* parent_widget = ui_top_parent();
-    widget->parent = parent_widget;
-
-    if (parent_widget)
-    {
-        ui_widget_list_child_insert_back(&parent_widget->child_list, widget);
-    }
-
     widget->size[UI_AXIS_X] = ui_top_size_x();
     widget->size[UI_AXIS_Y] = ui_top_size_y();
     widget->layout_axis = ui_top_axis();
@@ -539,6 +530,15 @@ static ui_widget_t* ui_widget_build_from_key(ui_key_t key)
     widget->anchor_offset[UI_AXIS_X] = ui_top_anchor_offset().x;
     widget->anchor_offset[UI_AXIS_Y] = ui_top_anchor_offset().y;
     widget->layer = ui_top_layer();
+
+    // NOTE: The root widget does not have parent.
+    ui_widget_t* parent_widget = ui_top_parent();
+    widget->parent = parent_widget;
+
+    if (parent_widget)
+    {
+        ui_widget_list_child_insert_back(&parent_widget->child_list, widget);
+    }
 
     ui_stack_auto_pop(&global_ui->stacks.parent);
     ui_stack_auto_pop(&global_ui->stacks.size_x);
@@ -965,6 +965,11 @@ static void ui_resolve_text_alignment(ui_widget_t* widget, ui_axis_t axis)
             {
                 text_line->position[axis] = start_position + (line_index * line_height);
                 ++line_index;
+
+                if (!strcmp(widget->name, "country-slider-slider-value"))
+                {
+                    fprintf(stderr, "text_line->position[UI_AXIS_Y]: %f, text_line_count: %u\n", text_line->position[UI_AXIS_Y], widget->text_line_count);
+                }
             }
         }
     }
@@ -1607,10 +1612,14 @@ static ui_widget_t* ui_hit_test(ui_widget_t* root_widget, vec2 mouse_position, v
         root_widget->rect.height
     };
 
-    if (!ui_rect_contains_point(rect_with_scroll, mouse_position))
-    {
-        return 0;
-    }
+    // TODO: When this check is enabled we cannot hit children outside
+    // of parent container, normally this is not the case but some
+    // widgets can have floating children, which are partly outside of the
+    // parent rect. Such as slider thumb.
+    // if (!ui_rect_contains_point(rect_with_scroll, mouse_position))
+    // {
+    //     return 0;
+    // }
 
     vec2 child_scroll_offset =
     {
@@ -1668,6 +1677,24 @@ static void ui_resolve_hot(void)
     }
 }
 
+static void ui_resolve_z(ui_widget_t* widget, bool bump_z)
+{
+    if (bump_z)
+    {
+        widget->z = ++global_ui->max_z;
+    }
+    
+    for (ui_widget_t* child_widget = widget->child_list.first; child_widget; child_widget = child_widget->child_next)
+    {
+        child_widget->z = widget->z;
+    }
+
+    for (ui_widget_t* child_widget = widget->child_list.first; child_widget; child_widget = child_widget->child_next)
+    {
+        ui_resolve_z(child_widget, false);
+    }
+}
+
 static void ui_resolve_active(void)
 {
     bool pressed = input_is_mouse_pressed(global_ui->input, KEY_MOUSE_LEFT);
@@ -1691,7 +1718,7 @@ static void ui_resolve_active(void)
 
             if (ui_is_flag_set(widget, UI_FLAG_FLOATING))
             {
-                widget->z = ++global_ui->max_z;
+                ui_resolve_z(widget, true);
             }
 
             input_set_owner(global_ui->input, INPUT_OWNER_UI);

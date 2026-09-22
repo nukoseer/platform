@@ -294,10 +294,25 @@ static ui_size_t ui_top_size_axis(ui_axis_t axis)
 #define ui_push_anchored(parent_anchor, self_anchor, x, y) do { ui_push_flags(UI_FLAG_ANCHORED | UI_FLAG_FLOATING | UI_FLAG_ESCAPE_CLIP); ui_push_anchor(parent_anchor, self_anchor); ui_push_anchor_offset(x, y); } while (0)
 #define ui_pop_anchored() do { ui_pop_flags(); ui_pop_anchor(); ui_pop_anchor_offset(); } while (0)
 
-static ui_signal_t ui_widget_last_signal(const char* widget_name)
+static ui_signal_t ui_widget_last_signal(const char* widget_name, ...)
 {
-    ui_widget_t* widget = ui_widget_from_key(ui_get_key_from_string(ui_top_parent()->key, widget_name));
-    ui_signal_t signal = widget ? ui_signal_for(widget) : (ui_signal_t){ 0 };
+    ui_signal_t signal = { 0 };
+
+    memory_arena_span_t span = ma_span_begin(global_ui->frame_arena);
+    {
+        const u32 max_size = 64;
+        char* name = ma_push_size(span.memory_arena, max_size);
+        va_list args;
+
+        va_start(args, widget_name);
+        i32 size = vsnprintf(name, max_size, widget_name, args);
+        name[size] = '\0';
+        va_end(args);
+
+        ui_widget_t* widget = ui_widget_from_key(ui_get_key_from_string(ui_top_parent()->key, name));
+        signal = widget ? ui_signal_for(widget) : (ui_signal_t){ 0 };
+    }
+    ma_span_end(span);
 
     return signal;
 }
@@ -1049,27 +1064,57 @@ static ui_signal_t ui_widget_text_edit(const char* name, ui_text_edit_t* text_ed
     return signal;
 }
 
-static void ui_widget_slider(const char* name, ui_size_t width, ui_size_t height, f32 default_value, f32 min_value, f32 max_value)
+static void ui_widget_slider(const char* name, ui_size_t width, ui_size_t height, vec4 color, f32* default_value, f32 min_value, f32 max_value)
 {
-    ui_next_flags(UI_FLAG_BACKGROUND | UI_FLAG_CLICKABLE);
+    // ui_next_border(1.0f, v4(0.6f, 0.2f, 0.2f, 1.0f));
     ui_next_size(width, height);
-    ui_widget_t* slider_widget = ui_widget_build_from_format_string("%s-slider", name);
-
-    f32 clamped_value = clamp(min_value, default_value, max_value);
-    f32 value_percent = clamped_value / (max_value - min_value);
-
-    ui_push_parent(slider_widget);
+    ui_widget_row()
     {
-        f32 thumb_width = ui_widget_rect_size(slider_widget, UI_AXIS_X) * 0.025f;
-        f32 thumb_height = 20.0f;
-        ui_next_flags(UI_FLAG_BACKGROUND | UI_FLAG_FLOATING | UI_FLAG_ESCAPE_CLIP | UI_FLAG_CLICKABLE);
-        ui_next_color(v4(0.3f, 0.01f, 0.01f, 1.0f));
-        ui_next_size(ui_pixel(thumb_width, 1.0f), ui_pixel(thumb_height, 1.0f));
-        ui_widget_t* thumb_widget = ui_widget_build_from_format_string("%s-slider-thumb", name);
-        thumb_widget->position.x = ui_widget_rect_position(slider_widget, UI_AXIS_X) + ui_widget_rect_size(slider_widget, UI_AXIS_X) * value_percent;
-        thumb_widget->position.y = ui_widget_rect_position(slider_widget, UI_AXIS_Y) - (ui_widget_rect_size(thumb_widget, UI_AXIS_Y) - ui_widget_rect_size(slider_widget, UI_AXIS_Y)) * 0.5f;
+        ui_next_color(color);
+        ui_next_flags(UI_FLAG_BACKGROUND | UI_FLAG_CLICKABLE);
+        ui_next_size(ui_percent(1.0f, 0.0f), height);
+        ui_widget_t* slider_widget = ui_widget_build_from_format_string("%s-slider", name);
+
+        ui_push_parent(slider_widget);
+        {
+            f32 thumb_width = 16.0f;
+            f32 thumb_height = thumb_width * 1.6f;
+            ui_signal_t thumb_signal = ui_widget_last_signal("%s-slider-thumb", name);
+            vec4 thumb_color = v4(0.1f, 0.1f, 0.1f, 1.0f);
+
+            f32 value = *default_value;
+            if (thumb_signal.held)
+            {
+                f32 delta = global_ui->input->mouse_delta.x / ui_widget_rect_size(slider_widget, UI_AXIS_X) * (max_value - min_value);
+                value += delta;
+                thumb_color = v4(0.3f, 0.3f, 0.3f, 1.0f);
+            }
+
+            f32 clamped_value = clamp(min_value, value, max_value);
+            f32 value_percent = clamped_value / (max_value - min_value);
+            *default_value = clamped_value;
+
+            f32 x_offset = ui_widget_rect_size(slider_widget, UI_AXIS_X) * value_percent;
+            x_offset = clamp(thumb_width * 0.5f, x_offset, ui_widget_rect_size(slider_widget, UI_AXIS_X) - thumb_width * 0.5f);
+            ui_next_flags(UI_FLAG_BACKGROUND | UI_FLAG_ESCAPE_CLIP | UI_FLAG_CLICKABLE);
+            ui_next_anchored(UI_ANCHOR_CENTER_LEFT, UI_ANCHOR_CENTER, x_offset, 0.0f);
+            ui_next_color(thumb_color);
+            ui_next_size(ui_pixel(thumb_width, 1.0f), height);
+            ui_widget_build_from_format_string("%s-slider-thumb", name);
+        }
+        ui_pop_parent();
+
+        ui_widget_spacer(ui_pixel(4.0f, 1.0f));
+        
+        char string_value[64] = { 0 };
+        i32 size = (i32)snprintf(string_value, sizeof(string_value), "%4.2f", *default_value);
+        ui_next_flags(UI_FLAG_BACKGROUND | UI_FLAG_TEXT);
+        ui_next_size(ui_em(4.0f, 1.0f), ui_percent(1.0f, 1.0f));
+        ui_next_border(1.0f, color);
+        ui_next_text_alignment(ui_align_center(), ui_align_center());
+        ui_widget_t* slider_value_widget = ui_widget_build_from_format_string("%s-slider-value", name);
+        ui_equip_text(slider_value_widget, string_value, size);
     }
-    ui_pop_parent();
 }
 
 #define H_UI_UTILS_H
