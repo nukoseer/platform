@@ -142,6 +142,7 @@ typedef struct earth_t
     vec2 pressed_position;
     bool dragging;
 
+    bool morphing;
     f32 morph; // NOTE: 1.0f is globe map, 0.0f flat map.
     f32 morph_direction;
     f32 yaw;
@@ -459,10 +460,22 @@ static inline void earth_zoom(input_t* input, camera_t* camera, f32 delta_time, 
 
 static inline void earth_morph(const input_t* input, f32 delta_time, earth_t* earth)
 {
-    earth->morph_direction = (input_is_key_released(input, KEY_T, 0) ?
-                              -earth->morph_direction : earth->morph_direction);
-    earth->morph += 1.0f * delta_time * earth->morph_direction;
-    earth->morph = clamp(0.0f, earth->morph, 1.0f);
+    if (input_is_key_released(input, KEY_T, 0))
+    {
+        earth->morphing = true;
+        earth->morph_direction = -earth->morph_direction;
+    }
+
+    if (earth->morphing)
+    {
+        earth->morph += 1.0f * delta_time * earth->morph_direction;
+        earth->morph = clamp(0.0f, earth->morph, 1.0f);
+    }
+
+    if (earth->morph == 0.0f || earth->morph == 1.0f)
+    {
+        earth->morphing = false;
+    }
 }
 
 static u8 earth_find_country_index_under_cursor(const input_t* input, const camera_t* camera, earth_t* earth)
@@ -827,15 +840,18 @@ static void earth_ui_update(input_t* input, const theme_t* theme, earth_t* earth
 
                 ui_widget_spacer(ui_pixel(8.0f, 1.0f));
 
-                static f32 default_value = 0.0f;
                 ui_next_size(ui_percent(1.0f, 0.0f), ui_em(1.5f, 1.0f));
-                ui_widget_slider("country-slider", "Value", ui_pixel(16.0f, 0.0f), ui_pixel(16.0f, 1.0f), theme->border_color, &default_value, 0.0f, 100.0f);
+                ui_widget_slider("country-morph", "Morph", theme->border_color, &earth->morph, 0.0f, 1.0f);
 
                 ui_widget_spacer(ui_pixel(8.0f, 1.0f));
                 
-                static f32 default_value1 = 0.0f;
                 ui_next_size(ui_percent(1.0f, 0.0f), ui_em(1.5f, 1.0f));
-                ui_widget_slider("countrysf-dsfsdfslider", "Valuee", ui_em(1.5f, 1.0f), ui_em(1.5f, 1.0f), theme->border_color, &default_value1, 0.0f, 10.0f);
+                ui_widget_slider("country-yaw", "Yaw", theme->border_color, &earth->yaw, -360.0f, 360.0f);
+
+                ui_widget_spacer(ui_pixel(8.0f, 1.0f));
+
+                ui_next_size(ui_percent(1.0f, 0.0f), ui_em(1.5f, 1.0f));
+                ui_widget_slider("country-pitch", "Pitch", theme->border_color, &earth->pitch, -90.0f, 90.0f);
             }
         }
         earth_widget_card_group_end();
