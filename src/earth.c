@@ -839,19 +839,19 @@ static void earth_ui_update(input_t* input, const theme_t* theme, earth_t* earth
                 }
 
                 ui_widget_spacer(ui_pixel(8.0f, 1.0f));
-
+                    
                 ui_next_size(ui_percent(1.0f, 0.0f), ui_em(1.5f, 1.0f));
-                ui_widget_slider("country-morph", "Morph", theme->border_color, &earth->morph, 0.0f, 1.0f);
+                ui_widget_labeled_slider("country-morph", "Morph", theme->border_color, &earth->morph, 0.0f, 1.0f);
 
                 ui_widget_spacer(ui_pixel(8.0f, 1.0f));
                 
                 ui_next_size(ui_percent(1.0f, 0.0f), ui_em(1.5f, 1.0f));
-                ui_widget_slider("country-yaw", "Yaw", theme->border_color, &earth->yaw, -360.0f, 360.0f);
+                ui_widget_labeled_slider("country-yaw", "Yaw", theme->border_color, &earth->yaw, -360.0f, 360.0f);
 
                 ui_widget_spacer(ui_pixel(8.0f, 1.0f));
 
                 ui_next_size(ui_percent(1.0f, 0.0f), ui_em(1.5f, 1.0f));
-                ui_widget_slider("country-pitch", "Pitch", theme->border_color, &earth->pitch, -90.0f, 90.0f);
+                ui_widget_labeled_slider("country-pitch", "Pitch", theme->border_color, &earth->pitch, -90.0f, 90.0f);
             }
         }
         earth_widget_card_group_end();
