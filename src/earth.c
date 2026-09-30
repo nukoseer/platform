@@ -792,6 +792,25 @@ static void earth_ui_update(input_t* input, const theme_t* theme, earth_t* earth
     ui_push_font(theme->font_text, theme->font_text.pixel_size);
     ui_push_font_color(theme->fg_color);
 
+    ui_next_size(ui_pixel(420.0f, 0.0f), ui_children(1.0f));
+    ui_next_flags(UI_FLAG_BACKGROUND | UI_FLAG_FLOATING | UI_FLAG_CLICKABLE);
+    earth_widget_card_group_begin("earth-config-card", "EARTH.CONFIG", 40.0f, earth->height * 0.80f, theme);
+    {
+        ui_next_size(ui_percent(1.0f, 0.0f), ui_em(1.5f, 1.0f));
+        ui_widget_labeled_slider("country-morph", "Morph", theme->border_color, &earth->morph, 0.0f, 1.0f);
+
+        ui_widget_spacer(ui_pixel(8.0f, 1.0f));
+                
+        ui_next_size(ui_percent(1.0f, 0.0f), ui_em(1.5f, 1.0f));
+        ui_widget_labeled_slider("country-yaw", "Yaw", theme->border_color, &earth->yaw, -360.0f, 360.0f);
+
+        ui_widget_spacer(ui_pixel(8.0f, 1.0f));
+
+        ui_next_size(ui_percent(1.0f, 0.0f), ui_em(1.5f, 1.0f));
+        ui_widget_labeled_slider("country-pitch", "Pitch", theme->border_color, &earth->pitch, -90.0f, 90.0f);
+    }
+    earth_widget_card_group_end();
+
     if (country_hover.name)
     {
         ui_next_size(ui_content(1.0f), ui_content(1.0f));
@@ -837,21 +856,6 @@ static void earth_ui_update(input_t* input, const theme_t* theme, earth_t* earth
                     earth_widget_text_row("country-area", "AREA: 643K km2");
                     earth_widget_text_row("country-gov", "GOV:  REPUBLIC");
                 }
-
-                ui_widget_spacer(ui_pixel(8.0f, 1.0f));
-                    
-                ui_next_size(ui_percent(1.0f, 0.0f), ui_em(1.5f, 1.0f));
-                ui_widget_labeled_slider("country-morph", "Morph", theme->border_color, &earth->morph, 0.0f, 1.0f);
-
-                ui_widget_spacer(ui_pixel(8.0f, 1.0f));
-                
-                ui_next_size(ui_percent(1.0f, 0.0f), ui_em(1.5f, 1.0f));
-                ui_widget_labeled_slider("country-yaw", "Yaw", theme->border_color, &earth->yaw, -360.0f, 360.0f);
-
-                ui_widget_spacer(ui_pixel(8.0f, 1.0f));
-
-                ui_next_size(ui_percent(1.0f, 0.0f), ui_em(1.5f, 1.0f));
-                ui_widget_labeled_slider("country-pitch", "Pitch", theme->border_color, &earth->pitch, -90.0f, 90.0f);
             }
         }
         earth_widget_card_group_end();
