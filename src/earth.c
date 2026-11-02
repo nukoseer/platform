@@ -723,62 +723,50 @@ static inline void earth_move_country_list_hover_index(earth_t* earth, i32 move)
     }
 }
 
-static void earth_country_search_input(input_t* input, ui_text_edit_t* text_edit, earth_t* earth)
+static void earth_country_search_input(ui_text_edit_t* text_edit, earth_t* earth)
 {
+    input_t* input = global_ui->input;
+    
     for (u32 i = 0; i < input->event_count; ++i)
     {
         input_event_t* event = input->events + i;
+        
+        if (event->consumed) continue;
 
-        if (event->consumed)
+        if (event->kind == INPUT_EVENT_KEY_PRESS)
         {
-            continue;
-        }
-
-        if (event->kind == INPUT_EVENT_TEXT && event->codepoint >= 32)
-        {
-            ui_text_edit_insert(text_edit, event->codepoint);
-            input_consume_event(input, event);
-        }
-        else if (event->kind == INPUT_EVENT_KEY_PRESS)
-        {
-            key_t key = event->key;
-            bool shift = event->modifiers & KEY_MODIFIER_SHIFT;
-
-            if (key == KEY_BACKSPACE)
-            {
-                ui_text_edit_backspace(text_edit);
-                input_consume_event(input, event);
-            }
-
-            if (key == KEY_UP)
+            if (event->key == KEY_UP)
             {
                 earth_move_country_list_hover_index(earth, -1);
                 input_consume_event(input, event);
+                continue;
             }
-
-            if (key == KEY_DOWN)
+            if (event->key == KEY_DOWN)
             {
                 earth_move_country_list_hover_index(earth, 1);
                 input_consume_event(input, event);
+                continue;
             }
-            
-            if (key == KEY_LEFT)
+            if (event->key == KEY_ESC)
             {
-                ui_text_edit_move_left(text_edit, 1, shift);
-                input_consume_event(input, event);
-            }
+                if (text_edit->length > 0)
+                {
+                    ui_text_edit_clear(text_edit); 
+                }
+                else
+                {
+                    ui_clear_focus();
+                }
 
-            if (key == KEY_RIGHT)
-            {
-                ui_text_edit_move_right(text_edit, 1, shift);
-                input_consume_event(input, event);
-            }
-
-            if (key == KEY_ESC)
-            {
-                text_edit->length > 0 ? ui_text_edit_clear(text_edit) : ui_clear_focus();
                 earth->country_list_hover_index = -1;
+                input_consume_event(input, event);
+                continue;
             }
+        }
+
+        if (ui_text_edit_handle_event(0, text_edit, event))
+        {
+            input_consume_event(input, event);
         }
     }
 }
@@ -799,15 +787,15 @@ static void earth_ui_update(input_t* input, const theme_t* theme, earth_t* earth
         ui_next_size(ui_percent(1.0f, 0.0f), ui_em(1.5f, 1.0f));
         ui_widget_labeled_slider("country-morph", "Morph", theme->border_color, &earth->morph, 0.0f, 1.0f);
 
-        ui_widget_spacer(ui_pixel(8.0f, 1.0f));
+        // ui_widget_spacer(ui_pixel(8.0f, 1.0f));
                 
-        ui_next_size(ui_percent(1.0f, 0.0f), ui_em(1.5f, 1.0f));
-        ui_widget_labeled_slider("country-yaw", "Yaw", theme->border_color, &earth->yaw, -360.0f, 360.0f);
+        // ui_next_size(ui_percent(1.0f, 0.0f), ui_em(1.5f, 1.0f));
+        // ui_widget_labeled_slider("country-yaw", "Yaw", theme->border_color, &earth->yaw, -360.0f, 360.0f);
 
-        ui_widget_spacer(ui_pixel(8.0f, 1.0f));
+        // ui_widget_spacer(ui_pixel(8.0f, 1.0f));
 
-        ui_next_size(ui_percent(1.0f, 0.0f), ui_em(1.5f, 1.0f));
-        ui_widget_labeled_slider("country-pitch", "Pitch", theme->border_color, &earth->pitch, -90.0f, 90.0f);
+        // ui_next_size(ui_percent(1.0f, 0.0f), ui_em(1.5f, 1.0f));
+        // ui_widget_labeled_slider("country-pitch", "Pitch", theme->border_color, &earth->pitch, -90.0f, 90.0f);
     }
     earth_widget_card_group_end();
 
@@ -891,24 +879,24 @@ static void earth_ui_update(input_t* input, const theme_t* theme, earth_t* earth
                 ui_next_text_alignment(ui_align_leading(), ui_align_center());
                 ui_next_flags(UI_FLAG_BACKGROUND | UI_FLAG_CLICKABLE);
                 ui_next_padding(8.0f, 0.0f);
-                ui_widget_t* country_search_widget = ui_widget_text_edit_begin("country-search", &earth->country_search_text_edit, "Search Country...");
+                ui_text_edit_frame_t country_search_text_edit_frame = ui_widget_text_edit_begin("country-search", &earth->country_search_text_edit);
                 {
-                    if (ui_signal_for(country_search_widget).clicked || ctrl_f_pressed)
+                    if (ui_signal_for(country_search_text_edit_frame.widget).clicked || ctrl_f_pressed)
                     {
-                        ui_set_focus(country_search_widget->key);
+                        ui_set_focus(country_search_text_edit_frame.widget->key);
                     }
 
-                    if (ui_is_focused(country_search_widget->key))
+                    if (ui_is_focused(country_search_text_edit_frame.widget->key))
                     {
-                        earth_country_search_input(input, &earth->country_search_text_edit, earth);
+                        earth_country_search_input(country_search_text_edit_frame.text_edit, earth);
                     }
                 }
-                ui_widget_text_edit_end(country_search_widget, &earth->country_search_text_edit);
+                ui_widget_text_edit_end(&country_search_text_edit_frame, "Search Country...");
 
                 ui_widget_spacer(ui_pixel(8.0f, 1.0f));
                 
                 ui_next_color(theme->border_color);
-                if (ui_is_focused(country_search_widget->key)) ui_next_color(theme->fg_color);
+                if (ui_is_focused(country_search_text_edit_frame.widget->key)) ui_next_color(theme->fg_color);
                 ui_next_size(ui_percent(1.0f, 1.0f), ui_pixel(1.0f, 1.0f));
                 ui_next_flags(UI_FLAG_BACKGROUND);
                 ui_widget("country-search-bar");

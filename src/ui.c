@@ -228,13 +228,6 @@ static inline f32 ui_widget_rect_size(ui_widget_t* widget, ui_axis_t axis)
     return content_size > 0.0f ? content_size : 0.0f;
 }
 
-static bool ui_keys_equal(ui_key_t key_a, ui_key_t key_b)
-{
-    bool result = key_a.value == key_b.value;
-
-    return result;
-}
-
 static bool ui_rect_contains_point(ui_rect_t rect, vec2 point)
 {
     bool result = (point.x >= rect.x &&
@@ -454,6 +447,20 @@ static void ui_text_line_list_remove(ui_text_line_list_t* text_line_list, ui_tex
 static inline ui_key_t ui_key_zero(void)
 {
     ui_key_t result = (ui_key_t){ 0 };
+
+    return result;
+}
+
+static inline bool ui_is_key_zero(ui_key_t key)
+{
+    bool result = ui_keys_equal(key, ui_key_zero());
+
+    return result;
+}
+
+static bool ui_keys_equal(ui_key_t key_a, ui_key_t key_b)
+{
+    bool result = key_a.value == key_b.value;
 
     return result;
 }

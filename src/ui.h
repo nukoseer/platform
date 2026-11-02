@@ -303,6 +303,8 @@ static inline ui_alignment_kind_t ui_align_leading(void);
 static inline ui_alignment_kind_t ui_align_trailing(void);
 
 static inline ui_key_t ui_key_zero(void);
+static inline bool ui_is_key_zero(ui_key_t key);
+static bool ui_keys_equal(ui_key_t key_a, ui_key_t key_b);
 static ui_widget_t* ui_widget_build_from_key(ui_key_t key);
 static ui_widget_t* ui_widget_build_from_string(const char* widget_name);
 static ui_widget_t* ui_widget_build_from_format_string(const char* widget_name_format, ...);

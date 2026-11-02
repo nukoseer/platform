@@ -190,7 +190,6 @@ typedef struct ui_text_edit_t
     i32 selection;
     bool selecting;
     bool changed;
-    char* placeholder;
 } ui_text_edit_t;
 
 static void ui_push_size_axis(ui_axis_t axis, ui_size_t size)
@@ -922,144 +921,147 @@ static void ui_widget_text_edit_cursor(ui_widget_t* widget, ui_text_edit_t* text
     ui_pop_parent();
 }
 
-static void ui_text_edit_default_input(ui_widget_t* widget, ui_text_edit_t* text_edit)
+static bool ui_text_edit_handle_event(ui_widget_t* widget, ui_text_edit_t* text_edit, input_event_t* event)
 {
-    input_t* input = global_ui->input;
-
-    for (u32 i = 0; i < input->event_count; ++i)
+    bool result = false;
+    
+    if (event->kind == INPUT_EVENT_TEXT)
     {
-        input_event_t* event = input->events + i;
-
-        if (event->consumed)
-        {
-            continue;
-        }
-
-        if (event->kind == INPUT_EVENT_TEXT && event->codepoint >= 32)
+        if (event->codepoint >= 32)
         {
             ui_text_edit_insert(text_edit, event->codepoint);
-            input_consume_event(input, event);
+            result = true;
         }
-        else if (event->kind == INPUT_EVENT_KEY_PRESS)
+    }
+    else if (event->kind == INPUT_EVENT_KEY_PRESS)
+    {
+        bool shift = event->modifiers & KEY_MODIFIER_SHIFT;
+        bool ctrl  = event->modifiers & KEY_MODIFIER_CTRL;
+        bool alt   = event->modifiers & KEY_MODIFIER_ALT;
+
+        switch (event->key)
         {
-            key_t key = event->key;
-            bool ctrl = event->modifiers & KEY_MODIFIER_CTRL;
-            bool shift = event->modifiers & KEY_MODIFIER_SHIFT;
-            bool alt = event->modifiers & KEY_MODIFIER_ALT;
-
-            if (key == KEY_BACKSPACE || (key == KEY_H && ctrl))
-            {
-                ui_text_edit_backspace(text_edit);
-                input_consume_event(input, event);
-            }
-
-            if (key == KEY_H && alt)
-            {
-                ui_text_edit_backspace_all(text_edit);
-                input_consume_event(input, event);
-            }
-
-            if (key == KEY_UP)
-            {
-                ui_text_edit_move_up(widget, text_edit, shift);
-                input_consume_event(input, event);
-            }
-
-            if (key == KEY_DOWN)
-            {
-                ui_text_edit_move_down(widget, text_edit, shift);
-                input_consume_event(input, event);
-            }
-            
-            if (key == KEY_LEFT)
-            {
-                ui_text_edit_move_left(text_edit, 1, shift);
-                input_consume_event(input, event);
-            }
-
-            if (key == KEY_RIGHT)
-            {
-                ui_text_edit_move_right(text_edit, 1, shift);
-                input_consume_event(input, event);
-            }
-
-            if (key == KEY_E && ctrl)
-            {
-                ui_text_edit_move_right(text_edit, text_edit->length - text_edit->cursor, shift);
-                input_consume_event(input, event);
-            }
-
-            if (key == KEY_A && ctrl)
-            {
-                ui_text_edit_move_left(text_edit, text_edit->cursor, shift);
-                input_consume_event(input, event);
-            }
-
-            if (key == KEY_D && ctrl)
-            {
-                ui_text_edit_delete(text_edit);
-                input_consume_event(input, event);
-            }
-
-            if (key == KEY_D && alt)
-            {
-                ui_text_edit_delete_all(text_edit);
-                input_consume_event(input, event);
-            }
-        }
-    }
-}
-
-static ui_widget_t* ui_widget_text_edit_begin(const char* name, ui_text_edit_t* text_edit, char* placeholder)
-{
-    ui_next_flags(UI_FLAG_TEXT | UI_FLAG_FOCUSABLE);
-    ui_widget_t* widget = ui_widget(name);
-
-    text_edit->placeholder = placeholder;
-    text_edit->changed = false;
-
-    return widget;
-}
-
-static void ui_widget_text_edit_end(ui_widget_t* widget, ui_text_edit_t* text_edit)
-{
-    if (ui_is_focused(widget->key))
-    {
-        ui_text_edit_selection(widget, text_edit);
-        ui_text_edit_update_scroll(widget, text_edit);
-        ui_widget_text_edit_selection(widget, text_edit);
-        ui_widget_text_edit_cursor(widget, text_edit);
+            case KEY_BACKSPACE: { ui_text_edit_backspace(text_edit); result = true; } break;
+            case KEY_LEFT:      { ui_text_edit_move_left(text_edit, 1, shift); result = true; } break;
+            case KEY_RIGHT:     { ui_text_edit_move_right(text_edit, 1, shift); result = true; } break;
+            case KEY_UP:        { if (widget) { ui_text_edit_move_up(widget, text_edit, shift); result = true; } } break;
+            case KEY_DOWN:      { if (widget) { ui_text_edit_move_down(widget, text_edit, shift); result = true; } } break;
+            case KEY_A:         { if (ctrl) { ui_text_edit_move_left(text_edit, text_edit->cursor, shift); result = true; } } break;
+            case KEY_E:         { if (ctrl) { ui_text_edit_move_right(text_edit, text_edit->length - text_edit->cursor, shift); result = true; } } break;
+            case KEY_H:         { if (ctrl) { ui_text_edit_backspace(text_edit); result = true; } } break;
+                                { if (alt)  { ui_text_edit_backspace_all(text_edit); result = true; } } break;
+            case KEY_D:         { if (ctrl) { ui_text_edit_delete(text_edit); result = true; } } break;
+                                { if (alt)  { ui_text_edit_delete_all(text_edit); result = true; } } break;
+           default: { } break;
+        }   
     }
 
-    bool show_placeholder = text_edit->placeholder && text_edit->length == 0 && !ui_is_focused(widget->key);
+    return result;
+}
+
+typedef struct ui_text_edit_frame_t
+{
+    ui_widget_t* widget;
+    ui_text_edit_t* text_edit;
+    bool scratch_just_bound;
+} ui_text_edit_frame_t;
+
+static ui_text_edit_t global_scratch_text_edit;
+static ui_key_t global_scratch_text_edit_key;
+static bool global_scratch_text_edit_touched;
+
+static ui_text_edit_frame_t ui_widget_text_edit_begin(const char* name, ui_text_edit_t* user_edit)
+{
+    ui_text_edit_frame_t text_edit_frame = { 0 };
     
-    if (show_placeholder)
+    ui_next_flags(UI_FLAG_TEXT | UI_FLAG_FOCUSABLE | UI_FLAG_CLICKABLE);
+    text_edit_frame.widget = ui_widget(name);
+    bool focused = ui_is_focused(text_edit_frame.widget->key);
+
+    if (!ui_is_key_zero(global_scratch_text_edit_key) && !ui_is_focused(global_scratch_text_edit_key))
     {
-        ui_equip_text(widget, text_edit->placeholder, (i32)strlen(text_edit->placeholder));
-        widget->font_color = v4v(widget->font_color.rgb, 0.3f);
+        global_scratch_text_edit_key = ui_key_zero();
     }
-    else
+
+    if (user_edit)
     {
-        ui_equip_text(widget, text_edit->text, text_edit->length);
+        text_edit_frame.text_edit = user_edit;
+    }
+    else if (focused)
+    {
+        if (!ui_keys_equal(global_scratch_text_edit_key, text_edit_frame.widget->key))
+        {
+            memset(&global_scratch_text_edit, 0, sizeof(global_scratch_text_edit));
+            global_scratch_text_edit_key = text_edit_frame.widget->key;
+            global_scratch_text_edit_touched = false;
+            text_edit_frame.scratch_just_bound = true;
+        }
+
+        text_edit_frame.text_edit = &global_scratch_text_edit;
+    }
+
+    if (text_edit_frame.text_edit)
+    {
+        text_edit_frame.text_edit->changed = false;
+    }
+    
+    return text_edit_frame;
+}
+
+static void ui_widget_text_edit_end(ui_text_edit_frame_t* text_edit_frame, const char* display)
+{
+    bool focused = ui_is_focused(text_edit_frame->widget->key);
+    
+    if (text_edit_frame->text_edit && focused)
+    {
+        if (text_edit_frame->text_edit == &global_scratch_text_edit && text_edit_frame->text_edit->changed)
+        {
+            global_scratch_text_edit_touched = true;
+        }
+        
+        ui_text_edit_selection(text_edit_frame->widget, text_edit_frame->text_edit);
+        ui_text_edit_update_scroll(text_edit_frame->widget, text_edit_frame->text_edit);
+        ui_widget_text_edit_selection(text_edit_frame->widget, text_edit_frame->text_edit);
+        ui_widget_text_edit_cursor(text_edit_frame->widget, text_edit_frame->text_edit);
+        ui_equip_text(text_edit_frame->widget, text_edit_frame->text_edit->text, text_edit_frame->text_edit->length);
+    }
+    else if (display)
+    {
+        ui_equip_text(text_edit_frame->widget, display, (i32)strlen(display));
+    }
+    else if (text_edit_frame->text_edit)
+    {
+        ui_equip_text(text_edit_frame->widget, text_edit_frame->text_edit->text, text_edit_frame->text_edit->length);
     }
 }
 
-static ui_signal_t ui_widget_text_edit(const char* name, ui_text_edit_t* text_edit, char* placeholder)
+static ui_signal_t ui_widget_text_edit(const char* name, ui_text_edit_t* text_edit, char* display)
 {
-    ui_widget_t* widget = ui_widget_text_edit_begin(name, text_edit, placeholder);
-    ui_signal_t signal = ui_signal_for(widget);
+    ui_text_edit_frame_t text_edit_frame = ui_widget_text_edit_begin(name, text_edit);
+    ui_signal_t signal = ui_signal_for(text_edit_frame.widget);
+    input_t* input = global_ui->input;
 
     if (signal.clicked)
     {
-        ui_set_focus(widget->key);
+        ui_set_focus(text_edit_frame.widget->key);
     }
 
-    if (ui_is_focused(widget->key))
+    if (ui_is_focused(text_edit_frame.widget->key))
     {
-        ui_text_edit_default_input(widget, text_edit);
+         for (u32 i = 0; i < input->event_count; ++i)
+         {
+             input_event_t* event = input->events + i;
+             
+             if (event->consumed) continue;
+             
+             if (ui_text_edit_handle_event(text_edit_frame.widget, text_edit_frame.text_edit, event))
+             {
+                 input_consume_event(input, event);
+             }
+         }
     }
 
-    ui_widget_text_edit_end(widget, text_edit);
+    ui_widget_text_edit_end(&text_edit_frame, display);
 
     return signal;
 }
@@ -1110,14 +1112,76 @@ static void ui_widget_slider(const char* widget_name, vec4 color, f32* default_v
     }
 }
 
-static void ui_widget_number_value(const char* widget_name, f32 value)
+static bool ui_widget_number_edit_field(const char* widget_name, f32* value, f32 min_value, f32 max_value)
 {
-    char string_value[64] = { 0 };
-    i32 size = (i32)snprintf(string_value, sizeof(string_value), "%4.2f", value);
-    ui_next_flags(UI_FLAG_BACKGROUND | UI_FLAG_TEXT);
+    bool changed = false;
+    input_t* input = global_ui->input;
+    
+    ui_next_flags(UI_FLAG_BACKGROUND | UI_FLAG_CLICKABLE);
     ui_next_text_alignment(ui_align_center(), ui_align_center());
-    ui_widget_t* number_value_widget = ui_widget_build_from_format_string("%s-number-value", widget_name);
-    ui_equip_text(number_value_widget, string_value, size);
+    ui_text_edit_frame_t text_edit_frame = ui_widget_text_edit_begin("aaa", 0);
+    {
+        if (ui_signal_for(text_edit_frame.widget).clicked)
+        {
+            ui_set_focus(text_edit_frame.widget->key);
+        }
+
+        if (text_edit_frame.scratch_just_bound)
+        {
+            text_edit_frame.text_edit->length = snprintf(text_edit_frame.text_edit->text, sizeof(text_edit_frame.text_edit->text), "%.2f", *value);
+            text_edit_frame.text_edit->selection = 0;
+            text_edit_frame.text_edit->cursor = text_edit_frame.text_edit->length;
+        }
+
+        if (text_edit_frame.text_edit)
+        {
+            for (u32 i = 0; i < input->event_count; ++i)
+            {
+                input_event_t* event = input->events + i;
+
+                if (event->consumed)
+                {
+                    continue;
+                }
+
+                if (event->kind == INPUT_EVENT_TEXT &&
+                    ((event->codepoint >= '0' && event->codepoint <= '9') ||
+                     event->codepoint == '.'))
+                {
+                    ui_text_edit_insert(text_edit_frame.text_edit, event->codepoint);
+                    input_consume_event(input, event);
+                    continue;
+                }
+                if (event->kind == INPUT_EVENT_KEY_PRESS)
+                {
+                    if (event->key == KEY_ESC || event->key == KEY_ENTER)
+                    {
+                        ui_clear_focus();
+                        input_consume_event(input, event);
+                        continue;
+                    }
+                }
+                if (ui_text_edit_handle_event(text_edit_frame.widget, text_edit_frame.text_edit, event))
+                {
+                    input_consume_event(input, event);
+                }
+            }
+        }
+
+        if (global_scratch_text_edit_touched && text_edit_frame.text_edit->text)
+        {
+            f32 parsed_value = (f32)atof(text_edit_frame.text_edit->text);
+            f32 clamped_value = clamp(min_value, parsed_value, max_value);
+            *value = clamp(min_value, parsed_value, max_value);
+            changed = true;   
+        }
+    }
+
+    char display[64];
+    snprintf(display, sizeof(display), "%.2f", *value);
+    ui_widget_text_edit_end(&text_edit_frame, display);
+
+    return changed;
 }
 
 static void ui_widget_labeled_slider(const char* widget_name, const char* label, vec4 color, f32* value, f32 min_value, f32 max_value)
@@ -1136,7 +1200,7 @@ static void ui_widget_labeled_slider(const char* widget_name, const char* label,
 
         ui_next_border(1.0f, color);
         ui_next_size(ui_em(4.0f, 1.0f), ui_percent(1.0f, 1.0f));
-        ui_widget_number_value(widget_name, *value);
+        ui_widget_number_edit_field(widget_name, value, min_value, max_value);
     }
 }
 
